@@ -27,11 +27,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
-@Service
 /**
  * 信息聚合实现。
- * 并行查询社交账号、人物实体信息和新闻，并在最终阶段统一清洗去重。
+ * 并行查询社交账号、人物简介和新闻，再统一做清洗、去重和降级处理。
  */
+@Service
 public class InformationAggregationServiceImpl implements InformationAggregationService {
 
     private static final Logger log = LoggerFactory.getLogger(InformationAggregationServiceImpl.class);
@@ -48,6 +48,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.executor = executor;
     }
 
+    /**
+     * 并行聚合目标人物的公开信息。
+     */
     @Override
     public AggregationResult aggregate(String name) {
         CompletableFuture<List<SocialAccount>> socialFuture = CompletableFuture
@@ -67,6 +70,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         result.setPerson(joinTask("实体信息", personFuture, new PersonAggregate().setName(name), result.getErrors()));
         result.setNews(joinTask("新闻", newsFuture, List.of(), result.getErrors()));
 
+        // 统一收口后再做清洗和去重，避免每个子任务各自维护不同规则。
         result.getPerson().setName(name);
         result.getPerson().setDescription(cleanDescription(result.getPerson().getDescription()));
         result.setSocialAccounts(deduplicateSocialAccounts(result.getSocialAccounts()));
@@ -74,6 +78,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return result;
     }
 
+    /**
+     * 搜索候选人物的公开社交账号。
+     */
     private List<SocialAccount> collectSocialAccounts(String name) {
         log.info("Searching social accounts for {}", name);
         List<SocialAccount> accounts = new ArrayList<>();
@@ -82,6 +89,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return accounts;
     }
 
+    /**
+     * 搜索候选人物的简介、官网和百科地址。
+     */
     private PersonAggregate collectPersonInfo(String name) {
         log.info("Searching person details for {}", name);
         SerpApiResponse response = serpApiClient.googleSearch(name);
@@ -108,6 +118,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return aggregate;
     }
 
+    /**
+     * 查询相关新闻并转换为统一新闻结构。
+     */
     private List<NewsItem> collectNews(String name) {
         log.info("Searching news for {}", name);
         NewsApiResponse response = newsApiClient.searchNews(name);
@@ -126,6 +139,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return items;
     }
 
+    /**
+     * 从搜索结果中筛选指定平台的账号链接。
+     */
     private List<SocialAccount> parseSocialResults(String platform, SerpApiResponse response) {
         List<SocialAccount> accounts = new ArrayList<>();
         JsonNode organicResults = response.getRoot().path("organic_results");
@@ -146,6 +162,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return accounts;
     }
 
+    /**
+     * 判断链接是否属于目标社交平台。
+     */
     private boolean isPlatformLink(String platform, String link) {
         return switch (platform) {
             case "douyin" -> link.contains("douyin.com");
@@ -154,6 +173,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         };
     }
 
+    /**
+     * 从搜索标题中提取较干净的账号展示名。
+     */
     private String extractUsername(String title) {
         if (!StringUtils.hasText(title)) {
             return null;
@@ -164,6 +186,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .trim();
     }
 
+    /**
+     * 清洗简介中的多余空白字符。
+     */
     private String cleanDescription(String description) {
         if (!StringUtils.hasText(description)) {
             return null;
@@ -171,6 +196,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return description.replaceAll("\\s+", " ").trim();
     }
 
+    /**
+     * 按平台去重，只保留每个平台首个有效账号。
+     */
     private List<SocialAccount> deduplicateSocialAccounts(List<SocialAccount> accounts) {
         Map<String, SocialAccount> deduplicated = new LinkedHashMap<>();
         for (SocialAccount account : accounts) {
@@ -182,6 +210,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return new ArrayList<>(deduplicated.values());
     }
 
+    /**
+     * 过滤掉不包含目标名称或重复的新闻。
+     */
     private List<NewsItem> deduplicateNews(String name, List<NewsItem> items) {
         Set<String> seen = new LinkedHashSet<>();
         List<NewsItem> filtered = new ArrayList<>();
@@ -199,6 +230,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return filtered;
     }
 
+    /**
+     * 依次尝试多个字段，返回第一个非空文本。
+     */
     private String firstText(JsonNode node, String... fields) {
         for (String field : fields) {
             String value = node.path(field).asText(null);
@@ -209,6 +243,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return null;
     }
 
+    /**
+     * 等待异步任务结果；失败时记录错误并返回降级值。
+     */
     private <T> T joinTask(String label, CompletableFuture<T> future, T fallback, List<String> errors) {
         try {
             return future.join();
