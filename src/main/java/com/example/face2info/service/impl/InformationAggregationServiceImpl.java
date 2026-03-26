@@ -1,17 +1,22 @@
 package com.example.face2info.service.impl;
 
+import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
+import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.NewsApiResponse;
+import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PersonAggregate;
+import com.example.face2info.entity.internal.RecognitionEvidence;
+import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SerpApiResponse;
+import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.NewsItem;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.service.InformationAggregationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
@@ -28,56 +33,139 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 信息聚合实现。
- * 并行查询社交账号、人物简介和新闻，再统一做清洗、去重和降级处理。
+ * 基于识别证据的人物信息聚合实现。
  */
 @Slf4j
 @Service
 public class InformationAggregationServiceImpl implements InformationAggregationService {
 
-    @Autowired
-    private SerpApiClient serpApiClient;
+    private static final int MAX_PAGE_URLS = 20;
 
-    @Autowired
-    private NewsApiClient newsApiClient;
+    private final SerpApiClient serpApiClient;
+    private final NewsApiClient newsApiClient;
+    private final JinaReaderClient jinaReaderClient;
+    private final SummaryGenerationClient summaryGenerationClient;
+    private final ThreadPoolTaskExecutor executor;
 
-    @Autowired
-    @Qualifier("face2InfoExecutor")
-    private ThreadPoolTaskExecutor executor;
+    public InformationAggregationServiceImpl(SerpApiClient serpApiClient,
+                                             NewsApiClient newsApiClient,
+                                             JinaReaderClient jinaReaderClient,
+                                             SummaryGenerationClient summaryGenerationClient,
+                                             @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor) {
+        this.serpApiClient = serpApiClient;
+        this.newsApiClient = newsApiClient;
+        this.jinaReaderClient = jinaReaderClient;
+        this.summaryGenerationClient = summaryGenerationClient;
+        this.executor = executor;
+    }
 
-    /**
-     * 并行聚合目标人物的公开信息。
-     */
     @Override
-    public AggregationResult aggregate(String name) {
+    public AggregationResult aggregate(RecognitionEvidence evidence) {
+        AggregationResult result = new AggregationResult();
+        if (evidence == null) {
+            return result.setErrors(List.of("recognition evidence is missing"));
+        }
+
+        result.getErrors().addAll(evidence.getErrors());
+
+        ResolvedPersonProfile profile = resolveProfileFromEvidence(evidence.getWebEvidences(), firstSeedQuery(evidence));
+        String resolvedName = resolveNameOrFallback(profile, evidence);
+        if (!StringUtils.hasText(resolvedName)) {
+            result.getErrors().add("未能从识别证据中解析人物名称");
+            result.setPerson(new PersonAggregate().setDescription(cleanDescription(profile.getSummary())));
+            return result;
+        }
+
         CompletableFuture<List<SocialAccount>> socialFuture = CompletableFuture
-                .supplyAsync(() -> collectSocialAccounts(name), executor)
+                .supplyAsync(() -> collectSocialAccounts(resolvedName), executor)
                 .orTimeout(10, TimeUnit.SECONDS);
 
         CompletableFuture<PersonAggregate> personFuture = CompletableFuture
-                .supplyAsync(() -> collectPersonInfo(name), executor)
+                .supplyAsync(() -> collectPersonInfo(resolvedName), executor)
                 .orTimeout(10, TimeUnit.SECONDS);
 
         CompletableFuture<List<NewsItem>> newsFuture = CompletableFuture
-                .supplyAsync(() -> collectNews(name), executor)
+                .supplyAsync(() -> collectNews(resolvedName), executor)
                 .orTimeout(10, TimeUnit.SECONDS);
 
-        AggregationResult result = new AggregationResult();
-        result.setSocialAccounts(joinTask("社交账号", socialFuture, List.of(), result.getErrors()));
-        result.setPerson(joinTask("实体信息", personFuture, new PersonAggregate().setName(name), result.getErrors()));
-        result.setNews(joinTask("新闻", newsFuture, List.of(), result.getErrors()));
+        PersonAggregate person = joinTask("实体信息", personFuture, new PersonAggregate().setName(resolvedName), result.getErrors());
+        person.setName(resolvedName);
+        person.setDescription(cleanDescription(firstNonBlank(profile.getSummary(), person.getDescription())));
+        person.setEvidenceUrls(profile.getEvidenceUrls());
 
-        // 统一收口后再做清洗和去重，避免每个子任务各自维护不同规则。
-        result.getPerson().setName(name);
-        result.getPerson().setDescription(cleanDescription(result.getPerson().getDescription()));
-        result.setSocialAccounts(deduplicateSocialAccounts(result.getSocialAccounts()));
-        result.setNews(deduplicateNews(name, result.getNews()));
+        result.setPerson(person);
+        result.setSocialAccounts(deduplicateSocialAccounts(joinTask("社交账号", socialFuture, List.of(), result.getErrors())));
+        result.setNews(deduplicateNews(resolvedName, joinTask("新闻", newsFuture, List.of(), result.getErrors())));
         return result;
     }
 
-    /**
-     * 搜索候选人物的公开社交账号。
-     */
+    ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName) {
+        List<String> urls = selectTopUrls(evidences);
+        if (urls.isEmpty()) {
+            return new ResolvedPersonProfile().setResolvedName(fallbackName);
+        }
+
+        List<PageContent> pages;
+        try {
+            pages = jinaReaderClient.readPages(urls);
+        } catch (RuntimeException ex) {
+            log.warn("Jina page read failed", ex);
+            return new ResolvedPersonProfile()
+                    .setResolvedName(fallbackName)
+                    .setEvidenceUrls(urls);
+        }
+        if (pages == null || pages.isEmpty()) {
+            return new ResolvedPersonProfile()
+                    .setResolvedName(fallbackName)
+                    .setEvidenceUrls(urls);
+        }
+
+        try {
+            ResolvedPersonProfile profile = summaryGenerationClient.summarizePerson(fallbackName, pages);
+            if (profile == null) {
+                return new ResolvedPersonProfile().setResolvedName(fallbackName).setEvidenceUrls(urls);
+            }
+            if (profile.getEvidenceUrls() == null || profile.getEvidenceUrls().isEmpty()) {
+                profile.setEvidenceUrls(urls);
+            }
+            return profile;
+        } catch (RuntimeException ex) {
+            log.warn("Summary generation failed", ex);
+            return new ResolvedPersonProfile()
+                    .setResolvedName(fallbackName)
+                    .setEvidenceUrls(urls);
+        }
+    }
+
+    private List<String> selectTopUrls(List<WebEvidence> evidences) {
+        if (evidences == null || evidences.isEmpty()) {
+            return List.of();
+        }
+        Set<String> urls = new LinkedHashSet<>();
+        evidences.stream()
+                .filter(item -> StringUtils.hasText(item.getUrl()))
+                .forEach(item -> {
+                    if (urls.size() < MAX_PAGE_URLS) {
+                        urls.add(item.getUrl());
+                    }
+                });
+        return new ArrayList<>(urls);
+    }
+
+    private String resolveNameOrFallback(ResolvedPersonProfile profile, RecognitionEvidence evidence) {
+        if (profile != null && StringUtils.hasText(profile.getResolvedName())) {
+            return profile.getResolvedName();
+        }
+        return firstSeedQuery(evidence);
+    }
+
+    private String firstSeedQuery(RecognitionEvidence evidence) {
+        if (evidence == null || evidence.getSeedQueries().isEmpty()) {
+            return null;
+        }
+        return evidence.getSeedQueries().get(0);
+    }
+
     private List<SocialAccount> collectSocialAccounts(String name) {
         log.info("Searching social accounts for {}", name);
         List<SocialAccount> accounts = new ArrayList<>();
@@ -86,9 +174,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return accounts;
     }
 
-    /**
-     * 搜索候选人物的简介、官网和百科地址。
-     */
     private PersonAggregate collectPersonInfo(String name) {
         log.info("Searching person details for {}", name);
         SerpApiResponse response = serpApiClient.googleSearch(name);
@@ -115,9 +200,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return aggregate;
     }
 
-    /**
-     * 查询相关新闻并转换为统一新闻结构。
-     */
     private List<NewsItem> collectNews(String name) {
         log.info("Searching news for {}", name);
         NewsApiResponse response = newsApiClient.searchNews(name);
@@ -136,9 +218,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return items;
     }
 
-    /**
-     * 从搜索结果中筛选指定平台的账号链接。
-     */
     private List<SocialAccount> parseSocialResults(String platform, SerpApiResponse response) {
         List<SocialAccount> accounts = new ArrayList<>();
         JsonNode organicResults = response.getRoot().path("organic_results");
@@ -159,9 +238,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return accounts;
     }
 
-    /**
-     * 判断链接是否属于目标社交平台。
-     */
     private boolean isPlatformLink(String platform, String link) {
         return switch (platform) {
             case "douyin" -> link.contains("douyin.com");
@@ -170,9 +246,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         };
     }
 
-    /**
-     * 从搜索标题中提取较干净的账号展示名。
-     */
     private String extractUsername(String title) {
         if (!StringUtils.hasText(title)) {
             return null;
@@ -183,9 +256,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .trim();
     }
 
-    /**
-     * 清洗简介中的多余空白字符。
-     */
     private String cleanDescription(String description) {
         if (!StringUtils.hasText(description)) {
             return null;
@@ -193,9 +263,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return description.replaceAll("\\s+", " ").trim();
     }
 
-    /**
-     * 按平台去重，只保留每个平台首个有效账号。
-     */
+    private String firstNonBlank(String primary, String secondary) {
+        return StringUtils.hasText(primary) ? primary : secondary;
+    }
+
     private List<SocialAccount> deduplicateSocialAccounts(List<SocialAccount> accounts) {
         Map<String, SocialAccount> deduplicated = new LinkedHashMap<>();
         for (SocialAccount account : accounts) {
@@ -207,9 +278,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return new ArrayList<>(deduplicated.values());
     }
 
-    /**
-     * 过滤掉不包含目标名称或重复的新闻。
-     */
     private List<NewsItem> deduplicateNews(String name, List<NewsItem> items) {
         Set<String> seen = new LinkedHashSet<>();
         List<NewsItem> filtered = new ArrayList<>();
@@ -227,9 +295,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return filtered;
     }
 
-    /**
-     * 依次尝试多个字段，返回第一个非空文本。
-     */
     private String firstText(JsonNode node, String... fields) {
         for (String field : fields) {
             String value = node.path(field).asText(null);
@@ -240,16 +305,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return null;
     }
 
-    /**
-     * 等待异步任务结果；失败时记录错误并返回降级值。
-     */
     private <T> T joinTask(String label, CompletableFuture<T> future, T fallback, List<String> errors) {
         try {
             return future.join();
         } catch (CompletionException ex) {
             Throwable cause = ex.getCause() == null ? ex : ex.getCause();
             log.error("{} aggregation failed", label, cause);
-            errors.add(label + "获取失败：" + cause.getMessage());
+            errors.add(label + "获取失败: " + cause.getMessage());
             return fallback;
         }
     }

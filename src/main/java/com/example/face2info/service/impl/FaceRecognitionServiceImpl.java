@@ -2,8 +2,9 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.TmpfilesClient;
-import com.example.face2info.entity.internal.RecognitionCandidate;
+import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
+import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.service.FaceRecognitionService;
 import com.example.face2info.util.NameExtractor;
@@ -14,18 +15,19 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * 候选人物识别实现。
- * 通过上传图片到临时文件服务，再调用 Google Lens 结果推断人物名称。
+ * 多信源图片识别实现。
  */
 @Slf4j
 @Service
 public class FaceRecognitionServiceImpl implements FaceRecognitionService {
-    private static final double CONFIDENCE_THRESHOLD = 0.7;
+
     private static final int MAX_IMAGE_MATCHES = 20;
-    private static final String RECOGNITION_FAILED_MESSAGE = "Unable to recognize the person from the image.";
+    private static final int MAX_SEED_QUERIES = 3;
 
     private final SerpApiClient serpApiClient;
     private final NameExtractor nameExtractor;
@@ -37,108 +39,157 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         this.tmpfilesClient = tmpfilesClient;
     }
 
-    /**
-     * 执行识别流程并返回候选结果。
-     */
     @Override
-    public RecognitionCandidate recognize(MultipartFile image) {
-        log.info("Starting face recognition by reverse image search (TempFile + URL method)");
+    public RecognitionEvidence recognize(MultipartFile image) {
+        log.info("Starting multi-source face recognition");
         String imageUrl = tmpfilesClient.uploadImage(image);
         return searchByImageUrl(imageUrl);
     }
 
-    /**
-     * 使用临时图片地址发起反向搜图。
-     */
-    private RecognitionCandidate searchByImageUrl(String imageUrl) {
-        log.info("Searching with image URL: {}", imageUrl);
-        SerpApiResponse response = serpApiClient.reverseImageSearchByUrl(imageUrl);
-        return parseResponse(response);
+    private RecognitionEvidence searchByImageUrl(String imageUrl) {
+        RecognitionEvidence evidence = new RecognitionEvidence();
+        List<WebEvidence> webEvidences = new ArrayList<>();
+
+        SerpApiResponse lensResponse = safeSearch("google_lens", imageUrl, evidence,
+                () -> serpApiClient.reverseImageSearchByUrl(imageUrl));
+        if (lensResponse != null && lensResponse.getRoot() != null) {
+            evidence.setImageMatches(extractImageMatches(lensResponse.getRoot()));
+            webEvidences.addAll(extractWebEvidence(lensResponse.getRoot(), "google_lens"));
+        }
+
+        SerpApiResponse yandexAboutResponse = safeSearch("yandex_images_about", imageUrl, evidence,
+                () -> serpApiClient.reverseImageSearchByUrlYandex(imageUrl, "about"));
+        if (yandexAboutResponse != null && yandexAboutResponse.getRoot() != null) {
+            webEvidences.addAll(extractWebEvidence(yandexAboutResponse.getRoot(), "yandex_images_about"));
+        }
+
+        SerpApiResponse yandexSimilarResponse = safeSearch("yandex_images_similar", imageUrl, evidence,
+                () -> serpApiClient.reverseImageSearchByUrlYandex(imageUrl, "similar"));
+        if (yandexSimilarResponse != null && yandexSimilarResponse.getRoot() != null) {
+            webEvidences.addAll(extractWebEvidence(yandexSimilarResponse.getRoot(), "yandex_images_similar"));
+        }
+
+        List<String> seedQueries = extractSeedQueries(lensResponse, yandexAboutResponse, yandexSimilarResponse);
+        evidence.setSeedQueries(seedQueries);
+
+        for (String seedQuery : seedQueries) {
+            try {
+                SerpApiResponse bingResponse = serpApiClient.searchBingImages(seedQuery);
+                if (bingResponse != null && bingResponse.getRoot() != null) {
+                    webEvidences.addAll(extractWebEvidence(bingResponse.getRoot(), "bing_images"));
+                }
+            } catch (RuntimeException ex) {
+                log.warn("Bing image search failed for query={}", seedQuery, ex);
+                evidence.getErrors().add("bing_images: " + ex.getMessage());
+            }
+        }
+
+        evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
+        return evidence;
     }
 
-    /**
-     * 按可信度依次从知识图谱、视觉匹配、图片结果和自然搜索结果中提取人物名称。
-     */
-    private RecognitionCandidate parseResponse(SerpApiResponse response) {
-        JsonNode root = response.getRoot();
-        RecognitionCandidate candidate = new RecognitionCandidate()
-                .setImageMatches(extractImageMatches(root));
-
-        log.info("SerpAPI response: {}", root);
-
-        JsonNode kgNode = root.path("knowledge_graph");
-        String kgTitle = kgNode.path("title").asText(null);
-        if (StringUtils.hasText(kgTitle)) {
-            // 知识图谱通常最可靠，优先尝试直接命中人物名称。
-            String name = nameExtractor.cleanCandidateName(kgTitle);
-            double confidence = nameExtractor.estimateConfidence(kgTitle, name, true);
-            if (StringUtils.hasText(name) && confidence >= CONFIDENCE_THRESHOLD) {
-                return confidentCandidate(candidate, name, confidence, "knowledge_graph");
-            }
+    private SerpApiResponse safeSearch(String source,
+                                       String imageUrl,
+                                       RecognitionEvidence evidence,
+                                       SearchSupplier supplier) {
+        try {
+            return supplier.get();
+        } catch (RuntimeException ex) {
+            log.warn("Recognition source failed source={} imageUrl={}", source, imageUrl, ex);
+            evidence.getErrors().add(source + ": " + ex.getMessage());
+            return null;
         }
-
-        JsonNode visualMatches = root.path("visual_matches");
-        if (visualMatches.isArray() && visualMatches.size() > 0) {
-            // 如果知识图谱缺失，则退化到视觉匹配首条结果。
-            JsonNode firstVisual = visualMatches.get(0);
-            String visualTitle = firstVisual.path("title").asText(null);
-            if (StringUtils.hasText(visualTitle)) {
-                String name = nameExtractor.cleanCandidateName(visualTitle);
-                double confidence = nameExtractor.estimateConfidence(visualTitle, name, false);
-                if (StringUtils.hasText(name) && confidence >= CONFIDENCE_THRESHOLD) {
-                    return confidentCandidate(candidate, name, confidence, "visual_matches");
-                }
-            }
-        }
-
-        JsonNode imageResults = root.path("image_results");
-        if (imageResults.isArray() && imageResults.size() > 0) {
-            // 图片结果可作为次级候选来源，用于补充 Lens 未给出明确人名的情况。
-            JsonNode firstImage = imageResults.get(0);
-            String imageTitle = firstImage.path("title").asText(null);
-            if (StringUtils.hasText(imageTitle)) {
-                String name = nameExtractor.cleanCandidateName(imageTitle);
-                double confidence = nameExtractor.estimateConfidence(imageTitle, name, false);
-                if (StringUtils.hasText(name) && confidence >= CONFIDENCE_THRESHOLD) {
-                    return confidentCandidate(candidate, name, confidence, "image_results");
-                }
-            }
-        }
-
-        JsonNode organicResults = root.path("organic_results");
-        if (organicResults.isArray() && organicResults.size() > 0) {
-            // 最后回退到自然搜索结果，尽量从标题中恢复人物名称。
-            JsonNode firstOrganic = organicResults.get(0);
-            String organicTitle = firstOrganic.path("title").asText(null);
-            if (StringUtils.hasText(organicTitle)) {
-                String name = nameExtractor.cleanCandidateName(organicTitle);
-                double confidence = nameExtractor.estimateConfidence(organicTitle, name, false);
-                if (StringUtils.hasText(name) && confidence >= CONFIDENCE_THRESHOLD) {
-                    return confidentCandidate(candidate, name, confidence, "organic_results");
-                }
-            }
-        }
-
-        return candidate.setError(RECOGNITION_FAILED_MESSAGE);
     }
 
-    /**
-     * 构造一个通过阈值校验的候选结果。
-     */
-    private RecognitionCandidate confidentCandidate(RecognitionCandidate candidate, String name, double confidence, String source) {
-        if (!StringUtils.hasText(name) || confidence < CONFIDENCE_THRESHOLD) {
-            return candidate.setError(RECOGNITION_FAILED_MESSAGE);
+    private List<String> extractSeedQueries(SerpApiResponse... responses) {
+        Set<String> queries = new LinkedHashSet<>();
+        for (SerpApiResponse response : responses) {
+            if (response == null || response.getRoot() == null) {
+                continue;
+            }
+            collectSeedQuery(queries, response.getRoot().path("knowledge_graph").path("title").asText(null));
+            collectSeedQueriesFromArray(queries, response.getRoot().path("visual_matches"));
+            collectSeedQueriesFromArray(queries, response.getRoot().path("image_results"));
+            collectSeedQueriesFromArray(queries, response.getRoot().path("organic_results"));
+            if (queries.size() >= MAX_SEED_QUERIES) {
+                break;
+            }
         }
-        log.info("Recognized person name={} confidence={} source={}", name, confidence, source);
-        return candidate
-                .setName(name)
-                .setConfidence(confidence)
-                .setSource(source);
+        return new ArrayList<>(queries).subList(0, Math.min(queries.size(), MAX_SEED_QUERIES));
     }
 
-    /**
-     * 提取前 20 条视觉匹配结果，供前端直接展示。
-     */
+    private void collectSeedQueriesFromArray(Set<String> queries, JsonNode nodes) {
+        if (!nodes.isArray()) {
+            return;
+        }
+        for (JsonNode node : nodes) {
+            collectSeedQuery(queries, node.path("title").asText(null));
+            if (queries.size() >= MAX_SEED_QUERIES) {
+                return;
+            }
+        }
+    }
+
+    private void collectSeedQuery(Set<String> queries, String rawTitle) {
+        String query = nameExtractor.cleanCandidateName(rawTitle);
+        if (StringUtils.hasText(query)) {
+            queries.add(query);
+        }
+    }
+
+    private List<WebEvidence> extractWebEvidence(JsonNode root, String sourceEngine) {
+        List<WebEvidence> evidences = new ArrayList<>();
+        collectWebEvidence(evidences, root.path("visual_matches"), sourceEngine);
+        collectWebEvidence(evidences, root.path("image_results"), sourceEngine);
+        collectWebEvidence(evidences, root.path("organic_results"), sourceEngine);
+        return evidences;
+    }
+
+    private void collectWebEvidence(List<WebEvidence> evidences, JsonNode nodes, String sourceEngine) {
+        if (!nodes.isArray()) {
+            return;
+        }
+        for (JsonNode node : nodes) {
+            String url = firstNonBlank(node, "link", "url", "page_url");
+            String title = node.path("title").asText(null);
+            String source = firstNonBlank(node, "source", "displayed_link");
+            String snippet = firstNonBlank(node, "snippet", "description");
+            if (!StringUtils.hasText(url) && !StringUtils.hasText(title)) {
+                continue;
+            }
+            evidences.add(new WebEvidence()
+                    .setUrl(url)
+                    .setTitle(title)
+                    .setSource(source)
+                    .setSourceEngine(sourceEngine)
+                    .setSnippet(snippet));
+        }
+    }
+
+    private String firstNonBlank(JsonNode node, String... fields) {
+        for (String field : fields) {
+            String value = node.path(field).asText(null);
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private List<WebEvidence> deduplicateWebEvidence(List<WebEvidence> evidences) {
+        Set<String> seen = new LinkedHashSet<>();
+        List<WebEvidence> deduplicated = new ArrayList<>();
+        for (WebEvidence evidence : evidences) {
+            String key = StringUtils.hasText(evidence.getUrl())
+                    ? evidence.getUrl()
+                    : evidence.getSourceEngine() + "|" + evidence.getTitle();
+            if (seen.add(key)) {
+                deduplicated.add(evidence);
+            }
+        }
+        return deduplicated;
+    }
+
     private List<ImageMatch> extractImageMatches(JsonNode root) {
         JsonNode visualMatches = root.path("visual_matches");
         List<ImageMatch> matches = new ArrayList<>();
@@ -151,7 +202,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 break;
             }
 
-            // 保留标题、来源和链接，避免把原始杂乱结构直接暴露给前端。
             String title = node.path("title").asText(null);
             String link = node.path("link").asText(null);
             String source = node.path("source").asText(null);
@@ -167,5 +217,10 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         }
 
         return matches;
+    }
+
+    @FunctionalInterface
+    private interface SearchSupplier {
+        SerpApiResponse get();
     }
 }
