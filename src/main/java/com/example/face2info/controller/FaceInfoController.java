@@ -15,12 +15,12 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-@Tag(name = "Face2Info")
-@RestController
-@RequestMapping("/api")
 /**
  * Face2Info 对外 HTTP 接口。
  */
+@Tag(name = "Face2Info")
+@RestController
+@RequestMapping("/api")
 public class FaceInfoController {
 
     private final Face2InfoService face2InfoService;
@@ -29,8 +29,14 @@ public class FaceInfoController {
         this.face2InfoService = face2InfoService;
     }
 
+    /**
+     * 接收前端上传的人脸图片，并触发完整聚合流程。
+     *
+     * @param image 用户上传的图片
+     * @return 聚合响应
+     */
     @Operation(
-            summary = "上传人脸图片并聚合人物信息",
+            summary = "上传人脸图片并聚合人物公开信息",
             responses = {
                     @ApiResponse(responseCode = "200", description = "识别成功",
                             content = @Content(schema = @Schema(implementation = FaceInfoResponse.class))),
