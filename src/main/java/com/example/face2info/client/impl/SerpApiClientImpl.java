@@ -16,6 +16,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+/**
+ * SerpAPI 客户端实现。
+ * 统一封装 Google Lens 和 Google Search 的 URL 构造、请求发送与重试逻辑。
+ */
 @Component
 public class SerpApiClientImpl implements SerpApiClient {
 
@@ -30,6 +34,9 @@ public class SerpApiClientImpl implements SerpApiClient {
     @Autowired
     ApiProperties properties;
 
+    /**
+     * 调用 Google Lens 反向搜图接口。
+     */
     @Override
     public SerpApiResponse reverseImageSearchByUrl(String imageUrl) {
         String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
@@ -44,6 +51,9 @@ public class SerpApiClientImpl implements SerpApiClient {
         return execute("SerpAPI reverse image search (URL)", url);
     }
 
+    /**
+     * 调用常规 Google 搜索接口。
+     */
     @Override
     public SerpApiResponse googleSearch(String query) {
         String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
@@ -56,6 +66,9 @@ public class SerpApiClientImpl implements SerpApiClient {
         return execute("SerpAPI Google search", url);
     }
 
+    /**
+     * 执行 HTTP 请求并把响应 JSON 解析成统一包装对象。
+     */
     private SerpApiResponse execute(String name, String url) {
         ApiProperties.Api api = properties.getApi();
         return RetryUtils.execute(name, api.getSerp().getMaxRetries(), api.getSerp().getBackoffInitialMs(), () -> {
@@ -65,6 +78,9 @@ public class SerpApiClientImpl implements SerpApiClient {
         });
     }
 
+    /**
+     * 校验 SerpAPI Key 是否存在。
+     */
     private String apiKey() {
         if (!StringUtils.hasText(properties.getApi().getSerp().getApiKey())) {
             throw new ApiCallException("SerpAPI key not configured.");

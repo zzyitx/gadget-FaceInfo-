@@ -14,10 +14,11 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
-@Component
 /**
- * NewsAPI 的 RestTemplate 实现。
+ * NewsAPI 客户端实现。
+ * 负责拼装新闻查询参数并把返回结果解析成内部统一结构。
  */
+@Component
 public class NewsApiClientImpl implements NewsApiClient {
 
     @Autowired
@@ -35,6 +36,9 @@ public class NewsApiClientImpl implements NewsApiClient {
         this.properties = properties;
     }
 
+    /**
+     * 按名称搜索相关新闻。
+     */
     @Override
     public NewsApiResponse searchNews(String name) {
         ApiProperties.Api api = properties.getApi();
@@ -54,6 +58,9 @@ public class NewsApiClientImpl implements NewsApiClient {
         });
     }
 
+    /**
+     * 校验 NewsAPI Key 是否存在。
+     */
     private String apiKey() {
         if (!StringUtils.hasText(properties.getApi().getNews().getApiKey())) {
             throw new ApiCallException("NewsAPI key 未配置。");

@@ -2,11 +2,11 @@ package com.example.face2info.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "face2info")
 /**
- * Face2Info 业务配置总入口。
- * 聚合管理外部 API、代理与异步线程池配置。
+ * Face2Info 总配置入口。
+ * 聚合管理外部 API、代理和异步线程池相关参数。
  */
+@ConfigurationProperties(prefix = "face2info")
 public class ApiProperties {
 
     private Api api = new Api();
@@ -28,6 +28,9 @@ public class ApiProperties {
         this.async = async;
     }
 
+    /**
+     * 外部 API 聚合配置。
+     */
     public static class Api {
 
         private SerpApiProperties serp = new SerpApiProperties();
@@ -59,6 +62,9 @@ public class ApiProperties {
         }
     }
 
+    /**
+     * 外部 HTTP 代理配置。
+     */
     public static class Proxy {
 
         private boolean enabled;
@@ -90,6 +96,9 @@ public class ApiProperties {
         }
     }
 
+    /**
+     * 异步线程池配置。
+     */
     public static class Async {
 
         private int corePoolSize = 8;

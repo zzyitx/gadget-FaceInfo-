@@ -20,13 +20,16 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 
-@Configuration
 /**
  * RestTemplate 配置。
  * 统一设置超时、代理和请求日志拦截器。
  */
+@Configuration
 public class RestTemplateConfig {
 
+    /**
+     * 创建全局复用的 RestTemplate。
+     */
     @Bean
     public RestTemplate restTemplate(ApiProperties properties) {
         int connectTimeout = Math.max(properties.getApi().getSerp().getConnectTimeoutMs(),
@@ -39,6 +42,9 @@ public class RestTemplateConfig {
         return restTemplate;
     }
 
+    /**
+     * 按配置构建底层 HTTP 请求工厂，并在需要时挂载代理。
+     */
     private ClientHttpRequestFactory requestFactory(int connectTimeout, int readTimeout, ApiProperties properties) {
         RequestConfig.Builder configBuilder = RequestConfig.custom()
                 .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
@@ -53,6 +59,9 @@ public class RestTemplateConfig {
         return new HttpComponentsClientHttpRequestFactory(httpClient);
     }
 
+    /**
+     * 统一记录外部 HTTP 请求日志，便于排查接口调用问题。
+     */
     private static final class LoggingInterceptor implements ClientHttpRequestInterceptor {
 
         private static final Logger log = LoggerFactory.getLogger(LoggingInterceptor.class);

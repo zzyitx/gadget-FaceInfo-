@@ -5,14 +5,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-@Configuration
 /**
- * 聚合流程使用的线程池配置。
+ * 聚合流程线程池配置。
+ * 为信息聚合阶段的并行任务提供隔离的执行器。
  */
+@Configuration
 public class ThreadPoolConfig {
 
     private ThreadPoolTaskExecutor executor;
 
+    /**
+     * 创建聚合任务专用线程池。
+     */
     @Bean(name = "face2InfoExecutor")
     public ThreadPoolTaskExecutor face2InfoExecutor(ApiProperties properties) {
         ApiProperties.Async async = properties.getAsync();
@@ -29,6 +33,9 @@ public class ThreadPoolConfig {
         return taskExecutor;
     }
 
+    /**
+     * 应用关闭时优雅停止线程池，避免后台任务被强制中断。
+     */
     @PreDestroy
     public void shutdown() {
         if (executor != null) {

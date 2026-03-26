@@ -5,12 +5,15 @@ import io.swagger.v3.oas.models.info.Info;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-@Configuration
 /**
  * Swagger/OpenAPI 文档配置。
  */
+@Configuration
 public class OpenApiConfig {
 
+    /**
+     * 定义接口文档基础信息。
+     */
     @Bean
     public OpenAPI face2InfoOpenApi() {
         return new OpenAPI().info(new Info()

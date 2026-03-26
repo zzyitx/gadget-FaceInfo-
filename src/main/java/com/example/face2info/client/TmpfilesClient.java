@@ -20,7 +20,8 @@ import java.io.IOException;
 import java.util.UUID;
 
 /**
- * TempFile.org 临时上传图片的客户端。
+ * 临时文件上传客户端。
+ * 用于把本地上传图片转换成外部可访问的临时 URL，供反向搜图接口使用。
  */
 @Component
 public class TmpfilesClient {
@@ -48,6 +49,9 @@ public class TmpfilesClient {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 上传本地文件对象并返回可访问的预览地址。
+     */
     public String uploadImage(java.io.File image) {
         log.info("Uploading image to tempfile.org...");
         try {
@@ -67,6 +71,9 @@ public class TmpfilesClient {
         }
     }
 
+    /**
+     * 上传 MultipartFile 并返回可访问的预览地址。
+     */
     public String uploadImage(MultipartFile image) {
         log.info("Uploading image to tempfile.org...");
         try {
@@ -86,6 +93,9 @@ public class TmpfilesClient {
         }
     }
 
+    /**
+     * 从上传响应中提取预览地址。
+     */
     private String extractPreviewUrl(String responseBody) throws IOException {
         JsonNode root = objectMapper.readTree(responseBody);
         JsonNode firstFile = root.path("files").path(0);
@@ -101,6 +111,9 @@ public class TmpfilesClient {
         return previewUrl;
     }
 
+    /**
+     * 把 MultipartFile 转为可供 RestTemplate 提交的资源对象。
+     */
     private org.springframework.core.io.Resource createResource(MultipartFile image) throws IOException {
         String originalFilename = image.getOriginalFilename();
         String filename = (originalFilename != null) ? originalFilename : "image-" + UUID.randomUUID() + ".jpg";
