@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -77,6 +77,22 @@ class FaceRecognitionServiceImplTest {
         FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
 
         assertThat(service.recognize(image).getImageMatches()).hasSize(20);
+    }
+
+    @Test
+    void shouldUploadImageThroughTmpfilesClientInterface() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
+        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        { "knowledge_graph": { "title": "Lei Jun" } }
+                        """)));
+
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+
+        assertThat(service.recognize(image).getName()).isEqualTo("Lei Jun");
+        verify(tmpfilesClient).uploadImage(image);
+        verify(serpApiClient).reverseImageSearchByUrl(PREVIEW_URL);
     }
 
     private String buildVisualMatchesPayload(int count) {

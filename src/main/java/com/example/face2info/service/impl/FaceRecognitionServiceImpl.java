@@ -8,8 +8,7 @@ import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.service.FaceRecognitionService;
 import com.example.face2info.util.NameExtractor;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,10 +20,9 @@ import java.util.List;
  * 候选人物识别实现。
  * 通过上传图片到临时文件服务，再调用 Google Lens 结果推断人物名称。
  */
+@Slf4j
 @Service
 public class FaceRecognitionServiceImpl implements FaceRecognitionService {
-
-    private static final Logger log = LoggerFactory.getLogger(FaceRecognitionServiceImpl.class);
     private static final double CONFIDENCE_THRESHOLD = 0.7;
     private static final int MAX_IMAGE_MATCHES = 20;
     private static final String RECOGNITION_FAILED_MESSAGE = "Unable to recognize the person from the image.";
