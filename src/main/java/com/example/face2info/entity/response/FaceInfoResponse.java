@@ -6,7 +6,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.List;
 
-@Schema(description = "Face2Info response")
+/**
+ * 人脸信息聚合接口响应。
+ */
+@Schema(description = "人脸信息聚合响应")
 public class FaceInfoResponse {
 
     private PersonInfo person;

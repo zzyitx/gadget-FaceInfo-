@@ -9,17 +9,20 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
-@Component
 /**
  * 图片处理工具。
- * 负责上传文件校验和 Base64 编码。
+ * 负责上传文件校验和 Base64 编码等通用操作。
  */
+@Component
 public class ImageUtils {
 
     private static final long MAX_FILE_SIZE = 10L * 1024 * 1024;
     private static final List<String> SUPPORTED_TYPES = List.of("image/jpeg", "image/png");
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".jpg", ".jpeg", ".png");
 
+    /**
+     * 校验上传图片是否为空、超限或格式不支持。
+     */
     public void validateImage(MultipartFile image) {
         if (image == null || image.isEmpty()) {
             throw new IllegalArgumentException("图片不能为空。");
@@ -38,6 +41,9 @@ public class ImageUtils {
         }
     }
 
+    /**
+     * 把图片内容编码为 Base64 字符串。
+     */
     public String toBase64(MultipartFile image) {
         try {
             return Base64.getEncoder().encodeToString(image.getBytes());

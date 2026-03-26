@@ -8,11 +8,11 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Component
 /**
  * 候选姓名提取工具。
- * 用于从标题中去噪并提取中英文姓名。
+ * 用于从标题文本中清洗噪声词，并提取中英文人物名称。
  */
+@Component
 public class NameExtractor {
 
     private static final List<String> NOISE_WORDS = List.of(
@@ -20,6 +20,9 @@ public class NameExtractor {
     private static final Pattern CHINESE_NAME = Pattern.compile("([\\u4e00-\\u9fa5]{2,4})");
     private static final Pattern ENGLISH_NAME = Pattern.compile("([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})");
 
+    /**
+     * 从原始标题中提取尽可能干净的人名。
+     */
     public String cleanCandidateName(String rawTitle) {
         if (!StringUtils.hasText(rawTitle)) {
             return null;
@@ -37,6 +40,9 @@ public class NameExtractor {
         return StringUtils.hasText(english) ? english.trim() : null;
     }
 
+    /**
+     * 根据来源类型和噪声特征估算候选名称可信度。
+     */
     public double estimateConfidence(String rawTitle, String extractedName, boolean knowledgeGraphMatched) {
         if (!StringUtils.hasText(extractedName)) {
             return 0.0;
@@ -52,6 +58,9 @@ public class NameExtractor {
         return Math.max(0.0, Math.min(score, 1.0));
     }
 
+    /**
+     * 返回文本中第一个匹配正则的片段。
+     */
     private String firstMatch(String value, Pattern pattern) {
         Matcher matcher = pattern.matcher(value);
         return matcher.find() ? matcher.group(1) : null;

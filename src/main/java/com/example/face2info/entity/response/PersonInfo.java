@@ -6,10 +6,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.List;
 
-@Schema(description = "人物信息")
 /**
  * 人物信息 DTO。
  */
+@Schema(description = "人物信息")
 public class PersonInfo {
 
     private String name;

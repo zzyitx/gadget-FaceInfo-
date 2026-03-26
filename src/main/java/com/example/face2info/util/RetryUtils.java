@@ -19,6 +19,9 @@ public final class RetryUtils {
     private RetryUtils() {
     }
 
+    /**
+     * 执行带重试的调用。
+     */
     public static <T> T execute(String name, int maxRetries, long initialBackoffMs, Callable<T> callable) {
         ApiCallException lastException = null;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {

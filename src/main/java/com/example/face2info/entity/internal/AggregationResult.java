@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 聚合阶段的内部结果对象。
+ * 聚合阶段内部结果对象。
  * 统一承载人物信息、社交账号、新闻和部分失败信息。
  */
 public class AggregationResult {
