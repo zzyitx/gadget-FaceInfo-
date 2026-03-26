@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,11 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api")
 public class FaceInfoController {
 
-    private final Face2InfoService face2InfoService;
-
-    public FaceInfoController(Face2InfoService face2InfoService) {
-        this.face2InfoService = face2InfoService;
-    }
+    @Autowired
+    private Face2InfoService face2InfoService;
 
     /**
      * 接收前端上传的人脸图片，并触发完整聚合流程。

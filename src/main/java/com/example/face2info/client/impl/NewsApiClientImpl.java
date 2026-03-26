@@ -22,19 +22,13 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class NewsApiClientImpl implements NewsApiClient {
 
     @Autowired
-    RestTemplate restTemplate;
+    private RestTemplate restTemplate;
 
     @Autowired
-    ObjectMapper objectMapper;
+    private ObjectMapper objectMapper;
 
     @Autowired
-    ApiProperties properties;
-
-    public NewsApiClientImpl(RestTemplate restTemplate, ObjectMapper objectMapper, ApiProperties properties) {
-        this.restTemplate = restTemplate;
-        this.objectMapper = objectMapper;
-        this.properties = properties;
-    }
+    private ApiProperties properties;
 
     /**
      * 按名称搜索相关新闻。

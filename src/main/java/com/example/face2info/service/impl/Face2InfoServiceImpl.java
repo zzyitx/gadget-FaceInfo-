@@ -8,8 +8,8 @@ import com.example.face2info.service.Face2InfoService;
 import com.example.face2info.service.FaceRecognitionService;
 import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.util.ImageUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,22 +18,18 @@ import org.springframework.web.multipart.MultipartFile;
  * 人脸信息聚合总流程实现。
  * 先识别候选人物，再根据识别结果聚合公开信息并组装统一响应。
  */
+@Slf4j
 @Service
 public class Face2InfoServiceImpl implements Face2InfoService {
 
-    private static final Logger log = LoggerFactory.getLogger(Face2InfoServiceImpl.class);
+    @Autowired
+    private ImageUtils imageUtils;
 
-    private final ImageUtils imageUtils;
-    private final FaceRecognitionService faceRecognitionService;
-    private final InformationAggregationService informationAggregationService;
+    @Autowired
+    private FaceRecognitionService faceRecognitionService;
 
-    public Face2InfoServiceImpl(ImageUtils imageUtils,
-                                FaceRecognitionService faceRecognitionService,
-                                InformationAggregationService informationAggregationService) {
-        this.imageUtils = imageUtils;
-        this.faceRecognitionService = faceRecognitionService;
-        this.informationAggregationService = informationAggregationService;
-    }
+    @Autowired
+    private InformationAggregationService informationAggregationService;
 
     /**
      * 处理一次完整的人脸信息聚合请求。

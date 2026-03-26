@@ -10,8 +10,8 @@ import com.example.face2info.entity.response.NewsItem;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.service.InformationAggregationService;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
@@ -31,22 +31,19 @@ import java.util.concurrent.TimeUnit;
  * 信息聚合实现。
  * 并行查询社交账号、人物简介和新闻，再统一做清洗、去重和降级处理。
  */
+@Slf4j
 @Service
 public class InformationAggregationServiceImpl implements InformationAggregationService {
 
-    private static final Logger log = LoggerFactory.getLogger(InformationAggregationServiceImpl.class);
+    @Autowired
+    private SerpApiClient serpApiClient;
 
-    private final SerpApiClient serpApiClient;
-    private final NewsApiClient newsApiClient;
-    private final ThreadPoolTaskExecutor executor;
+    @Autowired
+    private NewsApiClient newsApiClient;
 
-    public InformationAggregationServiceImpl(SerpApiClient serpApiClient,
-                                             NewsApiClient newsApiClient,
-                                             @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor) {
-        this.serpApiClient = serpApiClient;
-        this.newsApiClient = newsApiClient;
-        this.executor = executor;
-    }
+    @Autowired
+    @Qualifier("face2InfoExecutor")
+    private ThreadPoolTaskExecutor executor;
 
     /**
      * 并行聚合目标人物的公开信息。
