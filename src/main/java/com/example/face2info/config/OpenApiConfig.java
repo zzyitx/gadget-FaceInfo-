@@ -8,12 +8,8 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Swagger/OpenAPI 文档配置。
  */
-@Configuration
 public class OpenApiConfig {
 
-    /**
-     * 定义接口文档基础信息。
-     */
     @Bean
     public OpenAPI face2InfoOpenApi() {
         return new OpenAPI().info(new Info()

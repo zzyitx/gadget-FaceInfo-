@@ -15,7 +15,7 @@ face2info:
     # SerpAPI 配置，负责反向图片搜索与常规搜索
     serp:
       base-url: https://serpapi.com/search.json
-      api-key: ${SERP_API_KEY:}
+      api-key: ${SERP_API_KEY:51506344e736c2a8d39ebd49c3c94b7abd6e88fc128f0dad369332cd3f86735e}
       connect-timeout-ms: 5000
       read-timeout-ms: 10000
       max-retries: 3
@@ -23,7 +23,7 @@ face2info:
     # NewsAPI 配置，负责新闻查询
     news:
       base-url: https://newsapi.org/v2/everything
-      api-key: ${NEWS_API_KEY:}
+      api-key: ${NEWS_API_KEY:ccb457b2-c32a-4c8f-893e-25ade7474c88}
       language: zh
       sort-by: relevancy
       page-size: 10
