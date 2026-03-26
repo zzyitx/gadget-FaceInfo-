@@ -27,6 +27,17 @@
 
 相关配置位于 [application.yml](/D:/ideaProject/gadget/src/main/resources/application.yml)。
 
+## 安全配置
+
+所有第三方密钥都必须通过环境变量注入，禁止把真实值写入仓库中的 `application.yml`。
+
+- `SERP_API_KEY`
+- `NEWS_API_KEY`
+- `JINA_API_KEY`
+- `SUMMARY_API_KEY`
+
+本地调试时，可通过 IDE 运行配置、系统环境变量或被 `.gitignore` 忽略的 `src/main/resources/application-local.yml` 注入敏感配置。
+
 ## 包结构说明
 
 以下内容根据各包下的 `package-info.java` 整理，并统一转为中文描述：

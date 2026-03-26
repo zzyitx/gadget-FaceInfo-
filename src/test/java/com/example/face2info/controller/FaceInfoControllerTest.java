@@ -11,6 +11,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -38,5 +42,13 @@ class FaceInfoControllerTest {
         mockMvc.perform(multipart("/api/face2info").file(image))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
+    }
+
+    @Test
+    void shouldNotCommitFallbackSecretsInApplicationConfig() throws Exception {
+        assertThat(Files.readAllLines(Path.of("src/main/resources/application.yml")))
+                .filteredOn(line -> line.contains("api-key:"))
+                .allMatch(line -> line.matches(".*\\$\\{[A-Z0-9_]+:}\\s*$"),
+                        "API key placeholders must not contain committed fallback secrets");
     }
 }

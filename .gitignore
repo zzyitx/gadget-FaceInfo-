@@ -12,6 +12,10 @@ target/
 
 ### Local Tools ###
 .ai/
+.env
+.env.*
+!.env.example
+src/main/resources/application-local.yml
 
 ### Eclipse ###
 .apt_generated
