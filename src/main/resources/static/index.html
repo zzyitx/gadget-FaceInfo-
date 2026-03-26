@@ -1,0 +1,478 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
+    <title>Face2Info 人脸信息聚合</title>
+    <style>
+        :root {
+            --bg-top: #efe4d1;
+            --bg-bottom: #f7f3ed;
+            --panel: rgba(255, 252, 247, 0.92);
+            --card: rgba(255, 255, 255, 0.78);
+            --ink: #1e1914;
+            --muted: #6f655b;
+            --line: rgba(30, 25, 20, 0.1);
+            --accent: #b24a2b;
+            --accent-deep: #7f2f18;
+            --accent-soft: #f7e2d8;
+            --ok: #2f6f44;
+            --warn: #9f6b18;
+            --shadow: 0 24px 60px rgba(82, 53, 27, 0.14);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            color: var(--ink);
+            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(178, 74, 43, 0.14), transparent 30%),
+                radial-gradient(circle at 85% 10%, rgba(127, 47, 24, 0.08), transparent 20%),
+                linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+            min-height: 100vh;
+        }
+
+        .page { width: min(1220px, calc(100% - 32px)); margin: 28px auto 40px; }
+        .hero, .panel, .card {
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: 1.3fr 0.7fr;
+            gap: 18px;
+            padding: 28px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            right: -60px;
+            top: -80px;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle, rgba(178, 74, 43, 0.18), transparent 65%);
+        }
+
+        .eyebrow {
+            display: inline-block;
+            margin-bottom: 10px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(178, 74, 43, 0.1);
+            color: var(--accent-deep);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        h1 { margin: 0 0 14px; font-size: clamp(34px, 5vw, 58px); line-height: 1; }
+        .hero p { margin: 0; color: var(--muted); line-height: 1.8; font-size: 15px; max-width: 700px; }
+        .hero-meta { display: grid; gap: 12px; align-content: end; }
+        .meta-chip {
+            padding: 14px 16px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.66);
+            border: 1px solid rgba(30, 25, 20, 0.08);
+        }
+        .meta-chip strong { display: block; margin-bottom: 6px; font-size: 14px; }
+        .layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; margin-top: 20px; }
+        .panel { padding: 24px; height: fit-content; position: sticky; top: 20px; }
+        .panel h2, .card h2 { margin: 0 0 14px; font-size: 22px; }
+        .panel p { margin: 0 0 18px; color: var(--muted); line-height: 1.7; }
+        label { display: block; margin: 16px 0 8px; font-weight: 700; }
+        .dropzone {
+            border: 1px dashed rgba(127, 47, 24, 0.3);
+            background: rgba(255, 255, 255, 0.66);
+            border-radius: 22px;
+            padding: 18px;
+        }
+        input[type="file"] { width: 100%; font: inherit; color: var(--muted); }
+        .preview { margin-top: 14px; display: none; overflow: hidden; border-radius: 20px; border: 1px solid var(--line); }
+        .preview img { width: 100%; display: block; max-height: 260px; object-fit: cover; }
+        .tip { margin-top: 10px; font-size: 13px; color: var(--muted); line-height: 1.7; }
+        button {
+            width: 100%;
+            margin-top: 18px;
+            border: 0;
+            border-radius: 999px;
+            padding: 15px 18px;
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--accent-deep), var(--accent));
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            box-shadow: 0 14px 28px rgba(127, 47, 24, 0.22);
+        }
+        button:hover:not(:disabled) { transform: translateY(-1px); }
+        button:disabled { opacity: 0.66; cursor: wait; transform: none; }
+        .status { min-height: 24px; margin-top: 14px; color: var(--muted); font-size: 14px; }
+        .cards { display: grid; gap: 16px; }
+        .card { padding: 22px; background: var(--card); }
+        .hero-name { margin: 0 0 8px; font-size: 30px; line-height: 1.2; }
+        .meta-text { color: var(--muted); line-height: 1.8; }
+        .grid-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+        .data-block {
+            padding: 16px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid rgba(30, 25, 20, 0.08);
+        }
+        .data-block strong {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .list { display: grid; gap: 12px; margin-top: 14px; }
+        .item {
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: var(--accent-soft);
+            border: 1px solid rgba(178, 74, 43, 0.08);
+        }
+        .item a { color: var(--ink); text-decoration: none; font-weight: 700; }
+        .item p { margin: 8px 0 0; color: var(--muted); line-height: 1.7; font-size: 14px; }
+        .serp-entry {
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.72);
+            border: 1px solid rgba(30, 25, 20, 0.08);
+        }
+        .serp-entry strong { display: block; margin-bottom: 6px; font-size: 15px; line-height: 1.6; }
+        .serp-meta { color: var(--muted); font-size: 13px; }
+        .serp-link { margin-top: 8px; word-break: break-all; }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(30, 25, 20, 0.06);
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .status-success { color: var(--ok); }
+        .status-partial { color: var(--warn); }
+        .empty { color: var(--muted); line-height: 1.7; }
+        pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.7; }
+
+        @media (max-width: 980px) {
+            .hero, .layout, .grid-two { grid-template-columns: 1fr; }
+            .panel { position: static; }
+        }
+
+        @media (max-width: 640px) {
+            .page { width: min(100% - 20px, 1220px); }
+            .hero, .panel, .card { border-radius: 22px; padding: 18px; }
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+    <section class="hero">
+        <div>
+            <div class="eyebrow">Face2Info</div>
+            <h1>上传人脸照片，查看整理后的识别结果</h1>
+            <p>
+                上传图片后，系统会调用 SerpAPI 进行反向图片搜索。
+                页面不再展示图片，只保留前 20 条结果，并按序号、标题、来源、链接做结构化展示。
+            </p>
+        </div>
+        <div class="hero-meta">
+            <div class="meta-chip">
+                <strong>输入要求</strong>
+                单张图片，jpg/png，最大 10MB。
+            </div>
+            <div class="meta-chip">
+                <strong>接口地址</strong>
+                <code>POST /api/face2info</code>
+            </div>
+            <div class="meta-chip">
+                <strong>SerpAPI 结果</strong>
+                最多展示 20 条 visual matches。
+            </div>
+        </div>
+    </section>
+
+    <section class="layout">
+        <form class="panel" id="faceForm">
+            <h2>上传图片</h2>
+            <p>建议使用清晰、正面、主体单一的人脸图片，以提高识别稳定性。</p>
+
+            <label for="image">选择图片</label>
+            <div class="dropzone">
+                <input id="image" name="image" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required>
+                <div class="tip">支持 jpg、jpeg、png。页面仅用于本次请求展示，不做持久化缓存。</div>
+                <div class="preview" id="preview">
+                    <img id="previewImage" alt="图片预览">
+                </div>
+            </div>
+
+            <button id="submitButton" type="submit">开始聚合</button>
+            <div class="status" id="status">等待上传。</div>
+        </form>
+
+        <div class="cards">
+            <section class="card" id="personCard">
+                <div class="eyebrow">人物信息</div>
+                <h2 class="hero-name">尚未识别</h2>
+                <div class="meta-text">上传图片后，这里会显示姓名、简介、百科、官网和账号信息。</div>
+            </section>
+
+            <section class="card" id="matchesCard">
+                <div class="eyebrow">SerpAPI 返回</div>
+                <div class="empty">暂无 SerpAPI 结果。</div>
+            </section>
+
+            <section class="card" id="socialCard">
+                <div class="eyebrow">社交账号</div>
+                <div class="empty">暂无社交账号结果。</div>
+            </section>
+
+            <section class="card" id="newsCard">
+                <div class="eyebrow">近期新闻</div>
+                <div class="empty">暂无新闻结果。</div>
+            </section>
+
+            <section class="card" id="rawCard">
+                <div class="eyebrow">整理后的 JSON</div>
+                <pre id="rawResponse">{}</pre>
+            </section>
+        </div>
+    </section>
+</div>
+
+<script>
+    const form = document.getElementById("faceForm");
+    const imageInput = document.getElementById("image");
+    const preview = document.getElementById("preview");
+    const previewImage = document.getElementById("previewImage");
+    const submitButton = document.getElementById("submitButton");
+    const statusEl = document.getElementById("status");
+    const rawResponseEl = document.getElementById("rawResponse");
+    const personCard = document.getElementById("personCard");
+    const matchesCard = document.getElementById("matchesCard");
+    const socialCard = document.getElementById("socialCard");
+    const newsCard = document.getElementById("newsCard");
+
+    imageInput.addEventListener("change", function () {
+        const file = imageInput.files[0];
+        if (!file) {
+            preview.style.display = "none";
+            previewImage.removeAttribute("src");
+            return;
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        previewImage.src = objectUrl;
+        preview.style.display = "block";
+        previewImage.onload = function () {
+            URL.revokeObjectURL(objectUrl);
+        };
+    });
+
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        const file = imageInput.files[0];
+        if (!file) {
+            statusEl.textContent = "请先选择图片。";
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("image", file);
+
+        submitButton.disabled = true;
+        statusEl.className = "status";
+        statusEl.textContent = "正在识别并聚合，请稍候...";
+
+        try {
+            const response = await fetch("/api/face2info", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await response.json();
+            const simplified = buildSimplifiedJson(data);
+            rawResponseEl.textContent = JSON.stringify(simplified, null, 2);
+
+            if (!response.ok) {
+                renderError(data);
+                statusEl.textContent = data.error || "请求失败。";
+                return;
+            }
+
+            renderPerson(data.person, data.status, data.error);
+            renderSerpResults(data.image_matches || []);
+            renderSocialAccounts(data.person && data.person.social_accounts ? data.person.social_accounts : []);
+            renderNews(data.news || []);
+
+            statusEl.textContent = data.status === "partial"
+                ? ("部分完成：" + (data.error || "部分聚合失败。"))
+                : "聚合完成。";
+            statusEl.className = "status " + (data.status === "partial" ? "status-partial" : "status-success");
+        } catch (error) {
+            renderError({ error: error.message || "未知异常" });
+            statusEl.textContent = "请求异常，请检查服务端日志。";
+            statusEl.className = "status";
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+
+    function buildSimplifiedJson(data) {
+        return {
+            status: data.status || null,
+            error: data.error || null,
+            person: data.person || null,
+            serpapi_results: (data.image_matches || []).slice(0, 20).map(function (item) {
+                return {
+                    position: item.position || null,
+                    title: item.title || null,
+                    source: item.source || null,
+                    link: item.link || null
+                };
+            }),
+            news: (data.news || []).slice(0, 20)
+        };
+    }
+
+    function renderPerson(person, status, error) {
+        if (!person) {
+            personCard.innerHTML =
+                '<div class="eyebrow">人物信息</div>' +
+                '<h2 class="hero-name">识别失败</h2>' +
+                '<div class="meta-text">' + escapeHtml(error || "没有获得人物信息。") + '</div>';
+            return;
+        }
+
+        const statusText = status === "partial" ? "部分成功" : "识别成功";
+        const wikipedia = person.wikipedia
+            ? '<a href="' + escapeHtml(person.wikipedia) + '" target="_blank" rel="noreferrer">打开维基百科</a>'
+            : "暂无";
+        const website = person.official_website
+            ? '<a href="' + escapeHtml(person.official_website) + '" target="_blank" rel="noreferrer">打开官网</a>'
+            : "暂无";
+
+        personCard.innerHTML =
+            '<div class="eyebrow">人物信息</div>' +
+            '<div class="pill">' + escapeHtml(statusText) + '</div>' +
+            '<h2 class="hero-name">' + escapeHtml(person.name || "未识别姓名") + '</h2>' +
+            '<div class="meta-text">' + escapeHtml(person.description || "暂无简介。") + '</div>' +
+            '<div class="grid-two">' +
+            '<div class="data-block"><strong>维基百科</strong>' + wikipedia + '</div>' +
+            '<div class="data-block"><strong>官方网站</strong>' + website + '</div>' +
+            '</div>';
+    }
+
+    function renderSerpResults(matches) {
+        if (!matches.length) {
+            matchesCard.innerHTML =
+                '<div class="eyebrow">SerpAPI 返回</div>' +
+                '<div class="empty">暂无 SerpAPI 结果。</div>';
+            return;
+        }
+
+        const html = matches.slice(0, 20).map(function (item, index) {
+            const position = item.position || (index + 1);
+            const title = escapeHtml(item.title || "未命名结果");
+            const source = escapeHtml(item.source || "未知来源");
+            const link = item.link
+                ? '<div class="serp-link"><a href="' + escapeHtml(item.link) + '" target="_blank" rel="noreferrer">' + escapeHtml(item.link) + '</a></div>'
+                : '<div class="serp-link">无链接</div>';
+
+            return '<div class="serp-entry">' +
+                '<div class="pill">#' + escapeHtml(position) + '</div>' +
+                '<strong>' + title + '</strong>' +
+                '<div class="serp-meta">来源：' + source + '</div>' +
+                link +
+                '</div>';
+        }).join('');
+
+        matchesCard.innerHTML =
+            '<div class="eyebrow">SerpAPI 返回</div>' +
+            '<div class="meta-text">按可读格式整理后的前 20 条 visual matches。</div>' +
+            '<div class="list">' + html + '</div>';
+    }
+
+    function renderSocialAccounts(accounts) {
+        if (!accounts.length) {
+            socialCard.innerHTML =
+                '<div class="eyebrow">社交账号</div>' +
+                '<div class="empty">没有提取到有效的抖音或微博账号。</div>';
+            return;
+        }
+
+        const html = accounts.map(function (account) {
+            return '<div class="item">' +
+                '<div class="pill">' + escapeHtml(account.platform || "unknown") + '</div>' +
+                '<a href="' + escapeHtml(account.url || "#") + '" target="_blank" rel="noreferrer">' +
+                escapeHtml(account.username || account.url || "打开账号") +
+                '</a>' +
+                '<p>' + escapeHtml(account.url || "-") + '</p>' +
+                '</div>';
+        }).join("");
+
+        socialCard.innerHTML = '<div class="eyebrow">社交账号</div><div class="list">' + html + '</div>';
+    }
+
+    function renderNews(newsList) {
+        if (!newsList.length) {
+            newsCard.innerHTML =
+                '<div class="eyebrow">近期新闻</div>' +
+                '<div class="empty">没有检索到相关新闻，或新闻接口返回为空。</div>';
+            return;
+        }
+
+        const html = newsList.slice(0, 20).map(function (item) {
+            return '<div class="item">' +
+                '<a href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
+                escapeHtml(item.title || "未命名新闻") +
+                '</a>' +
+                '<p>' + escapeHtml(item.source || "未知来源") + ' | ' + escapeHtml(item.published_at || "-") + '</p>' +
+                '<p>' + escapeHtml(item.summary || "暂无摘要。") + '</p>' +
+                '</div>';
+        }).join("");
+
+        newsCard.innerHTML = '<div class="eyebrow">近期新闻</div><div class="list">' + html + '</div>';
+    }
+
+    function renderError(error) {
+        const message = error.error || "请求失败。";
+        personCard.innerHTML =
+            '<div class="eyebrow">人物信息</div>' +
+            '<h2 class="hero-name">请求失败</h2>' +
+            '<div class="meta-text">' + escapeHtml(message) + '</div>';
+        matchesCard.innerHTML =
+            '<div class="eyebrow">SerpAPI 返回</div>' +
+            '<div class="empty">请求失败后未生成 SerpAPI 结果。</div>';
+        socialCard.innerHTML =
+            '<div class="eyebrow">社交账号</div>' +
+            '<div class="empty">请求失败后未生成账号结果。</div>';
+        newsCard.innerHTML =
+            '<div class="eyebrow">近期新闻</div>' +
+            '<div class="empty">请求失败后未生成新闻结果。</div>';
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+</script>
+</body>
+</html>
