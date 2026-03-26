@@ -17,6 +17,23 @@ public interface SerpApiClient {
     SerpApiResponse reverseImageSearchByUrl(String imageUrl);
 
     /**
+     * 通过图片 URL 调用 Yandex 反向搜图。
+     *
+     * @param imageUrl 外部可访问的图片地址
+     * @param tab yandex_images 的结果页签
+     * @return SerpAPI 原始响应包装对象
+     */
+    SerpApiResponse reverseImageSearchByUrlYandex(String imageUrl, String tab);
+
+    /**
+     * 执行 Bing 图片搜索。
+     *
+     * @param query 搜索关键词
+     * @return SerpAPI 原始响应包装对象
+     */
+    SerpApiResponse searchBingImages(String query);
+
+    /**
      * 执行常规 Google 搜索。
      *
      * @param query 搜索关键词

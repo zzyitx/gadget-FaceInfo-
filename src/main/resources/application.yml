@@ -16,6 +16,7 @@ face2info:
     serp:
       base-url: https://serpapi.com/search.json
       api-key: ${SERP_API_KEY:}
+      bing-market: en-US
       connect-timeout-ms: 5000
       read-timeout-ms: 10000
       max-retries: 3
@@ -31,6 +32,21 @@ face2info:
       read-timeout-ms: 10000
       max-retries: 3
       backoff-initial-ms: 300
+    jina:
+      base-url: https://r.jina.ai/http://
+      api-key: ${JINA_API_KEY:}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 15000
+      max-retries: 2
+      backoff-initial-ms: 300
+    summary:
+      enabled: false
+      provider: noop
+      base-url: ${SUMMARY_API_BASE_URL:}
+      api-key: ${SUMMARY_API_KEY:}
+      model: ${SUMMARY_MODEL:}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 15000
     # 代理配置，用于需要代理访问外部 API 的部署环境
     proxy:
       enabled: false

@@ -32,14 +32,30 @@ public class RestTemplateConfig {
      */
     @Bean
     public RestTemplate restTemplate(ApiProperties properties) {
-        int connectTimeout = Math.max(properties.getApi().getSerp().getConnectTimeoutMs(),
-                properties.getApi().getNews().getConnectTimeoutMs());
-        int readTimeout = Math.max(properties.getApi().getSerp().getReadTimeoutMs(),
-                properties.getApi().getNews().getReadTimeoutMs());
+        int connectTimeout = max(
+                properties.getApi().getSerp().getConnectTimeoutMs(),
+                properties.getApi().getNews().getConnectTimeoutMs(),
+                properties.getApi().getJina().getConnectTimeoutMs(),
+                properties.getApi().getSummary().getConnectTimeoutMs()
+        );
+        int readTimeout = max(
+                properties.getApi().getSerp().getReadTimeoutMs(),
+                properties.getApi().getNews().getReadTimeoutMs(),
+                properties.getApi().getJina().getReadTimeoutMs(),
+                properties.getApi().getSummary().getReadTimeoutMs()
+        );
         ClientHttpRequestFactory requestFactory = requestFactory(connectTimeout, readTimeout, properties);
         RestTemplate restTemplate = new RestTemplate(new BufferingClientHttpRequestFactory(requestFactory));
         restTemplate.getInterceptors().add(new LoggingInterceptor());
         return restTemplate;
+    }
+
+    private int max(int... values) {
+        int max = values[0];
+        for (int value : values) {
+            max = Math.max(max, value);
+        }
+        return max;
     }
 
     /**

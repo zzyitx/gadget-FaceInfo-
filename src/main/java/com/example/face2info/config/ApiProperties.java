@@ -25,6 +25,8 @@ public class ApiProperties {
 
         private SerpApiProperties serp = new SerpApiProperties();
         private NewsApiProperties news = new NewsApiProperties();
+        private JinaApiProperties jina = new JinaApiProperties();
+        private SummaryApiProperties summary = new SummaryApiProperties();
         private Proxy proxy = new Proxy();
 
     }

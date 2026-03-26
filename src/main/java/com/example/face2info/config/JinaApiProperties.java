@@ -4,18 +4,16 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * SerpAPI 调用参数配置。
+ * Jina 页面读取接口配置。
  */
 @Getter
 @Setter
-public class SerpApiProperties {
+public class JinaApiProperties {
 
-    private String baseUrl;
+    private String baseUrl = "https://r.jina.ai/http://";
     private String apiKey;
     private int connectTimeoutMs = 5000;
-    private int readTimeoutMs = 10000;
-    private int maxRetries = 3;
+    private int readTimeoutMs = 15000;
+    private int maxRetries = 2;
     private long backoffInitialMs = 300L;
-    private String bingMarket = "en-US";
-
 }

@@ -49,6 +49,32 @@ public class SerpApiClientImpl implements SerpApiClient {
         return execute("SerpAPI reverse image search (URL)", url);
     }
 
+    @Override
+    public SerpApiResponse reverseImageSearchByUrlYandex(String imageUrl, String tab) {
+        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
+                .queryParam("engine", "yandex_images")
+                .queryParam("url", imageUrl)
+                .queryParam("tab", tab)
+                .queryParam("api_key", apiKey())
+                .encode()
+                .build()
+                .toUriString();
+        return execute("SerpAPI Yandex reverse image search", url);
+    }
+
+    @Override
+    public SerpApiResponse searchBingImages(String query) {
+        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
+                .queryParam("engine", "bing_images")
+                .queryParam("q", query)
+                .queryParam("mkt", properties.getApi().getSerp().getBingMarket())
+                .queryParam("api_key", apiKey())
+                .encode()
+                .build()
+                .toUriString();
+        return execute("SerpAPI Bing image search", url);
+    }
+
     /**
      * 调用常规 Google 搜索接口。
      */
