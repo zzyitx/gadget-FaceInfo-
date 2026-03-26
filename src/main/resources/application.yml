@@ -1,0 +1,57 @@
+# 服务端口与上传大小限制
+server:
+  port: 8080
+
+# Spring Multipart 配置
+spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+# Face2Info 自定义配置
+face2info:
+  api:
+    # SerpAPI 配置，负责反向图片搜索与常规搜索
+    serp:
+      base-url: https://serpapi.com/search.json
+      api-key: ${SERP_API_KEY:}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 10000
+      max-retries: 3
+      backoff-initial-ms: 300
+    # NewsAPI 配置，负责新闻查询
+    news:
+      base-url: https://newsapi.org/v2/everything
+      api-key: ${NEWS_API_KEY:}
+      language: zh
+      sort-by: relevancy
+      page-size: 10
+      connect-timeout-ms: 5000
+      read-timeout-ms: 10000
+      max-retries: 3
+      backoff-initial-ms: 300
+    # 代理配置，用于需要代理访问外部 API 的部署环境
+    proxy:
+      enabled: false
+      host:
+      port:
+  # 并发聚合线程池配置
+  async:
+    core-pool-size: 8
+    max-pool-size: 16
+    queue-capacity: 100
+    keep-alive-seconds: 60
+    thread-name-prefix: face2info-
+
+# OpenAPI/Swagger 文档地址配置
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# 日志中打印请求 ID，便于排查链路问题
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"
