@@ -39,10 +39,8 @@
 本地调试时，可通过以下方式注入敏感配置：
 
 - IDE 运行配置或系统环境变量
-- 项目根目录下被 `.gitignore` 忽略的 `.env`
 - 被 `.gitignore` 忽略的 `src/main/resources/application-local.yml`
 
-应用启动时会自动读取项目根目录 `.env`，并将其中缺失的键补充到 Spring 环境中；如果同名系统环境变量或 JVM 属性已存在，则它们优先，不会被 `.env` 覆盖。
 
 ## 包结构说明
 

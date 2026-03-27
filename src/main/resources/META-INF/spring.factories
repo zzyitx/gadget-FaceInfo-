@@ -1,2 +1,0 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\
-com.example.face2info.config.DotenvEnvironmentPostProcessor
