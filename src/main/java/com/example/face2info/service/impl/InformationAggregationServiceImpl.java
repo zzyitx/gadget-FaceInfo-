@@ -66,7 +66,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     public AggregationResult aggregate(RecognitionEvidence evidence) {
         AggregationResult result = new AggregationResult();
         if (evidence == null) {
-            return result.setErrors(List.of("recognition evidence is missing"));
+            return result.setErrors(List.of("缺少识别证据"));
         }
 
         result.getErrors().addAll(evidence.getErrors());
@@ -141,7 +141,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
             return profile;
         } catch (RuntimeException ex) {
-            log.error("Kimi summary generation failed, fallbackName={}, urlCount={}, category={}",
+            log.error("Kimi 总结：生成失败, fallbackName={}, urlCount={}, category={}",
                     fallbackName, urls.size(), classifySummaryFailure(ex), ex);
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
@@ -205,7 +205,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private PersonAggregate collectPersonInfo(String name) {
-        log.info("Searching person details for {}", name);
+        log.info("搜索人员详细信息 {}", name);
         SerpApiResponse response = serpApiClient.googleSearch(name);
         if (response == null || response.getRoot() == null) {
             return new PersonAggregate().setName(name);
