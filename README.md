@@ -87,6 +87,10 @@ mvn spring-boot:run
 mvn clean test
 ```
 
+## 协作约定
+
+- 代理或自动化助手在按仓库约定读取相关技能说明和项目实现时，必须同时读取 `AGENTS.md`，并严格遵守其中规则。
+
 ## Kimi 正文增强
 
 - 通过 `face2info.api.summary.provider=kimi` 启用 Kimi 正文增强。

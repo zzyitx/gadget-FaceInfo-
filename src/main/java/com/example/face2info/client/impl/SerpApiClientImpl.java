@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * SerpAPI 客户端实现。
@@ -79,7 +82,7 @@ public class SerpApiClientImpl implements SerpApiClient {
     public SerpApiResponse searchBingImages(String query) {
         String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
                 .queryParam("engine", "bing_images")
-                .queryParam("q", query)
+                .queryParam("q", normalizeQuery(query))
                 .queryParam("mkt", properties.getApi().getSerp().getBingMarket())
                 .queryParam("api_key", apiKey())
                 .encode()
@@ -95,7 +98,7 @@ public class SerpApiClientImpl implements SerpApiClient {
     public SerpApiResponse googleSearch(String query) {
         String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
                 .queryParam("engine", "google")
-                .queryParam("q", query)
+                .queryParam("q", normalizeQuery(query))
                 .queryParam("api_key", apiKey())
                 .encode()
                 .build()
@@ -123,5 +126,17 @@ public class SerpApiClientImpl implements SerpApiClient {
             throw new ApiCallException("SerpAPI key not configured.");
         }
         return properties.getApi().getSerp().getApiKey();
+    }
+
+    private String normalizeQuery(String query) {
+        if (!StringUtils.hasText(query) || !query.contains("%")) {
+            return query;
+        }
+        try {
+            return UriUtils.decode(query, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            log.debug("跳过对错误编码值的查询归一化: {}", query);
+            return query;
+        }
     }
 }
