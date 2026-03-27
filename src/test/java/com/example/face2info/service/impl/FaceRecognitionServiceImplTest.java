@@ -2,16 +2,17 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.TmpfilesClient;
+import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
-import com.example.face2info.exception.FaceRecognitionException;
+import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.util.NameExtractor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class FaceRecognitionServiceImplTest {
@@ -24,47 +25,78 @@ class FaceRecognitionServiceImplTest {
     private final NameExtractor nameExtractor = new NameExtractor();
 
     @Test
-    void shouldPreferKnowledgeGraphTitle() throws Exception {
+    void shouldUseBingAndYandexSourcesWhenCollectingEvidence() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "knowledge_graph": { "title": "周杰伦" },
+                          "knowledge_graph": { "title": "Jay Chou" },
                           "visual_matches": [{
                             "position": 1,
-                            "title": "Lei Jun",
-                            "link": "https://example.com/profile",
-                            "source": "Example",
-                            "image": "https://example.com/lei.jpg"
-                          }],
-                          "image_results": [{ "title": "Jay Chou 高清图片" }]
+                            "title": "Jay Chou profile",
+                            "link": "https://example.com/a",
+                            "source": "Lens"
+                          }]
+                        }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "image_results": [{ "title": "Jay Chou singer", "link": "https://example.com/b", "source": "Yandex" }]
+                        }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "image_results": [{ "title": "Jay Chou concert", "link": "https://example.com/c", "source": "Yandex" }]
+                        }
+                        """)));
+        when(serpApiClient.searchBingImages("Jay Chou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "image_results": [{ "title": "Jay Chou live", "link": "https://example.com/d", "source": "Bing" }]
                         }
                         """)));
 
         FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
 
-        var result = service.recognize(image);
-        assertThat(result.getName()).isEqualTo("周杰伦");
+        RecognitionEvidence result = service.recognize(image);
+
         assertThat(result.getImageMatches()).hasSize(1);
-        assertThat(result.getImageMatches().get(0).getPosition()).isEqualTo(1);
-        assertThat(result.getImageMatches().get(0).getLink()).isEqualTo("https://example.com/profile");
+        assertThat(result.getSeedQueries()).contains("Jay Chou");
+        assertThat(result.getWebEvidences()).extracting(WebEvidence::getUrl)
+                .contains("https://example.com/a", "https://example.com/b", "https://example.com/c", "https://example.com/d");
     }
 
     @Test
-    void shouldFailWhenCandidateConfidenceIsTooLow() throws Exception {
+    void shouldDeduplicateEvidenceUrlsAcrossSources() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
-                        { "image_results": [{ "title": "高清壁纸 photo image" }] }
+                        {
+                          "knowledge_graph": { "title": "Jay Chou" },
+                          "visual_matches": [{ "title": "Jay Chou", "link": "https://example.com/a", "source": "Lens" }]
+                        }
                         """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "image_results": [{ "title": "Jay Chou", "link": "https://example.com/a", "source": "Yandex" }]
+                        }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.searchBingImages("Jay Chou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
         FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
 
-        var result = service.recognize(image);
-        assertThat(result.getName()).isNull();
-        assertThat(result.getError()).isEqualTo("Unable to recognize the person from the image.");
+        RecognitionEvidence result = service.recognize(image);
+
+        assertThat(result.getWebEvidences()).hasSize(1);
+        assertThat(result.getSeedQueries()).contains("Jay Chou");
     }
 
     @Test
@@ -73,6 +105,12 @@ class FaceRecognitionServiceImplTest {
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree(buildVisualMatchesPayload(25))));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.searchBingImages("Lei Jun")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
         FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
 
@@ -87,12 +125,43 @@ class FaceRecognitionServiceImplTest {
                 .setRoot(objectMapper.readTree("""
                         { "knowledge_graph": { "title": "Lei Jun" } }
                         """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.searchBingImages("Lei Jun")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
         FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
 
-        assertThat(service.recognize(image).getName()).isEqualTo("Lei Jun");
+        assertThat(service.recognize(image).getSeedQueries()).contains("Lei Jun");
         verify(tmpfilesClient).uploadImage(image);
         verify(serpApiClient).reverseImageSearchByUrl(PREVIEW_URL);
+    }
+
+    @Test
+    void shouldContinueWhenYandexFailsButLensProvidesEvidence() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
+        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "knowledge_graph": { "title": "Jay Chou" },
+                          "visual_matches": [{ "title": "Jay Chou profile", "link": "https://example.com/a", "source": "Lens" }]
+                        }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenThrow(new RuntimeException("timeout"));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenThrow(new RuntimeException("timeout"));
+        when(serpApiClient.searchBingImages("Jay Chou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+
+        RecognitionEvidence result = service.recognize(image);
+
+        assertThat(result.getWebEvidences()).extracting(WebEvidence::getUrl).contains("https://example.com/a");
+        assertThat(result.getErrors()).anySatisfy(error -> assertThat(error).contains("yandex_images_about"));
+        assertThat(result.getErrors()).anySatisfy(error -> assertThat(error).contains("yandex_images_similar"));
     }
 
     private String buildVisualMatchesPayload(int count) {

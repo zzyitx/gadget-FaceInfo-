@@ -1,6 +1,7 @@
 package com.example.face2info.service;
 
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.RecognitionEvidence;
 
 /**
  * 信息聚合服务。
@@ -14,5 +15,5 @@ public interface InformationAggregationService {
      * @param name 候选人物名称
      * @return 聚合结果
      */
-    AggregationResult aggregate(String name);
+    AggregationResult aggregate(RecognitionEvidence evidence);
 }

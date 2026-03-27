@@ -16,6 +16,7 @@ public class AggregationResult {
     private List<SocialAccount> socialAccounts = new ArrayList<>();
     private List<NewsItem> news = new ArrayList<>();
     private List<String> errors = new ArrayList<>();
+    private List<String> warnings = new ArrayList<>();
 
     public PersonAggregate getPerson() {
         return person;
@@ -50,6 +51,15 @@ public class AggregationResult {
 
     public AggregationResult setErrors(List<String> errors) {
         this.errors = errors;
+        return this;
+    }
+
+    public List<String> getWarnings() {
+        return warnings;
+    }
+
+    public AggregationResult setWarnings(List<String> warnings) {
+        this.warnings = warnings;
         return this;
     }
 }

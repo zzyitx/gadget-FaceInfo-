@@ -7,8 +7,7 @@ import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.util.RetryUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -20,19 +19,18 @@ import org.springframework.web.util.UriComponentsBuilder;
  * SerpAPI 客户端实现。
  * 统一封装 Google Lens 和 Google Search 的 URL 构造、请求发送与重试逻辑。
  */
+@Slf4j
 @Component
 public class SerpApiClientImpl implements SerpApiClient {
 
-    private static final Logger log = LoggerFactory.getLogger(SerpApiClientImpl.class);
+    @Autowired
+    private RestTemplate restTemplate;
 
     @Autowired
-    RestTemplate restTemplate;
+    private ObjectMapper objectMapper;
 
     @Autowired
-    ObjectMapper objectMapper;
-
-    @Autowired
-    ApiProperties properties;
+    private ApiProperties properties;
 
     /**
      * 调用 Google Lens 反向搜图接口。
@@ -49,6 +47,32 @@ public class SerpApiClientImpl implements SerpApiClient {
         log.info("Google Lens search for: {}", imageUrl);
         log.info("SerpAPI request URL: {}", url);
         return execute("SerpAPI reverse image search (URL)", url);
+    }
+
+    @Override
+    public SerpApiResponse reverseImageSearchByUrlYandex(String imageUrl, String tab) {
+        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
+                .queryParam("engine", "yandex_images")
+                .queryParam("url", imageUrl)
+                .queryParam("tab", tab)
+                .queryParam("api_key", apiKey())
+                .encode()
+                .build()
+                .toUriString();
+        return execute("SerpAPI Yandex reverse image search", url);
+    }
+
+    @Override
+    public SerpApiResponse searchBingImages(String query) {
+        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
+                .queryParam("engine", "bing_images")
+                .queryParam("q", query)
+                .queryParam("mkt", properties.getApi().getSerp().getBingMarket())
+                .queryParam("api_key", apiKey())
+                .encode()
+                .build()
+                .toUriString();
+        return execute("SerpAPI Bing image search", url);
     }
 
     /**

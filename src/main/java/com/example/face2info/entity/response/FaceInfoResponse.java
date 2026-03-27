@@ -18,6 +18,7 @@ public class FaceInfoResponse {
     @JsonProperty("image_matches")
     private List<ImageMatch> imageMatches = new ArrayList<>();
 
+    private List<String> warnings = new ArrayList<>();
     private String status;
     private String error;
 
@@ -45,6 +46,15 @@ public class FaceInfoResponse {
 
     public FaceInfoResponse setImageMatches(List<ImageMatch> imageMatches) {
         this.imageMatches = imageMatches;
+        return this;
+    }
+
+    public List<String> getWarnings() {
+        return warnings;
+    }
+
+    public FaceInfoResponse setWarnings(List<String> warnings) {
+        this.warnings = warnings;
         return this;
     }
 

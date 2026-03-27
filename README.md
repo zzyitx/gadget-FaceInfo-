@@ -27,6 +27,29 @@
 
 相关配置位于 [application.yml](/D:/ideaProject/gadget/src/main/resources/application.yml)。
 
+## 安全配置
+
+所有第三方密钥都必须通过环境变量注入，禁止把真实值写入仓库中的 `application.yml`。
+
+- `SERP_API_KEY`
+- `NEWS_API_KEY`
+- `JINA_API_KEY`
+- `SUMMARY_API_KEY`
+
+本地调试时，可通过以下方式注入敏感配置：
+
+- IDE 运行配置或系统环境变量
+- 被 `.gitignore` 忽略的 `src/main/resources/application-local.yml`
+
+## 配置文件策略
+
+- 运行时默认读取 `src/main/resources/application.yml`
+- `application.yml` 仅作为本地真实配置文件，允许保留本地 key，不提交、不推送
+- `src/main/resources/application-git.yml` 是仓库中的脱敏配置副本，专门用于 Git 提交
+- 每次修改配置时，先更新本地 `application.yml`，再同步更新 `application-git.yml`
+- Git 提交只提交 `application-git.yml`，不要为了提交而删除本地 `application.yml` 中的真实 key
+
+
 ## 包结构说明
 
 以下内容根据各包下的 `package-info.java` 整理，并统一转为中文描述：
@@ -63,3 +86,10 @@ mvn spring-boot:run
 ```bash
 mvn clean test
 ```
+
+## Kimi 正文增强
+
+- 通过 `face2info.api.summary.provider=kimi` 启用 Kimi 正文增强。
+- 需要配置环境变量 `KIMI_API_KEY`，如有必要可额外配置 `KIMI_API_BASE_URL`、`KIMI_MODEL` 和 `KIMI_SYSTEM_PROMPT`。
+- Kimi 处理成功时，接口会在响应中补充 `person.summary` 和 `person.tags`。
+- Kimi 调用失败时，接口仍返回原有聚合结果，并在顶层 `warnings` 中返回 `正文智能处理暂时不可用`。
