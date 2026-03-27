@@ -41,6 +41,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private static final int MAX_PAGE_URLS = 20;
     private static final String SUMMARY_WARNING = "正文智能处理暂时不可用";
+    private static final String KIMI_SUFFIX = " (由 Kimi 总结)";
+    private static final String SERP_API_SUFFIX = " (由 SerpAPI 聚合)";
 
     private final SerpApiClient serpApiClient;
     private final NewsApiClient newsApiClient;
@@ -77,7 +79,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         String resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
-            result.setPerson(new PersonAggregate().setDescription(cleanDescription(profile.getSummary())));
+            result.setPerson(new PersonAggregate().setDescription(appendSuffix(cleanDescription(profile.getSummary()), KIMI_SUFFIX)));
             return result;
         }
 
@@ -89,11 +91,12 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .supplyAsync(() -> collectPersonInfo(resolvedName), executor)
                 .orTimeout(10, TimeUnit.SECONDS);
 
-
         PersonAggregate person = joinTask("实体信息", personFuture, new PersonAggregate().setName(resolvedName), result.getErrors());
         person.setName(resolvedName);
-        person.setDescription(cleanDescription(firstNonBlank(profile.getSummary(), person.getDescription())));
-        person.setSummary(cleanDescription(profile.getSummary()));
+        String summarizedDescription = cleanDescription(profile.getSummary());
+        String fallbackDescription = cleanDescription(person.getDescription());
+        person.setDescription(formatDescription(summarizedDescription, fallbackDescription));
+        person.setSummary(appendSuffix(summarizedDescription, KIMI_SUFFIX));
         person.setTags(profile.getTags() == null ? List.of() : profile.getTags());
         person.setEvidenceUrls(profile.getEvidenceUrls());
 
@@ -204,6 +207,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private PersonAggregate collectPersonInfo(String name) {
         log.info("Searching person details for {}", name);
         SerpApiResponse response = serpApiClient.googleSearch(name);
+        if (response == null || response.getRoot() == null) {
+            return new PersonAggregate().setName(name);
+        }
         JsonNode root = response.getRoot();
         JsonNode knowledgeGraph = root.path("knowledge_graph");
         PersonAggregate aggregate = new PersonAggregate().setName(name);
@@ -247,6 +253,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private List<SocialAccount> parseSocialResults(String platform, SerpApiResponse response) {
         List<SocialAccount> accounts = new ArrayList<>();
+        if (response == null || response.getRoot() == null) {
+            return accounts;
+        }
         JsonNode organicResults = response.getRoot().path("organic_results");
         if (!organicResults.isArray()) {
             return accounts;
@@ -290,8 +299,21 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return description.replaceAll("\\s+", " ").trim();
     }
 
-    private String firstNonBlank(String primary, String secondary) {
-        return StringUtils.hasText(primary) ? primary : secondary;
+    private String formatDescription(String summarizedDescription, String fallbackDescription) {
+        if (StringUtils.hasText(summarizedDescription)) {
+            return appendSuffix(summarizedDescription, KIMI_SUFFIX);
+        }
+        return appendSuffix(fallbackDescription, SERP_API_SUFFIX);
+    }
+
+    private String appendSuffix(String content, String suffix) {
+        if (!StringUtils.hasText(content)) {
+            return null;
+        }
+        if (content.endsWith(suffix)) {
+            return content;
+        }
+        return content + suffix;
     }
 
     private List<SocialAccount> deduplicateSocialAccounts(List<SocialAccount> accounts) {

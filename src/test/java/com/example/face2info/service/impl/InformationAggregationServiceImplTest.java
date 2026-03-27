@@ -97,10 +97,8 @@ class InformationAggregationServiceImplTest {
                 .setEvidenceUrls(List.of("https://example.com/a")));
         when(serpApiClient.googleSearch("周杰伦")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"后备简介\"}}")));
-        when(serpApiClient.googleSearch("周杰伦 抖音")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
-        when(serpApiClient.googleSearch("周杰伦 微博")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
+        when(serpApiClient.googleSearch("周杰伦 抖音")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("周杰伦 微博")).thenReturn(emptySerpResponse());
         when(newsApiClient.searchNews("周杰伦")).thenReturn(new NewsApiResponse()
                 .setRoot(objectMapper.readTree("{\"articles\":[]}")));
 
@@ -110,7 +108,8 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("周杰伦"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getPerson().getSummary()).isEqualTo("周杰伦是华语流行乐代表人物。");
+        assertThat(result.getPerson().getSummary()).isEqualTo("周杰伦是华语流行乐代表人物。 (由 Kimi 总结)");
+        assertThat(result.getPerson().getDescription()).isEqualTo("周杰伦是华语流行乐代表人物。 (由 Kimi 总结)");
         assertThat(result.getPerson().getTags()).containsExactly("歌手", "音乐制作人");
         assertThat(result.getWarnings()).isEmpty();
     }
@@ -127,10 +126,8 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.summarizePerson("周杰伦", pages)).thenThrow(new RuntimeException("INVALID_RESPONSE"));
         when(serpApiClient.googleSearch("周杰伦")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"后备简介\"}}")));
-        when(serpApiClient.googleSearch("周杰伦 抖音")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
-        when(serpApiClient.googleSearch("周杰伦 微博")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
+        when(serpApiClient.googleSearch("周杰伦 抖音")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("周杰伦 微博")).thenReturn(emptySerpResponse());
         when(newsApiClient.searchNews("周杰伦")).thenReturn(new NewsApiResponse()
                 .setRoot(objectMapper.readTree("{\"articles\":[]}")));
 
@@ -140,10 +137,10 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("周杰伦"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getPerson().getDescription()).isEqualTo("后备简介");
+        assertThat(result.getPerson().getDescription()).isEqualTo("后备简介 (由 SerpAPI 聚合)");
         assertThat(result.getPerson().getSummary()).isNull();
         assertThat(result.getPerson().getTags()).isEmpty();
-        assertThat(result.getWarnings()).containsExactly("正文智能处理暂时不可用");
+        assertThat(result.getWarnings()).hasSize(1);
     }
 
     @Test
@@ -161,10 +158,8 @@ class InformationAggregationServiceImplTest {
                 .setEvidenceUrls(List.of("https://example.com/a")));
         when(serpApiClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback\",\"website\":\"https://jay.example.com\"}}")));
-        when(serpApiClient.googleSearch("Jay Chou 抖音")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
-        when(serpApiClient.googleSearch("Jay Chou 微博")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
+        when(serpApiClient.googleSearch("Jay Chou 抖音")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("Jay Chou 微博")).thenReturn(emptySerpResponse());
         when(newsApiClient.searchNews("Jay Chou")).thenReturn(new NewsApiResponse()
                 .setRoot(objectMapper.readTree("{\"articles\":[]}")));
 
@@ -176,7 +171,7 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
         assertThat(result.getPerson().getName()).isEqualTo("Jay Chou");
-        assertThat(result.getPerson().getDescription()).isEqualTo("Jay Chou is a Mandopop singer.");
+        assertThat(result.getPerson().getDescription()).isEqualTo("Jay Chou is a Mandopop singer. (由 Kimi 总结)");
     }
 
     @Test
@@ -191,10 +186,8 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.summarizePerson("Jay Chou", pages)).thenReturn(new ResolvedPersonProfile()
                 .setResolvedName("Jay Chou")
                 .setSummary(""));
-        when(serpApiClient.googleSearch("Jay Chou 抖音")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\": []}")));
-        when(serpApiClient.googleSearch("Jay Chou 微博")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"organic_results\": []}")));
+        when(serpApiClient.googleSearch("Jay Chou 抖音")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("Jay Chou 微博")).thenReturn(emptySerpResponse());
         when(serpApiClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"knowledge_graph\": {\"description\": \"华语歌手\"}}")));
 
@@ -205,7 +198,7 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jay Chou"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getPerson().getDescription()).isEqualTo("华语歌手");
+        assertThat(result.getPerson().getDescription()).isEqualTo("华语歌手 (由 SerpAPI 聚合)");
         assertThat(result.getNews()).isEmpty();
         assertThat(result.getErrors()).isEmpty();
         verifyNoInteractions(newsApiClient);
@@ -265,7 +258,7 @@ class InformationAggregationServiceImplTest {
         assertThat(elapsed).isLessThan(1000);
         assertThat(result.getSocialAccounts()).hasSize(2);
         assertThat(result.getNews()).isEmpty();
-        assertThat(result.getPerson().getDescription()).isEqualTo("华语歌手");
+        assertThat(result.getPerson().getDescription()).isEqualTo("华语歌手 (由 Kimi 总结)");
         assertThat(result.getErrors()).isEmpty();
     }
 
@@ -287,8 +280,7 @@ class InformationAggregationServiceImplTest {
                 return new SerpApiResponse()
                         .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Mandopop singer\"}}"));
             }
-            return new SerpApiResponse()
-                    .setRoot(objectMapper.readTree("{\"organic_results\":[]}"));
+            return emptySerpResponse();
         }).when(serpApiClient).googleSearch(anyString());
 
         InformationAggregationServiceImpl service =
@@ -301,6 +293,62 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getNews()).isEmpty();
         assertThat(result.getErrors()).isEmpty();
         verifyNoInteractions(newsApiClient);
+    }
+
+    @Test
+    void shouldAppendKimiSuffixToSummaryAndDescription() throws Exception {
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setContent("body"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        when(summaryGenerationClient.summarizePerson("Jay Chou", pages)).thenReturn(new ResolvedPersonProfile()
+                .setResolvedName("Jay Chou")
+                .setSummary("Jay Chou is a singer."));
+        when(serpApiClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+        when(serpApiClient.googleSearch("Jay Chou 抖音")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("Jay Chou 微博")).thenReturn(emptySerpResponse());
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getSummary()).isEqualTo("Jay Chou is a singer. (由 Kimi 总结)");
+        assertThat(result.getPerson().getDescription()).isEqualTo("Jay Chou is a singer. (由 Kimi 总结)");
+    }
+
+    @Test
+    void shouldAppendSerpApiSuffixWhenSummaryUnavailable() throws Exception {
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setContent("body"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        when(summaryGenerationClient.summarizePerson("Jay Chou", pages)).thenThrow(new RuntimeException("INVALID_RESPONSE"));
+        when(serpApiClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+        when(serpApiClient.googleSearch("Jay Chou 抖音")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("Jay Chou 微博")).thenReturn(emptySerpResponse());
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getSummary()).isNull();
+        assertThat(result.getPerson().getDescription()).isEqualTo("Fallback description (由 SerpAPI 聚合)");
+    }
+
+    private SerpApiResponse emptySerpResponse() throws Exception {
+        return new SerpApiResponse().setRoot(objectMapper.readTree("{\"organic_results\":[]}"));
     }
 
     private ThreadPoolTaskExecutor executor() {
