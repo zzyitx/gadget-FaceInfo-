@@ -16,6 +16,7 @@ target/
 .env.*
 !.env.example
 src/main/resources/application-local.yml
+src/main/resources/application.yml
 
 ### Eclipse ###
 .apt_generated
