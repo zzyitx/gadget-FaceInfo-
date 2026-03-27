@@ -62,10 +62,32 @@ class FaceInfoControllerTest {
     }
 
     @Test
-    void shouldNotCommitFallbackSecretsInApplicationConfig() throws Exception {
-        assertThat(Files.readAllLines(Path.of("src/main/resources/application.yml")))
+    void shouldNotCommitFallbackSecretsInApplicationGitConfig() throws Exception {
+        Path path = Path.of("src/main/resources/application-git.yml");
+
+        assertThat(path).exists();
+        assertThat(Files.readAllLines(path))
                 .filteredOn(line -> line.contains("api-key:"))
                 .allMatch(line -> line.matches(".*\\$\\{[A-Z0-9_]+:}\\s*$"),
-                        "API key placeholders must not contain committed fallback secrets");
+                        "Git version config must not contain committed fallback secrets");
+    }
+
+    @Test
+    void shouldContainPrimaryApiSectionsInApplicationGitConfig() throws Exception {
+        String content = Files.readString(Path.of("src/main/resources/application-git.yml"));
+
+        assertThat(content).contains("serp:");
+        assertThat(content).contains("news:");
+        assertThat(content).contains("jina:");
+        assertThat(content).contains("kimi:");
+        assertThat(content).contains("summary:");
+    }
+
+    @Test
+    void shouldTrackApplicationGitConfigAndIgnoreLocalApplicationConfig() throws Exception {
+        String ignoreContent = Files.readString(Path.of(".gitignore"));
+
+        assertThat(ignoreContent).contains("src/main/resources/application.yml");
+        assertThat(ignoreContent).contains("!src/main/resources/application-git.yml");
     }
 }

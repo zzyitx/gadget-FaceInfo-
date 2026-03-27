@@ -249,6 +249,12 @@ Field: image
 - 新增配置时同步更新 `README.md`
 - 涉及环境差异的配置优先通过 `profile` 或外部环境变量注入
 
+### 配置文件双轨规则
+- `src/main/resources/application.yml` 是本地真实配置文件，允许保留真实 key，不提交到 Git
+- `src/main/resources/application-git.yml` 是仓库脱敏配置文件，结构必须与本地版保持同步
+- 任何配置变更都必须同时同步这两个文件中的结构，提交时只提交 `application-git.yml`
+- 禁止为了提交远端而删除或清空本地 `application.yml` 中的真实 key
+
 **关键**：配置变更必须同时考虑本地开发、测试环境和生产环境的兼容性。
 
 ---

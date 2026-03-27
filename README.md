@@ -41,6 +41,14 @@
 - IDE 运行配置或系统环境变量
 - 被 `.gitignore` 忽略的 `src/main/resources/application-local.yml`
 
+## 配置文件策略
+
+- 运行时默认读取 `src/main/resources/application.yml`
+- `application.yml` 仅作为本地真实配置文件，允许保留本地 key，不提交、不推送
+- `src/main/resources/application-git.yml` 是仓库中的脱敏配置副本，专门用于 Git 提交
+- 每次修改配置时，先更新本地 `application.yml`，再同步更新 `application-git.yml`
+- Git 提交只提交 `application-git.yml`，不要为了提交而删除本地 `application.yml` 中的真实 key
+
 
 ## 包结构说明
 

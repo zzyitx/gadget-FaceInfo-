@@ -42,7 +42,7 @@ face2info:
       read-timeout-ms: 15000
       max-retries: 2
       backoff-initial-ms: 300
-      system-prompt: ${KIMI_SYSTEM_PROMPT:你是一个人物信息抽取助手，只能输出JSON。}
+      system-prompt: ${KIMI_SYSTEM_PROMPT:你是一个人物信息提取助手，只能输出JSON。}
     summary:
       enabled: false
       provider: noop
