@@ -1,21 +1,21 @@
-# Skip NewsAPI In Flow Implementation Plan
+# 暂停 NewsAPI 流程实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **供代理执行参考：** 实施本计划时，建议使用 `superpowers:subagent-driven-development`，也可使用 `superpowers:executing-plans` 按任务逐步执行。步骤使用复选框 `- [ ]` 语法跟踪。
 
-**Goal:** Keep the `news` response field stable while stopping the aggregation flow from calling NewsAPI.
+**目标：** 在停止聚合流程调用 NewsAPI 的同时，保持接口中的 `news` 响应字段结构不变。
 
-**Architecture:** Adjust only the orchestration path in `InformationAggregationServiceImpl`. Preserve the existing NewsAPI client, config, entities, and parsing code so the capability can be restored later without re-adding infrastructure.
+**方案：** 仅调整 `InformationAggregationServiceImpl` 中的流程编排路径，不删除现有 NewsAPI 客户端、配置、实体模型和解析逻辑，确保后续恢复时无需重新补基础设施。
 
-**Tech Stack:** Java 17, Spring Boot 3.3.5, JUnit 5, Mockito, AssertJ
+**技术栈：** Java 17、Spring Boot 3.3.5、JUnit 5、Mockito、AssertJ
 
 ---
 
-### Task 1: Lock Down The New Flow Contract
+### 任务 1：固定新的流程契约
 
-**Files:**
-- Modify: `src/test/java/com/example/face2info/service/impl/InformationAggregationServiceImplTest.java`
+**涉及文件：**
+- 修改：`src/test/java/com/example/face2info/service/impl/InformationAggregationServiceImplTest.java`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **步骤 1：先写失败测试**
 
 ```java
 @Test
@@ -31,9 +31,9 @@ void shouldSkipNewsAggregationAndReturnEmptyNews() throws Exception {
             .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("Jay Chou is a singer"));
     when(serpApiClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse()
             .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Mandopop singer\"}}")));
-    when(serpApiClient.googleSearch("Jay Chou 抖音")).thenReturn(new SerpApiResponse()
+    when(serpApiClient.googleSearch("Jay Chou 鎶栭煶")).thenReturn(new SerpApiResponse()
             .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
-    when(serpApiClient.googleSearch("Jay Chou 微博")).thenReturn(new SerpApiResponse()
+    when(serpApiClient.googleSearch("Jay Chou 寰崥")).thenReturn(new SerpApiResponse()
             .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
 
     InformationAggregationServiceImpl service =
@@ -47,63 +47,63 @@ void shouldSkipNewsAggregationAndReturnEmptyNews() throws Exception {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试并确认失败**
 
-Run: `mvn -Dtest=InformationAggregationServiceImplTest#shouldSkipNewsAggregationAndReturnEmptyNews test`
-Expected: FAIL because the service still executes the news branch.
+运行：`mvn -Dtest=InformationAggregationServiceImplTest#shouldSkipNewsAggregationAndReturnEmptyNews test`  
+预期：`FAIL`，因为服务当前仍会执行新闻聚合分支。
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **步骤 3：编写最小实现**
 
 ```java
 result.setPerson(person);
-result.setSocialAccounts(deduplicateSocialAccounts(joinTask("社交账号", socialFuture, List.of(), result.getErrors())));
+result.setSocialAccounts(deduplicateSocialAccounts(joinTask("绀句氦璐﹀彿", socialFuture, List.of(), result.getErrors())));
 result.setNews(List.of());
 return result;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：再次运行测试并确认通过**
 
-Run: `mvn -Dtest=InformationAggregationServiceImplTest#shouldSkipNewsAggregationAndReturnEmptyNews test`
-Expected: PASS
+运行：`mvn -Dtest=InformationAggregationServiceImplTest#shouldSkipNewsAggregationAndReturnEmptyNews test`  
+预期：`PASS`
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5：提交代码**
 
 ```bash
 git add docs/superpowers/plans/2026-03-27-skip-newsapi-in-flow.md src/test/java/com/example/face2info/service/impl/InformationAggregationServiceImplTest.java src/main/java/com/example/face2info/service/impl/InformationAggregationServiceImpl.java
 git commit -m "fix(service): 暂时跳过NewsAPI聚合流程"
 ```
 
-### Task 2: Remove Flow-Level Regression Risk
+### 任务 2：消除流程层回归风险
 
-**Files:**
-- Modify: `src/test/java/com/example/face2info/service/impl/InformationAggregationServiceImplTest.java`
-- Modify: `src/main/java/com/example/face2info/service/impl/InformationAggregationServiceImpl.java`
+**涉及文件：**
+- 修改：`src/test/java/com/example/face2info/service/impl/InformationAggregationServiceImplTest.java`
+- 修改：`src/main/java/com/example/face2info/service/impl/InformationAggregationServiceImpl.java`
 
-- [ ] **Step 1: Write the failing verification**
+- [ ] **步骤 1：先写失败校验**
 
 ```java
 verifyNoInteractions(newsApiClient);
 assertThat(result.getErrors()).isEmpty();
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试并确认失败**
 
-Run: `mvn -Dtest=InformationAggregationServiceImplTest#shouldSkipNewsAggregationAndReturnEmptyNews test`
-Expected: FAIL because the current flow still calls `newsApiClient.searchNews(...)`.
+运行：`mvn -Dtest=InformationAggregationServiceImplTest#shouldSkipNewsAggregationAndReturnEmptyNews test`  
+预期：`FAIL`，因为当前流程仍会调用 `newsApiClient.searchNews(...)`。
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **步骤 3：编写最小实现**
 
 ```java
-// Remove newsFuture creation from aggregate(...)
-// Keep NewsApiClient field and collectNews(...) for future re-enablement.
+// 从 aggregate(...) 中移除 newsFuture 的创建
+// 保留 NewsApiClient 字段和 collectNews(...)，便于后续重新启用
 ```
 
-- [ ] **Step 4: Run targeted tests**
+- [ ] **步骤 4：运行定向测试**
 
-Run: `mvn -Dtest=InformationAggregationServiceImplTest test`
-Expected: PASS
+运行：`mvn -Dtest=InformationAggregationServiceImplTest test`  
+预期：`PASS`
 
-- [ ] **Step 5: Run broader verification**
+- [ ] **步骤 5：运行更大范围验证**
 
-Run: `mvn -Dtest=Face2InfoServiceImplTest,InformationAggregationServiceImplTest test`
-Expected: PASS
+运行：`mvn "-Dtest=Face2InfoServiceImplTest,InformationAggregationServiceImplTest" test`  
+预期：`PASS`
