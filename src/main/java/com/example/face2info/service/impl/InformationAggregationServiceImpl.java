@@ -40,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 public class InformationAggregationServiceImpl implements InformationAggregationService {
 
     private static final int MAX_PAGE_URLS = 20;
+    private static final String SUMMARY_WARNING = "正文智能处理暂时不可用";
 
     private final SerpApiClient serpApiClient;
     private final NewsApiClient newsApiClient;
@@ -68,7 +69,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         result.getErrors().addAll(evidence.getErrors());
 
-        ResolvedPersonProfile profile = resolveProfileFromEvidence(evidence.getWebEvidences(), firstSeedQuery(evidence));
+        ResolvedPersonProfile profile = resolveProfileFromEvidence(
+                evidence.getWebEvidences(),
+                firstSeedQuery(evidence),
+                result.getWarnings()
+        );
         String resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
@@ -91,6 +96,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         PersonAggregate person = joinTask("实体信息", personFuture, new PersonAggregate().setName(resolvedName), result.getErrors());
         person.setName(resolvedName);
         person.setDescription(cleanDescription(firstNonBlank(profile.getSummary(), person.getDescription())));
+        person.setSummary(cleanDescription(profile.getSummary()));
+        person.setTags(profile.getTags() == null ? List.of() : profile.getTags());
         person.setEvidenceUrls(profile.getEvidenceUrls());
 
         result.setPerson(person);
@@ -100,6 +107,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName) {
+        return resolveProfileFromEvidence(evidences, fallbackName, new ArrayList<>());
+    }
+
+    ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName, List<String> warnings) {
         List<String> urls = selectTopUrls(evidences);
         if (urls.isEmpty()) {
             return new ResolvedPersonProfile().setResolvedName(fallbackName);
@@ -130,11 +141,30 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
             return profile;
         } catch (RuntimeException ex) {
-            log.warn("Summary generation failed", ex);
+            log.error("Kimi summary generation failed, fallbackName={}, urlCount={}, category={}",
+                    fallbackName, urls.size(), classifySummaryFailure(ex), ex);
+            warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
                     .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
         }
+    }
+
+    private String classifySummaryFailure(RuntimeException ex) {
+        String message = ex.getMessage() == null ? "" : ex.getMessage();
+        if (message.contains("CONFIG_MISSING")) {
+            return "CONFIG_MISSING";
+        }
+        if (message.contains("INVALID_RESPONSE")) {
+            return "INVALID_RESPONSE";
+        }
+        if (message.contains("EMPTY_RESPONSE")) {
+            return "EMPTY_RESPONSE";
+        }
+        if (message.toLowerCase().contains("timeout")) {
+            return "TIMEOUT";
+        }
+        return "HTTP_ERROR";
     }
 
     private List<String> selectTopUrls(List<WebEvidence> evidences) {

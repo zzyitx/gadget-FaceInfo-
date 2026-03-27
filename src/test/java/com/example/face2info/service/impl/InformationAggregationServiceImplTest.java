@@ -81,6 +81,71 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldMapSummaryAndTagsIntoAggregationResult() throws Exception {
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setContent("正文A"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        when(summaryGenerationClient.summarizePerson("周杰伦", pages)).thenReturn(new ResolvedPersonProfile()
+                .setResolvedName("周杰伦")
+                .setSummary("周杰伦是华语流行乐代表人物。")
+                .setTags(List.of("歌手", "音乐制作人"))
+                .setEvidenceUrls(List.of("https://example.com/a")));
+        when(serpApiClient.googleSearch("周杰伦")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"后备简介\"}}")));
+        when(serpApiClient.googleSearch("周杰伦 抖音")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
+        when(serpApiClient.googleSearch("周杰伦 微博")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
+        when(newsApiClient.searchNews("周杰伦")).thenReturn(new NewsApiResponse()
+                .setRoot(objectMapper.readTree("{\"articles\":[]}")));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("周杰伦"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getSummary()).isEqualTo("周杰伦是华语流行乐代表人物。");
+        assertThat(result.getPerson().getTags()).containsExactly("歌手", "音乐制作人");
+        assertThat(result.getWarnings()).isEmpty();
+    }
+
+    @Test
+    void shouldAppendWarningWhenSummaryGenerationFails() throws Exception {
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setContent("正文A"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        when(summaryGenerationClient.summarizePerson("周杰伦", pages)).thenThrow(new RuntimeException("INVALID_RESPONSE"));
+        when(serpApiClient.googleSearch("周杰伦")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"后备简介\"}}")));
+        when(serpApiClient.googleSearch("周杰伦 抖音")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
+        when(serpApiClient.googleSearch("周杰伦 微博")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"organic_results\":[]}")));
+        when(newsApiClient.searchNews("周杰伦")).thenReturn(new NewsApiResponse()
+                .setRoot(objectMapper.readTree("{\"articles\":[]}")));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("周杰伦"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getDescription()).isEqualTo("后备简介");
+        assertThat(result.getPerson().getSummary()).isNull();
+        assertThat(result.getPerson().getTags()).isEmpty();
+        assertThat(result.getWarnings()).containsExactly("正文智能处理暂时不可用");
+    }
+
+    @Test
     void shouldUseResolvedNameForGoogleNewsAndSocialAggregation() throws Exception {
         SerpApiClient serpApiClient = mock(SerpApiClient.class);
         NewsApiClient newsApiClient = mock(NewsApiClient.class);
