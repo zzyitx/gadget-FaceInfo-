@@ -89,9 +89,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .supplyAsync(() -> collectPersonInfo(resolvedName), executor)
                 .orTimeout(10, TimeUnit.SECONDS);
 
-        CompletableFuture<List<NewsItem>> newsFuture = CompletableFuture
-                .supplyAsync(() -> collectNews(resolvedName), executor)
-                .orTimeout(10, TimeUnit.SECONDS);
 
         PersonAggregate person = joinTask("实体信息", personFuture, new PersonAggregate().setName(resolvedName), result.getErrors());
         person.setName(resolvedName);
@@ -102,7 +99,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         result.setPerson(person);
         result.setSocialAccounts(deduplicateSocialAccounts(joinTask("社交账号", socialFuture, List.of(), result.getErrors())));
-        result.setNews(deduplicateNews(resolvedName, joinTask("新闻", newsFuture, List.of(), result.getErrors())));
+        result.setNews(List.of());
         return result;
     }
 
