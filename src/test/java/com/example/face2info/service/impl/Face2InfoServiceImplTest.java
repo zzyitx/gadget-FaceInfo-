@@ -18,6 +18,33 @@ import static org.mockito.Mockito.when;
 class Face2InfoServiceImplTest {
 
     @Test
+    void shouldMapSummaryTagsAndWarningsToResponse() {
+        ImageUtils imageUtils = mock(ImageUtils.class);
+        FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
+        InformationAggregationService aggregationService = mock(InformationAggregationService.class);
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        RecognitionEvidence evidence = new RecognitionEvidence();
+
+        doNothing().when(imageUtils).validateImage(image);
+        when(recognitionService.recognize(image)).thenReturn(evidence);
+        when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate()
+                        .setName("周杰伦")
+                        .setDescription("华语流行男歌手")
+                        .setSummary("周杰伦是华语流行乐代表人物。")
+                        .setTags(java.util.List.of("歌手", "音乐制作人")))
+                .setWarnings(java.util.List.of("正文智能处理暂时不可用")));
+
+        Face2InfoServiceImpl service = new Face2InfoServiceImpl(imageUtils, recognitionService, aggregationService);
+
+        FaceInfoResponse response = service.process(image);
+
+        assertThat(response.getPerson().getSummary()).isEqualTo("周杰伦是华语流行乐代表人物。");
+        assertThat(response.getPerson().getTags()).containsExactly("歌手", "音乐制作人");
+        assertThat(response.getWarnings()).containsExactly("正文智能处理暂时不可用");
+    }
+
+    @Test
     void shouldMapRecognitionEvidenceAndAggregationResultToExistingResponseShape() {
         ImageUtils imageUtils = mock(ImageUtils.class);
         FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
@@ -82,5 +109,23 @@ class Face2InfoServiceImplTest {
         assertThat(response.getStatus()).isEqualTo("failed");
         assertThat(response.getPerson()).isNull();
         assertThat(response.getError()).contains("未能从识别证据中解析人物名称");
+    }
+
+    @Test
+    void shouldKeepWarningsEmptyWhenAggregationDoesNotProvideWarnings() {
+        ImageUtils imageUtils = mock(ImageUtils.class);
+        FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
+        InformationAggregationService aggregationService = mock(InformationAggregationService.class);
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        RecognitionEvidence evidence = new RecognitionEvidence();
+
+        doNothing().when(imageUtils).validateImage(image);
+        when(recognitionService.recognize(image)).thenReturn(evidence);
+        when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate().setName("周杰伦")));
+
+        FaceInfoResponse response = new Face2InfoServiceImpl(imageUtils, recognitionService, aggregationService).process(image);
+
+        assertThat(response.getWarnings()).isEmpty();
     }
 }

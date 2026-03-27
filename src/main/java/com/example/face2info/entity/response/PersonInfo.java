@@ -14,6 +14,7 @@ public class PersonInfo {
 
     private String name;
     private String description;
+    private String summary;
     private String wikipedia;
 
     @JsonProperty("official_website")
@@ -21,6 +22,8 @@ public class PersonInfo {
 
     @JsonProperty("social_accounts")
     private List<SocialAccount> socialAccounts = new ArrayList<>();
+
+    private List<String> tags = new ArrayList<>();
 
     public String getName() {
         return name;
@@ -37,6 +40,15 @@ public class PersonInfo {
 
     public PersonInfo setDescription(String description) {
         this.description = description;
+        return this;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public PersonInfo setSummary(String summary) {
+        this.summary = summary;
         return this;
     }
 
@@ -64,6 +76,15 @@ public class PersonInfo {
 
     public PersonInfo setSocialAccounts(List<SocialAccount> socialAccounts) {
         this.socialAccounts = socialAccounts;
+        return this;
+    }
+
+    public List<String> getTags() {
+        return tags;
+    }
+
+    public PersonInfo setTags(List<String> tags) {
+        this.tags = tags;
         return this;
     }
 }

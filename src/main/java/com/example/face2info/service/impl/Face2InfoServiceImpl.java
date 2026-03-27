@@ -56,6 +56,8 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         PersonInfo person = new PersonInfo()
                 .setName(aggregationResult.getPerson().getName())
                 .setDescription(aggregationResult.getPerson().getDescription())
+                .setSummary(aggregationResult.getPerson().getSummary())
+                .setTags(aggregationResult.getPerson().getTags())
                 .setWikipedia(aggregationResult.getPerson().getWikipedia())
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
                 .setSocialAccounts(aggregationResult.getSocialAccounts());
@@ -63,6 +65,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return new FaceInfoResponse()
                 .setPerson(person)
                 .setNews(aggregationResult.getNews())
+                .setWarnings(aggregationResult.getWarnings())
                 .setImageMatches(evidence.getImageMatches())
                 .setStatus(aggregationResult.getErrors().isEmpty() ? "success" : "partial")
                 .setError(aggregationResult.getErrors().isEmpty() ? null : String.join("; ", aggregationResult.getErrors()));

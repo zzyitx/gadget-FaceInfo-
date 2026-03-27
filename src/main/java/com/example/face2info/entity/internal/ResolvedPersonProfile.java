@@ -11,6 +11,7 @@ public class ResolvedPersonProfile {
     private String resolvedName;
     private String summary;
     private List<String> keyFacts = new ArrayList<>();
+    private List<String> tags = new ArrayList<>();
     private List<String> evidenceUrls = new ArrayList<>();
 
     public String getResolvedName() {
@@ -37,6 +38,15 @@ public class ResolvedPersonProfile {
 
     public ResolvedPersonProfile setKeyFacts(List<String> keyFacts) {
         this.keyFacts = keyFacts;
+        return this;
+    }
+
+    public List<String> getTags() {
+        return tags;
+    }
+
+    public ResolvedPersonProfile setTags(List<String> tags) {
+        this.tags = tags;
         return this;
     }
 
