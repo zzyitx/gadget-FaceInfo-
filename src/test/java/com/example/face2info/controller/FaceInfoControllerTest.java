@@ -1,6 +1,7 @@
 package com.example.face2info.controller;
 
 import com.example.face2info.entity.response.FaceInfoResponse;
+import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.exception.GlobalExceptionHandler;
 import com.example.face2info.service.Face2InfoService;
 import org.junit.jupiter.api.Test;
@@ -23,9 +24,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(FaceInfoController.class)
 @Import(GlobalExceptionHandler.class)
-/**
- * 控制器层测试。
- */
 class FaceInfoControllerTest {
 
     @Autowired
@@ -42,6 +40,25 @@ class FaceInfoControllerTest {
         mockMvc.perform(multipart("/api/face2info").file(image))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
+    }
+
+    @Test
+    void shouldExposeSummaryTagsAndWarningsInResponseJson() throws Exception {
+        when(face2InfoService.process(any())).thenReturn(new FaceInfoResponse()
+                .setStatus("partial")
+                .setWarnings(java.util.List.of("正文智能处理暂时不可用"))
+                .setPerson(new PersonInfo()
+                        .setName("周杰伦")
+                        .setSummary("周杰伦是华语流行乐代表人物。")
+                        .setTags(java.util.List.of("歌手", "音乐制作人"))));
+
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        mockMvc.perform(multipart("/api/face2info").file(image))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("partial"))
+                .andExpect(jsonPath("$.person.summary").value("周杰伦是华语流行乐代表人物。"))
+                .andExpect(jsonPath("$.person.tags[0]").value("歌手"))
+                .andExpect(jsonPath("$.warnings[0]").value("正文智能处理暂时不可用"));
     }
 
     @Test
