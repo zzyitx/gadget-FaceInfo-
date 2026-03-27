@@ -89,7 +89,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .map(page -> "URL: " + page.getUrl() + "\n正文: " + page.getContent())
                 .collect(Collectors.joining("\n---\n"));
         return """
-                请基于以下正文抽取人物信息，只能输出JSON，不要输出额外解释。
+                请基于以下正文抽取人物信息，只能输出JSON，并且返回信息的语言为中文，不要输出额外解释。
                 JSON字段固定为 resolvedName、summary、tags、evidenceUrls。
                 fallbackName: %s
                 正文如下：
