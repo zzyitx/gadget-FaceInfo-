@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -35,15 +36,15 @@ import java.util.stream.Collectors;
 @ConditionalOnProperty(prefix = "face2info.api.summary", name = "provider", havingValue = "kimi")
 public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
-    private final RestTemplate restTemplate;
-    private final ApiProperties properties;
-    private final ObjectMapper objectMapper;
+    @Autowired
+    RestTemplate restTemplate;
 
-    public KimiSummaryGenerationClient(RestTemplate restTemplate, ApiProperties properties, ObjectMapper objectMapper) {
-        this.restTemplate = restTemplate;
-        this.properties = properties;
-        this.objectMapper = objectMapper;
-    }
+    @Autowired
+    ApiProperties properties;
+
+    @Autowired
+    ObjectMapper objectMapper;
+
 
     @Override
     public ResolvedPersonProfile summarizePerson(String fallbackName, List<PageContent> pages) {
@@ -98,7 +99,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         }
 
         try {
-            JsonNode json = objectMapper.readTree(content);
+            JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             Set<String> deduplicatedTags = new LinkedHashSet<>();
             JsonNode tagsNode = json.path("tags");
             if (tagsNode.isArray()) {
@@ -144,5 +145,26 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private String firstNonBlank(String primary, String fallback) {
         return StringUtils.hasText(primary) ? primary : fallback;
+    }
+
+    private String normalizeJsonContent(String content) {
+        String normalized = content == null ? null : content.trim();
+        if (!StringUtils.hasText(normalized)) {
+            return normalized;
+        }
+        if (!normalized.startsWith("```")) {
+            return normalized;
+        }
+
+        int firstLineBreak = normalized.indexOf('\n');
+        if (firstLineBreak < 0) {
+            return normalized;
+        }
+
+        String withoutOpeningFence = normalized.substring(firstLineBreak + 1).trim();
+        if (withoutOpeningFence.endsWith("```")) {
+            withoutOpeningFence = withoutOpeningFence.substring(0, withoutOpeningFence.length() - 3).trim();
+        }
+        return withoutOpeningFence;
     }
 }
