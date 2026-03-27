@@ -45,6 +45,11 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     @Autowired
     ObjectMapper objectMapper;
 
+    public KimiSummaryGenerationClient(RestTemplate restTemplate, ApiProperties properties, ObjectMapper objectMapper) {
+        this.restTemplate = restTemplate;
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public ResolvedPersonProfile summarizePerson(String fallbackName, List<PageContent> pages) {
