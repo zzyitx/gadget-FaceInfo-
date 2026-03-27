@@ -4,6 +4,7 @@ import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -14,6 +15,7 @@ import java.util.stream.Collectors;
  * 摘要生成客户端默认占位实现。
  */
 @Component
+@ConditionalOnProperty(prefix = "face2info.api.summary", name = "provider", havingValue = "noop", matchIfMissing = true)
 public class NoopSummaryGenerationClient implements SummaryGenerationClient {
 
     private final ApiProperties properties;

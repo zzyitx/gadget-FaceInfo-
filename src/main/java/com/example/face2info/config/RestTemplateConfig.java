@@ -36,12 +36,14 @@ public class RestTemplateConfig {
                 properties.getApi().getSerp().getConnectTimeoutMs(),
                 properties.getApi().getNews().getConnectTimeoutMs(),
                 properties.getApi().getJina().getConnectTimeoutMs(),
+                properties.getApi().getKimi().getConnectTimeoutMs(),
                 properties.getApi().getSummary().getConnectTimeoutMs()
         );
         int readTimeout = max(
                 properties.getApi().getSerp().getReadTimeoutMs(),
                 properties.getApi().getNews().getReadTimeoutMs(),
                 properties.getApi().getJina().getReadTimeoutMs(),
+                properties.getApi().getKimi().getReadTimeoutMs(),
                 properties.getApi().getSummary().getReadTimeoutMs()
         );
         ClientHttpRequestFactory requestFactory = requestFactory(connectTimeout, readTimeout, properties);
