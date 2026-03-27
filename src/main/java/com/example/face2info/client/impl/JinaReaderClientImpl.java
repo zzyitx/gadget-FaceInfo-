@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,7 +56,7 @@ public class JinaReaderClientImpl implements JinaReaderClient {
                 headers.setBearerAuth(api.getJina().getApiKey());
             }
             ResponseEntity<String> response = restTemplate.exchange(
-                    requestUrl,
+                    URI.create(requestUrl),
                     HttpMethod.GET,
                     new HttpEntity<>(headers),
                     String.class
@@ -73,12 +74,19 @@ public class JinaReaderClientImpl implements JinaReaderClient {
     }
 
     private String buildRequestUrl(String baseUrl, String originalUrl) {
-        String normalizedUrl = originalUrl
-                .replaceFirst("^https://", "")
-                .replaceFirst("^http://", "");
         if (!StringUtils.hasText(baseUrl)) {
             return originalUrl;
         }
-        return baseUrl + normalizedUrl;
+        String normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+        return normalizedBaseUrl + originalUrl;
+    }
+
+    private String normalizeBaseUrl(String baseUrl) {
+        String trimmedBaseUrl = baseUrl.trim();
+        int gatewayIndex = trimmedBaseUrl.indexOf("r.jina.ai/");
+        if (gatewayIndex >= 0) {
+            return trimmedBaseUrl.substring(0, gatewayIndex + "r.jina.ai/".length());
+        }
+        return trimmedBaseUrl.endsWith("/") ? trimmedBaseUrl : trimmedBaseUrl + "/";
     }
 }

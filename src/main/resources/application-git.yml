@@ -28,7 +28,7 @@ face2info:
       max-retries: 3
       backoff-initial-ms: 300
     jina:
-      base-url: https://r.jina.ai/http://
+      base-url: https://r.jina.ai/
       api-key: ${JINA_API_KEY:}
       connect-timeout-ms: 5000
       read-timeout-ms: 15000

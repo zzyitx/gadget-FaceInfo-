@@ -10,7 +10,7 @@ import lombok.Setter;
 @Setter
 public class JinaApiProperties {
 
-    private String baseUrl = "https://r.jina.ai/http://";
+    private String baseUrl = "https://r.jina.ai/";
     private String apiKey;
     private int connectTimeoutMs = 5000;
     private int readTimeoutMs = 15000;
