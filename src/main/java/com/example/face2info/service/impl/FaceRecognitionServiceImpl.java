@@ -72,16 +72,10 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         List<String> seedQueries = extractSeedQueries(lensResponse, yandexAboutResponse, yandexSimilarResponse);
         evidence.setSeedQueries(seedQueries);
 
-        for (String seedQuery : seedQueries) {
-            try {
-                SerpApiResponse bingResponse = serpApiClient.searchBingImages(seedQuery);
-                if (bingResponse != null && bingResponse.getRoot() != null) {
-                    webEvidences.addAll(extractWebEvidence(bingResponse.getRoot(), "bing_images"));
-                }
-            } catch (RuntimeException ex) {
-                log.warn("Bing image search failed for query={}", seedQuery, ex);
-                evidence.getErrors().add("bing_images: " + ex.getMessage());
-            }
+        SerpApiResponse bingResponse = safeSearch("bing_images", imageUrl, evidence,
+                () -> serpApiClient.reverseImageSearchByUrlBing(imageUrl));
+        if (bingResponse != null && bingResponse.getRoot() != null) {
+            webEvidences.addAll(extractWebEvidence(bingResponse.getRoot(), "bing_images"));
         }
 
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));

@@ -63,6 +63,19 @@ public class SerpApiClientImpl implements SerpApiClient {
     }
 
     @Override
+    public SerpApiResponse reverseImageSearchByUrlBing(String imageUrl) {
+        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
+                .queryParam("engine", "bing_images")
+                .queryParam("url", imageUrl)
+                .queryParam("mkt", properties.getApi().getSerp().getBingMarket())
+                .queryParam("api_key", apiKey())
+                .encode()
+                .build()
+                .toUriString();
+        return execute("SerpAPI Bing image search by URL", url);
+    }
+
+    @Override
     public SerpApiResponse searchBingImages(String query) {
         String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
                 .queryParam("engine", "bing_images")
