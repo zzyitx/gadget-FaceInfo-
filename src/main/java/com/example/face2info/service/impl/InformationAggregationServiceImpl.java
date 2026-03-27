@@ -197,16 +197,18 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private List<SocialAccount> collectSocialAccounts(String name) {
-        log.info("Searching social accounts for {}", name);
+        String normalizedName = normalizeName(name);
+        log.info("Searching social accounts for {}", normalizedName);
         List<SocialAccount> accounts = new ArrayList<>();
-        accounts.addAll(parseSocialResults("douyin", serpApiClient.googleSearch(name + " 抖音")));
-        accounts.addAll(parseSocialResults("weibo", serpApiClient.googleSearch(name + " 微博")));
+        accounts.addAll(parseSocialResults("douyin", serpApiClient.googleSearch(normalizedName + " 抖音")));
+        accounts.addAll(parseSocialResults("weibo", serpApiClient.googleSearch(normalizedName + " 微博")));
         return accounts;
     }
 
     private PersonAggregate collectPersonInfo(String name) {
-        log.info("搜索人员详细信息 {}", name);
-        SerpApiResponse response = serpApiClient.googleSearch(name);
+        String normalizedName = normalizeName(name);
+        log.info("搜索人员详细信息 {}", normalizedName);
+        SerpApiResponse response = serpApiClient.googleSearch(normalizedName);
         if (response == null || response.getRoot() == null) {
             return new PersonAggregate().setName(name);
         }
@@ -297,6 +299,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return null;
         }
         return description.replaceAll("\\s+", " ").trim();
+    }
+
+    private String normalizeName(String name) {
+        if (!StringUtils.hasText(name)) {
+            return null;
+        }
+        return name.replaceAll("\\s+", "");
     }
 
     private String formatDescription(String summarizedDescription, String fallbackDescription) {
