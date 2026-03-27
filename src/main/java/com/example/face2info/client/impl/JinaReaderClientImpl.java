@@ -49,7 +49,8 @@ public class JinaReaderClientImpl implements JinaReaderClient {
 
     private PageContent readSinglePage(String url) {
         ApiProperties.Api api = properties.getApi();
-        String requestUrl = buildRequestUrl(api.getJina().getBaseUrl(), url);
+        String normalizedUrl = normalizeOriginalUrl(url);
+        String requestUrl = buildRequestUrl(api.getJina().getBaseUrl(), normalizedUrl);
         return RetryUtils.execute("Jina read page", api.getJina().getMaxRetries(), api.getJina().getBackoffInitialMs(), () -> {
             HttpHeaders headers = new HttpHeaders();
             if (StringUtils.hasText(api.getJina().getApiKey())) {
@@ -66,8 +67,8 @@ public class JinaReaderClientImpl implements JinaReaderClient {
                 throw new ApiCallException("Jina read page returned empty body");
             }
             return new PageContent()
-                    .setUrl(url)
-                    .setTitle(url)
+                    .setUrl(normalizedUrl)
+                    .setTitle(normalizedUrl)
                     .setContent(body)
                     .setSourceEngine("jina");
         });
@@ -88,5 +89,9 @@ public class JinaReaderClientImpl implements JinaReaderClient {
             return trimmedBaseUrl.substring(0, gatewayIndex + "r.jina.ai/".length());
         }
         return trimmedBaseUrl.endsWith("/") ? trimmedBaseUrl : trimmedBaseUrl + "/";
+    }
+
+    private String normalizeOriginalUrl(String originalUrl) {
+        return originalUrl.replaceAll("\\s+", "");
     }
 }

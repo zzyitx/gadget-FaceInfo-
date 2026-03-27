@@ -59,6 +59,25 @@ class JinaReaderClientImplTest {
                 .hasMessageContaining("400 Bad Request");
     }
 
+    @Test
+    void shouldRemoveWhitespaceFromOriginalUrlBeforeCallingJina() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://r.jina.ai/https://baike.baidu.com/en/item/LeiJun/985856"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("Lei Jun profile", MediaType.TEXT_PLAIN));
+
+        JinaReaderClientImpl client = new JinaReaderClientImpl(restTemplate,
+                createProperties("https://r.jina.ai/https://", "test-key"));
+
+        List<PageContent> pages = client.readPages(List.of("https://baike.baidu.com/en/item/Lei Jun/985856"));
+
+        assertThat(pages).hasSize(1);
+        assertThat(pages.get(0).getUrl()).isEqualTo("https://baike.baidu.com/en/item/LeiJun/985856");
+        assertThat(pages.get(0).getContent()).isEqualTo("Lei Jun profile");
+        server.verify();
+    }
+
     private ApiProperties createProperties(String baseUrl, String apiKey) {
         ApiProperties properties = new ApiProperties();
         properties.getApi().setJina(new JinaApiProperties());

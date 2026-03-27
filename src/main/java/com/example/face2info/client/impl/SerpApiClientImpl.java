@@ -13,10 +13,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.util.UriUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.StringJoiner;
 
 /**
  * SerpAPI 客户端实现。
@@ -40,13 +43,11 @@ public class SerpApiClientImpl implements SerpApiClient {
      */
     @Override
     public SerpApiResponse reverseImageSearchByUrl(String imageUrl) {
-        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
-                .queryParam("engine", "google_lens")
-                .queryParam("url", imageUrl)
-                .queryParam("api_key", apiKey())
-                .encode()
-                .build()
-                .toUriString();
+        String url = buildUrl(Map.of(
+                "engine", "google_lens",
+                "url", imageUrl,
+                "api_key", apiKey()
+        ));
         log.info("Google Lens search for: {}", imageUrl);
         log.info("SerpAPI request URL: {}", url);
         return execute("SerpAPI reverse image search (URL)", url);
@@ -54,40 +55,34 @@ public class SerpApiClientImpl implements SerpApiClient {
 
     @Override
     public SerpApiResponse reverseImageSearchByUrlYandex(String imageUrl, String tab) {
-        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
-                .queryParam("engine", "yandex_images")
-                .queryParam("url", imageUrl)
-                .queryParam("tab", tab)
-                .queryParam("api_key", apiKey())
-                .encode()
-                .build()
-                .toUriString();
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("engine", "yandex_images");
+        params.put("url", imageUrl);
+        params.put("tab", tab);
+        params.put("api_key", apiKey());
+        String url = buildUrl(params);
         return execute("SerpAPI Yandex reverse image search", url);
     }
 
     @Override
     public SerpApiResponse reverseImageSearchByUrlBing(String imageUrl) {
-        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
-                .queryParam("engine", "bing_images")
-                .queryParam("url", imageUrl)
-                .queryParam("mkt", properties.getApi().getSerp().getBingMarket())
-                .queryParam("api_key", apiKey())
-                .encode()
-                .build()
-                .toUriString();
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("engine", "bing_reverse_image");
+        params.put("image_url", imageUrl);
+        params.put("mkt", properties.getApi().getSerp().getBingMarket());
+        params.put("api_key", apiKey());
+        String url = buildUrl(params);
         return execute("SerpAPI Bing image search by URL", url);
     }
 
     @Override
     public SerpApiResponse searchBingImages(String query) {
-        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
-                .queryParam("engine", "bing_images")
-                .queryParam("q", normalizeQuery(query))
-                .queryParam("mkt", properties.getApi().getSerp().getBingMarket())
-                .queryParam("api_key", apiKey())
-                .encode()
-                .build()
-                .toUriString();
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("engine", "bing_images");
+        params.put("q", normalizeQuery(query));
+        params.put("mkt", properties.getApi().getSerp().getBingMarket());
+        params.put("api_key", apiKey());
+        String url = buildUrl(params);
         return execute("SerpAPI Bing image search", url);
     }
 
@@ -96,13 +91,11 @@ public class SerpApiClientImpl implements SerpApiClient {
      */
     @Override
     public SerpApiResponse googleSearch(String query) {
-        String url = UriComponentsBuilder.fromHttpUrl(properties.getApi().getSerp().getBaseUrl())
-                .queryParam("engine", "google")
-                .queryParam("q", normalizeQuery(query))
-                .queryParam("api_key", apiKey())
-                .encode()
-                .build()
-                .toUriString();
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("engine", "google");
+        params.put("q", normalizeQuery(query));
+        params.put("api_key", apiKey());
+        String url = buildUrl(params);
         return execute("SerpAPI Google search", url);
     }
 
@@ -112,7 +105,7 @@ public class SerpApiClientImpl implements SerpApiClient {
     private SerpApiResponse execute(String name, String url) {
         ApiProperties.Api api = properties.getApi();
         return RetryUtils.execute(name, api.getSerp().getMaxRetries(), api.getSerp().getBackoffInitialMs(), () -> {
-            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+            ResponseEntity<String> response = restTemplate.getForEntity(URI.create(url), String.class);
             JsonNode root = objectMapper.readTree(response.getBody());
             return new SerpApiResponse().setRoot(root);
         });
@@ -138,5 +131,16 @@ public class SerpApiClientImpl implements SerpApiClient {
             log.debug("跳过对错误编码值的查询归一化: {}", query);
             return query;
         }
+    }
+
+    private String buildUrl(Map<String, String> queryParams) {
+        StringJoiner joiner = new StringJoiner("&", properties.getApi().getSerp().getBaseUrl() + "?", "");
+        for (Map.Entry<String, String> entry : queryParams.entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
+            joiner.add(entry.getKey() + "=" + UriUtils.encode(entry.getValue(), StandardCharsets.UTF_8));
+        }
+        return joiner.toString();
     }
 }
