@@ -16,9 +16,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 人脸信息聚合总流程实现。
- */
 @Slf4j
 @Service
 public class Face2InfoServiceImpl implements Face2InfoService {
@@ -37,14 +34,27 @@ public class Face2InfoServiceImpl implements Face2InfoService {
 
     @Override
     public FaceInfoResponse process(MultipartFile image) {
-        log.info("Received face2info request");
+        log.info("总流程开始 fileName={} size={}", image.getOriginalFilename(), image.getSize());
         imageUtils.validateImage(image);
 
         RecognitionEvidence evidence = faceRecognitionService.recognize(image);
+        log.info("识别阶段完成 imageMatchCount={} seedQueryCount={} webEvidenceCount={} errorCount={}",
+                evidence.getImageMatches().size(),
+                evidence.getSeedQueries().size(),
+                evidence.getWebEvidences().size(),
+                evidence.getErrors().size());
+
         AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
+        log.info("聚合阶段完成 warningCount={} errorCount={} socialCount={} newsCount={} resolvedName={}",
+                aggregationResult.getWarnings().size(),
+                aggregationResult.getErrors().size(),
+                aggregationResult.getSocialAccounts().size(),
+                aggregationResult.getNews().size(),
+                aggregationResult.getPerson() == null ? null : aggregationResult.getPerson().getName());
         if (aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
             List<String> errors = new ArrayList<>(evidence.getErrors());
             errors.addAll(aggregationResult.getErrors());
+            log.warn("总流程失败 errorCount={} errors={}", errors.size(), errors);
             return new FaceInfoResponse()
                     .setPerson(null)
                     .setNews(aggregationResult.getNews())
@@ -62,12 +72,15 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
                 .setSocialAccounts(aggregationResult.getSocialAccounts());
 
+        String status = aggregationResult.getErrors().isEmpty() ? "success" : "partial";
+        log.info("总流程结束 status={} personName={} warningCount={} errorCount={}",
+                status, person.getName(), aggregationResult.getWarnings().size(), aggregationResult.getErrors().size());
         return new FaceInfoResponse()
                 .setPerson(person)
                 .setNews(aggregationResult.getNews())
                 .setWarnings(aggregationResult.getWarnings())
                 .setImageMatches(evidence.getImageMatches())
-                .setStatus(aggregationResult.getErrors().isEmpty() ? "success" : "partial")
+                .setStatus(status)
                 .setError(aggregationResult.getErrors().isEmpty() ? null : String.join("; ", aggregationResult.getErrors()));
     }
 }

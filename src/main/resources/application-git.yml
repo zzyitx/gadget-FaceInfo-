@@ -44,8 +44,8 @@ face2info:
       backoff-initial-ms: 300
       system-prompt: ${KIMI_SYSTEM_PROMPT:你是一个人物信息提取助手，只能输出JSON。}
     summary:
-      enabled: false
-      provider: noop
+      enabled: true
+      provider: kimi
       base-url: ${SUMMARY_API_BASE_URL:}
       api-key: ${SUMMARY_API_KEY:}
       model: ${SUMMARY_MODEL:}

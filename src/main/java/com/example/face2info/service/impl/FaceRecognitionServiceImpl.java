@@ -19,9 +19,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * 多信源图片识别实现。
- */
 @Slf4j
 @Service
 public class FaceRecognitionServiceImpl implements FaceRecognitionService {
@@ -41,9 +38,17 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
     @Override
     public RecognitionEvidence recognize(MultipartFile image) {
-        log.info("Starting multi-source face recognition");
+        log.info("人脸识别模块开始 fileName={} size={} contentType={}",
+                image.getOriginalFilename(), image.getSize(), image.getContentType());
         String imageUrl = tmpfilesClient.uploadImage(image);
-        return searchByImageUrl(imageUrl);
+        log.info("人脸识别模块已获得临时图片地址 imageUrl={}", imageUrl);
+        RecognitionEvidence evidence = searchByImageUrl(imageUrl);
+        log.info("人脸识别模块完成 imageMatchCount={} seedQueryCount={} webEvidenceCount={} errorCount={}",
+                evidence.getImageMatches().size(),
+                evidence.getSeedQueries().size(),
+                evidence.getWebEvidences().size(),
+                evidence.getErrors().size());
+        return evidence;
     }
 
     private RecognitionEvidence searchByImageUrl(String imageUrl) {
@@ -55,30 +60,37 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         if (lensResponse != null && lensResponse.getRoot() != null) {
             evidence.setImageMatches(extractImageMatches(lensResponse.getRoot()));
             webEvidences.addAll(extractWebEvidence(lensResponse.getRoot(), "google_lens"));
+            log.info("识别来源完成 source=google_lens imageMatchCount={} webEvidenceCount={}",
+                    evidence.getImageMatches().size(), webEvidences.size());
         }
 
         SerpApiResponse yandexAboutResponse = safeSearch("yandex_images_about", imageUrl, evidence,
                 () -> serpApiClient.reverseImageSearchByUrlYandex(imageUrl, "about"));
         if (yandexAboutResponse != null && yandexAboutResponse.getRoot() != null) {
             webEvidences.addAll(extractWebEvidence(yandexAboutResponse.getRoot(), "yandex_images_about"));
+            log.info("识别来源完成 source=yandex_images_about cumulativeWebEvidenceCount={}", webEvidences.size());
         }
 
         SerpApiResponse yandexSimilarResponse = safeSearch("yandex_images_similar", imageUrl, evidence,
                 () -> serpApiClient.reverseImageSearchByUrlYandex(imageUrl, "similar"));
         if (yandexSimilarResponse != null && yandexSimilarResponse.getRoot() != null) {
             webEvidences.addAll(extractWebEvidence(yandexSimilarResponse.getRoot(), "yandex_images_similar"));
+            log.info("识别来源完成 source=yandex_images_similar cumulativeWebEvidenceCount={}", webEvidences.size());
         }
 
         List<String> seedQueries = extractSeedQueries(lensResponse, yandexAboutResponse, yandexSimilarResponse);
         evidence.setSeedQueries(seedQueries);
+        log.info("候选名称提取完成 seedQueries={}", seedQueries);
 
         SerpApiResponse bingResponse = safeSearch("bing_images", imageUrl, evidence,
                 () -> serpApiClient.reverseImageSearchByUrlBing(imageUrl));
         if (bingResponse != null && bingResponse.getRoot() != null) {
             webEvidences.addAll(extractWebEvidence(bingResponse.getRoot(), "bing_images"));
+            log.info("识别来源完成 source=bing_images cumulativeWebEvidenceCount={}", webEvidences.size());
         }
 
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
+        log.info("识别证据去重完成 before={} after={}", webEvidences.size(), evidence.getWebEvidences().size());
         return evidence;
     }
 
@@ -87,9 +99,10 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                                        RecognitionEvidence evidence,
                                        SearchSupplier supplier) {
         try {
+            log.info("识别来源开始 source={} imageUrl={}", source, imageUrl);
             return supplier.get();
         } catch (RuntimeException ex) {
-            log.warn("Recognition source failed source={} imageUrl={}", source, imageUrl, ex);
+            log.warn("识别来源失败 source={} imageUrl={} error={}", source, imageUrl, ex.getMessage(), ex);
             evidence.getErrors().add(source + ": " + ex.getMessage());
             return null;
         }

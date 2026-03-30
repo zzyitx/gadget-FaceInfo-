@@ -203,9 +203,35 @@ class InformationAggregationServiceImplTest {
 
         assertThat(result.getPerson().getName()).isEqualTo("Lei Jun");
         verify(serpApiClient).googleSearch("LeiJun");
-        verify(serpApiClient).googleSearch("LeiJun 抖音");
-        verify(serpApiClient).googleSearch("LeiJun 微博");
         verify(serpApiClient, never()).googleSearch("Lei Jun");
+    }
+
+    @Test
+    void shouldReturnPlaceholderSocialAccountWithoutCallingSocialSearchApi() throws Exception {
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("Jay Chou is a singer"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        when(summaryGenerationClient.summarizePerson("Jay Chou", pages)).thenReturn(new ResolvedPersonProfile()
+                .setResolvedName("Jay Chou")
+                .setSummary("Jay Chou is a singer."));
+        when(serpApiClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getSocialAccounts()).hasSize(1);
+        assertThat(result.getSocialAccounts().get(0).getUsername()).isEqualTo("功能正在开发中");
+        verify(serpApiClient).googleSearch("JayChou");
+        verify(serpApiClient, never()).googleSearch("Jay Chou 鎶栭煶");
+        verify(serpApiClient, never()).googleSearch("Jay Chou 寰崥");
     }
 
     @Test
@@ -290,7 +316,8 @@ class InformationAggregationServiceImplTest {
         long elapsed = Duration.between(start, Instant.now()).toMillis();
 
         assertThat(elapsed).isLessThan(1000);
-        assertThat(result.getSocialAccounts()).hasSize(2);
+        assertThat(result.getSocialAccounts()).hasSize(1);
+        assertThat(result.getSocialAccounts().get(0).getUsername()).isEqualTo("功能正在开发中");
         assertThat(result.getNews()).isEmpty();
         assertThat(result.getPerson().getDescription()).isEqualTo("华语歌手 (由 Kimi 总结)");
         assertThat(result.getErrors()).isEmpty();
