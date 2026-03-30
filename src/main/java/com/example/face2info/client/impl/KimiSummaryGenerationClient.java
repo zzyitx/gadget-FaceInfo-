@@ -6,12 +6,12 @@ import com.example.face2info.config.KimiApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -28,22 +28,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * Kimi 摘要生成客户端实现。
- */
 @Slf4j
 @Component
 @ConditionalOnProperty(prefix = "face2info.api.summary", name = "provider", havingValue = "kimi")
 public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
-    @Autowired
-    RestTemplate restTemplate;
-
-    @Autowired
-    ApiProperties properties;
-
-    @Autowired
-    ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
+    private final ApiProperties properties;
+    private final ObjectMapper objectMapper;
 
     public KimiSummaryGenerationClient(RestTemplate restTemplate, ApiProperties properties, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
@@ -54,12 +46,20 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     @Override
     public ResolvedPersonProfile summarizePerson(String fallbackName, List<PageContent> pages) {
         KimiApiProperties kimi = properties.getApi().getKimi();
+        int pageCount = pages == null ? 0 : pages.size();
+        log.info("Kimi 模块开始处理 fallbackName={} pageCount={} provider={}",
+                fallbackName, pageCount, properties.getApi().getSummary().getProvider());
         if (!StringUtils.hasText(kimi.getApiKey())
                 || !StringUtils.hasText(kimi.getBaseUrl())
                 || !StringUtils.hasText(kimi.getModel())) {
+            log.error("Kimi 配置缺失 baseUrlConfigured={} modelConfigured={} apiKeyConfigured={}",
+                    StringUtils.hasText(kimi.getBaseUrl()),
+                    StringUtils.hasText(kimi.getModel()),
+                    StringUtils.hasText(kimi.getApiKey()));
             throw new ApiCallException("CONFIG_MISSING: kimi config is incomplete");
         }
 
+        log.info("Kimi 配置检查通过 model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
         return RetryUtils.execute("Kimi summarize", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(kimi.getApiKey());
@@ -73,6 +73,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     )
             );
 
+            log.info("Kimi 请求已发送 model={} pageCount={} url={}",
+                    kimi.getModel(), pageCount, LogSanitizer.maskUrl(kimi.getBaseUrl()));
             ResponseEntity<JsonNode> response = restTemplate.exchange(
                     kimi.getBaseUrl(),
                     HttpMethod.POST,
@@ -80,7 +82,13 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     JsonNode.class
             );
 
-            return parseProfile(fallbackName, pages, response.getBody());
+            ResolvedPersonProfile profile = parseProfile(fallbackName, pages, response.getBody());
+            log.info("Kimi 返回解析成功 resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
+                    profile.getResolvedName(),
+                    profile.getSummary() == null ? 0 : profile.getSummary().length(),
+                    profile.getTags() == null ? 0 : profile.getTags().size(),
+                    profile.getEvidenceUrls() == null ? 0 : profile.getEvidenceUrls().size());
+            return profile;
         });
     }
 
@@ -89,8 +97,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .map(page -> "URL: " + page.getUrl() + "\n正文: " + page.getContent())
                 .collect(Collectors.joining("\n---\n"));
         return """
-                请基于以下正文抽取人物信息，只能输出JSON，并且返回信息的语言为中文，不要输出额外解释。
-                JSON字段固定为 resolvedName、summary、tags、evidenceUrls。
+                请基于以下正文抽取人物信息，只能输出 JSON，且返回内容语言必须为中文，不要输出额外解释。
+                JSON 字段固定为 resolvedName、summary、tags、evidenceUrls。
                 fallbackName: %s
                 正文如下：
                 %s
@@ -132,7 +140,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             }
             return profile;
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi response parsing failed", ex);
+            log.warn("Kimi 返回解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
             throw new ApiCallException("INVALID_RESPONSE: kimi content is not valid json", ex);
         }
     }

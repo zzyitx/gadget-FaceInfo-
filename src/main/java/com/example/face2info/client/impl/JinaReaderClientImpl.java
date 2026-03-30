@@ -4,7 +4,9 @@ import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -17,9 +19,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Jina 页面正文读取客户端实现。
- */
+@Slf4j
 @Component
 public class JinaReaderClientImpl implements JinaReaderClient {
 
@@ -35,15 +35,18 @@ public class JinaReaderClientImpl implements JinaReaderClient {
     public List<PageContent> readPages(List<String> urls) {
         List<PageContent> pages = new ArrayList<>();
         if (urls == null || urls.isEmpty()) {
+            log.info("Jina 正文读取跳过，未收到可用链接");
             return pages;
         }
 
+        log.info("Jina 正文读取开始 urlCount={}", urls.size());
         for (String url : urls) {
             if (!StringUtils.hasText(url)) {
                 continue;
             }
             pages.add(readSinglePage(url));
         }
+        log.info("Jina 正文读取完成 successCount={}", pages.size());
         return pages;
     }
 
@@ -56,6 +59,8 @@ public class JinaReaderClientImpl implements JinaReaderClient {
             if (StringUtils.hasText(api.getJina().getApiKey())) {
                 headers.setBearerAuth(api.getJina().getApiKey());
             }
+            log.info("Jina 正在读取页面 sourceUrl={} requestUrl={}",
+                    normalizedUrl, LogSanitizer.maskUrl(requestUrl));
             ResponseEntity<String> response = restTemplate.exchange(
                     URI.create(requestUrl),
                     HttpMethod.GET,
@@ -66,6 +71,7 @@ public class JinaReaderClientImpl implements JinaReaderClient {
             if (!StringUtils.hasText(body)) {
                 throw new ApiCallException("Jina read page returned empty body");
             }
+            log.info("Jina 页面读取成功 sourceUrl={} contentLength={}", normalizedUrl, body.length());
             return new PageContent()
                     .setUrl(normalizedUrl)
                     .setTitle(normalizedUrl)

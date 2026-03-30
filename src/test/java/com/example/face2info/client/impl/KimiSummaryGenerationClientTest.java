@@ -114,6 +114,7 @@ class KimiSummaryGenerationClientTest {
      * 3.Run： mvn “-dtest=KimiSummaryGenerationClientTest#shouldPrintRealKimiResponse” test
      */
 //    @Disabled("手动测试：移除该注释以调用真实的 Kimi API")
+    @Disabled("手动测试：需要有效的 Kimi 真实配置后再执行")
     @Test
     void shouldPrintRealKimiResponse() {
         Properties localConfig = loadLocalApplicationProperties();

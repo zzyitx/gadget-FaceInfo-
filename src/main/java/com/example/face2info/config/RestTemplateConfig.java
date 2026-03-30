@@ -1,5 +1,6 @@
 package com.example.face2info.config;
 
+import com.example.face2info.util.LogSanitizer;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -20,16 +21,9 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 
-/**
- * RestTemplate 配置。
- * 统一设置超时、代理和请求日志拦截器。
- */
 @Configuration
 public class RestTemplateConfig {
 
-    /**
-     * 创建全局复用的 RestTemplate。
-     */
     @Bean
     public RestTemplate restTemplate(ApiProperties properties) {
         int connectTimeout = max(
@@ -60,9 +54,6 @@ public class RestTemplateConfig {
         return max;
     }
 
-    /**
-     * 按配置构建底层 HTTP 请求工厂，并在需要时挂载代理。
-     */
     private ClientHttpRequestFactory requestFactory(int connectTimeout, int readTimeout, ApiProperties properties) {
         RequestConfig.Builder configBuilder = RequestConfig.custom()
                 .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
@@ -77,9 +68,6 @@ public class RestTemplateConfig {
         return new HttpComponentsClientHttpRequestFactory(httpClient);
     }
 
-    /**
-     * 统一记录外部 HTTP 请求日志，便于排查接口调用问题。
-     */
     private static final class LoggingInterceptor implements ClientHttpRequestInterceptor {
 
         private static final Logger log = LoggerFactory.getLogger(LoggingInterceptor.class);
@@ -87,9 +75,11 @@ public class RestTemplateConfig {
         @Override
         public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
                 throws IOException {
-            log.info("HTTP {} {}", request.getMethod(), request.getURI());
+            String maskedUrl = LogSanitizer.maskUrl(request.getURI().toString());
+            log.info("外部接口请求开始 method={} url={}", request.getMethod(), maskedUrl);
             ClientHttpResponse response = execution.execute(request, body);
-            log.info("HTTP response status={}", response.getStatusCode());
+            log.info("外部接口请求完成 method={} url={} status={}",
+                    request.getMethod(), maskedUrl, response.getStatusCode());
             return response;
         }
     }

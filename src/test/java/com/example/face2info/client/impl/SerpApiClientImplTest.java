@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -24,10 +23,7 @@ class SerpApiClientImplTest {
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"organic_results\":[]}", MediaType.APPLICATION_JSON));
 
-        SerpApiClientImpl client = new SerpApiClientImpl();
-        ReflectionTestUtils.setField(client, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(client, "objectMapper", new ObjectMapper());
-        ReflectionTestUtils.setField(client, "properties", createProperties());
+        SerpApiClientImpl client = new SerpApiClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
         client.googleSearch("Lei%20Jun%20%E6%8A%96%E9%9F%B3");
 
@@ -42,10 +38,7 @@ class SerpApiClientImplTest {
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"organic_results\":[]}", MediaType.APPLICATION_JSON));
 
-        SerpApiClientImpl client = new SerpApiClientImpl();
-        ReflectionTestUtils.setField(client, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(client, "objectMapper", new ObjectMapper());
-        ReflectionTestUtils.setField(client, "properties", createProperties());
+        SerpApiClientImpl client = new SerpApiClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
         client.googleSearch("雷军 抖音");
 
@@ -60,10 +53,7 @@ class SerpApiClientImplTest {
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"organic_results\":[]}", MediaType.APPLICATION_JSON));
 
-        SerpApiClientImpl client = new SerpApiClientImpl();
-        ReflectionTestUtils.setField(client, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(client, "objectMapper", new ObjectMapper());
-        ReflectionTestUtils.setField(client, "properties", createProperties());
+        SerpApiClientImpl client = new SerpApiClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
         client.googleSearch("Lei%20Jun%2G");
 
@@ -78,10 +68,7 @@ class SerpApiClientImplTest {
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"image_results\":[]}", MediaType.APPLICATION_JSON));
 
-        SerpApiClientImpl client = new SerpApiClientImpl();
-        ReflectionTestUtils.setField(client, "restTemplate", restTemplate);
-        ReflectionTestUtils.setField(client, "objectMapper", new ObjectMapper());
-        ReflectionTestUtils.setField(client, "properties", createProperties());
+        SerpApiClientImpl client = new SerpApiClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
         client.reverseImageSearchByUrlBing("https://i.imgur.com/HBrB8p0.png");
 

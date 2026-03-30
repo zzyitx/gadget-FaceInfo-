@@ -4,43 +4,37 @@ import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriUtils;
 
-import java.nio.charset.StandardCharsets;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.StringJoiner;
 
-/**
- * SerpAPI 客户端实现。
- * 统一封装 Google Lens 和 Google Search 的 URL 构造、请求发送与重试逻辑。
- */
 @Slf4j
 @Component
 public class SerpApiClientImpl implements SerpApiClient {
 
-    @Autowired
-    private RestTemplate restTemplate;
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+    private final ApiProperties properties;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    public SerpApiClientImpl(RestTemplate restTemplate, ObjectMapper objectMapper, ApiProperties properties) {
+        this.restTemplate = restTemplate;
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+    }
 
-    @Autowired
-    private ApiProperties properties;
-
-    /**
-     * 调用 Google Lens 反向搜图接口。
-     */
     @Override
     public SerpApiResponse reverseImageSearchByUrl(String imageUrl) {
         String url = buildUrl(Map.of(
@@ -48,9 +42,8 @@ public class SerpApiClientImpl implements SerpApiClient {
                 "url", imageUrl,
                 "api_key", apiKey()
         ));
-        log.info("Google Lens search for: {}", imageUrl);
-        log.info("SerpAPI request URL: {}", url);
-        return execute("SerpAPI reverse image search (URL)", url);
+        log.info("SerpAPI Google Lens 识图开始 imageUrl={}", imageUrl);
+        return execute("SerpAPI Google Lens 识图", url);
     }
 
     @Override
@@ -61,7 +54,8 @@ public class SerpApiClientImpl implements SerpApiClient {
         params.put("tab", tab);
         params.put("api_key", apiKey());
         String url = buildUrl(params);
-        return execute("SerpAPI Yandex reverse image search", url);
+        log.info("SerpAPI Yandex 识图开始 imageUrl={} tab={}", imageUrl, tab);
+        return execute("SerpAPI Yandex 识图", url);
     }
 
     @Override
@@ -72,7 +66,8 @@ public class SerpApiClientImpl implements SerpApiClient {
         params.put("mkt", properties.getApi().getSerp().getBingMarket());
         params.put("api_key", apiKey());
         String url = buildUrl(params);
-        return execute("SerpAPI Bing image search by URL", url);
+        log.info("SerpAPI Bing 识图开始 imageUrl={} market={}", imageUrl, properties.getApi().getSerp().getBingMarket());
+        return execute("SerpAPI Bing 识图", url);
     }
 
     @Override
@@ -83,12 +78,10 @@ public class SerpApiClientImpl implements SerpApiClient {
         params.put("mkt", properties.getApi().getSerp().getBingMarket());
         params.put("api_key", apiKey());
         String url = buildUrl(params);
-        return execute("SerpAPI Bing image search", url);
+        log.info("SerpAPI Bing 图片搜索开始 query={}", query);
+        return execute("SerpAPI Bing 图片搜索", url);
     }
 
-    /**
-     * 调用常规 Google 搜索接口。
-     */
     @Override
     public SerpApiResponse googleSearch(String query) {
         Map<String, String> params = new LinkedHashMap<>();
@@ -96,24 +89,24 @@ public class SerpApiClientImpl implements SerpApiClient {
         params.put("q", normalizeQuery(query));
         params.put("api_key", apiKey());
         String url = buildUrl(params);
-        return execute("SerpAPI Google search", url);
+        log.info("SerpAPI Google 搜索开始 query={}", query);
+        return execute("SerpAPI Google 搜索", url);
     }
 
-    /**
-     * 执行 HTTP 请求并把响应 JSON 解析成统一包装对象。
-     */
     private SerpApiResponse execute(String name, String url) {
         ApiProperties.Api api = properties.getApi();
         return RetryUtils.execute(name, api.getSerp().getMaxRetries(), api.getSerp().getBackoffInitialMs(), () -> {
+            log.info("{} 请求地址={}", name, LogSanitizer.maskUrl(url));
             ResponseEntity<String> response = restTemplate.getForEntity(URI.create(url), String.class);
             JsonNode root = objectMapper.readTree(response.getBody());
+            int organicCount = countArray(root.path("organic_results"));
+            int visualCount = countArray(root.path("visual_matches"));
+            int imageCount = countArray(root.path("image_results"));
+            log.info("{} 完成 organicCount={} visualCount={} imageCount={}", name, organicCount, visualCount, imageCount);
             return new SerpApiResponse().setRoot(root);
         });
     }
 
-    /**
-     * 校验 SerpAPI Key 是否存在。
-     */
     private String apiKey() {
         if (!StringUtils.hasText(properties.getApi().getSerp().getApiKey())) {
             throw new ApiCallException("SerpAPI key not configured.");
@@ -128,7 +121,7 @@ public class SerpApiClientImpl implements SerpApiClient {
         try {
             return UriUtils.decode(query, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException ex) {
-            log.debug("跳过对错误编码值的查询归一化: {}", query);
+            log.debug("跳过错误编码查询的归一化 query={}", query);
             return query;
         }
     }
@@ -142,5 +135,9 @@ public class SerpApiClientImpl implements SerpApiClient {
             joiner.add(entry.getKey() + "=" + UriUtils.encode(entry.getValue(), StandardCharsets.UTF_8));
         }
         return joiner.toString();
+    }
+
+    private int countArray(JsonNode node) {
+        return node != null && node.isArray() ? node.size() : 0;
     }
 }
