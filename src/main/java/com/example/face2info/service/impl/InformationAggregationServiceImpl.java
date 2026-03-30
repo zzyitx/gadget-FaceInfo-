@@ -131,18 +131,19 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return new ResolvedPersonProfile().setResolvedName(fallbackName);
         }
 
-        List<PageContent> pages;
+        List<PageContent> pages = List.of();
         try {
             pages = jinaReaderClient.readPages(urls);
             log.info("Jina 正文提取完成 fallbackName={} pageCount={}", fallbackName, pages == null ? 0 : pages.size());
         } catch (RuntimeException ex) {
             log.warn("Jina 正文提取失败 fallbackName={} urlCount={} error={}", fallbackName, urls.size(), ex.getMessage(), ex);
-            return new ResolvedPersonProfile()
-                    .setResolvedName(fallbackName)
-                    .setEvidenceUrls(urls);
         }
         if (pages == null || pages.isEmpty()) {
-            log.info("正文总结跳过：Jina 未返回可用正文 fallbackName={}", fallbackName);
+            pages = buildFallbackPages(evidences, urls);
+            log.info("正文总结兜底页面构建完成 fallbackName={} pageCount={}", fallbackName, pages.size());
+        }
+        if (pages.isEmpty()) {
+            log.info("正文总结跳过：既无可用 Jina 正文也无可用网页证据 fallbackName={}", fallbackName);
             return new ResolvedPersonProfile()
                     .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
@@ -204,6 +205,43 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     }
                 });
         return new ArrayList<>(urls);
+    }
+
+    private List<PageContent> buildFallbackPages(List<WebEvidence> evidences, List<String> selectedUrls) {
+        if (evidences == null || evidences.isEmpty() || selectedUrls == null || selectedUrls.isEmpty()) {
+            return List.of();
+        }
+        Set<String> selected = new LinkedHashSet<>(selectedUrls);
+        List<PageContent> pages = new ArrayList<>();
+        for (WebEvidence evidence : evidences) {
+            if (evidence == null || !selected.contains(evidence.getUrl())) {
+                continue;
+            }
+            String content = buildFallbackContent(evidence);
+            if (!StringUtils.hasText(content)) {
+                continue;
+            }
+            pages.add(new PageContent()
+                    .setUrl(evidence.getUrl())
+                    .setTitle(evidence.getTitle())
+                    .setContent(content)
+                    .setSourceEngine(StringUtils.hasText(evidence.getSourceEngine()) ? evidence.getSourceEngine() : "evidence"));
+        }
+        return pages;
+    }
+
+    private String buildFallbackContent(WebEvidence evidence) {
+        List<String> parts = new ArrayList<>();
+        if (StringUtils.hasText(evidence.getSnippet())) {
+            parts.add(evidence.getSnippet().trim());
+        }
+        if (StringUtils.hasText(evidence.getSource())) {
+            parts.add(evidence.getSource().trim());
+        }
+        if (parts.isEmpty()) {
+            return null;
+        }
+        return String.join("\n", parts);
     }
 
     private String resolveNameOrFallback(ResolvedPersonProfile profile, RecognitionEvidence evidence) {

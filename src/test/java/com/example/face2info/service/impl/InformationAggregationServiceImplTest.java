@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -146,6 +147,81 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldFallbackToWebEvidenceAndStillCallKimiWhenJinaFails() throws Exception {
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenThrow(new RuntimeException("jina failed"));
+        when(summaryGenerationClient.summarizePerson(
+                org.mockito.ArgumentMatchers.eq("Jay Chou"),
+                argThat(pages -> pages != null
+                        && pages.size() == 1
+                        && "https://example.com/a".equals(pages.get(0).getUrl())
+                        && "Profile".equals(pages.get(0).getTitle())
+                        && pages.get(0).getContent() != null
+                        && pages.get(0).getContent().contains("Mandopop singer")
+                        && pages.get(0).getContent().contains("Example News"))))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("Jay Chou is a singer.")
+                        .setEvidenceUrls(List.of("https://example.com/a")));
+        when(serpApiClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence()
+                        .setUrl("https://example.com/a")
+                        .setTitle("Profile")
+                        .setSnippet("Mandopop singer")
+                        .setSource("Example News")
+                        .setSourceEngine("google"))));
+
+        assertThat(result.getPerson().getDescription()).isEqualTo("Jay Chou is a singer. (由 Kimi 总结)");
+        assertThat(result.getWarnings()).isEmpty();
+    }
+
+    @Test
+    void shouldFallbackToWebEvidenceAndStillCallKimiWhenJinaReturnsEmptyPages() throws Exception {
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of());
+        when(summaryGenerationClient.summarizePerson(
+                org.mockito.ArgumentMatchers.eq("Jay Chou"),
+                argThat(pages -> pages != null
+                        && pages.size() == 1
+                        && "https://example.com/a".equals(pages.get(0).getUrl())
+                        && pages.get(0).getContent() != null
+                        && pages.get(0).getContent().contains("Mandopop singer"))))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("Jay Chou is a singer.")
+                        .setEvidenceUrls(List.of("https://example.com/a")));
+        when(serpApiClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence()
+                        .setUrl("https://example.com/a")
+                        .setTitle("Profile")
+                        .setSnippet("Mandopop singer")
+                        .setSourceEngine("google"))));
+
+        assertThat(result.getPerson().getDescription()).isEqualTo("Jay Chou is a singer. (由 Kimi 总结)");
+        assertThat(result.getWarnings()).isEmpty();
+    }
+
+    @Test
     void shouldUseResolvedNameForGoogleNewsAndSocialAggregation() throws Exception {
         SerpApiClient serpApiClient = mock(SerpApiClient.class);
         NewsApiClient newsApiClient = mock(NewsApiClient.class);
@@ -191,8 +267,8 @@ class InformationAggregationServiceImplTest {
                 .setEvidenceUrls(List.of("https://example.com/a")));
         when(serpApiClient.googleSearch("LeiJun")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback\"}}")));
-        when(serpApiClient.googleSearch("LeiJun 鎶栭煶")).thenReturn(emptySerpResponse());
-        when(serpApiClient.googleSearch("LeiJun 寰崥")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("LeiJun 抖音")).thenReturn(emptySerpResponse());
+        when(serpApiClient.googleSearch("LeiJun 微博")).thenReturn(emptySerpResponse());
 
         InformationAggregationServiceImpl service =
                 new InformationAggregationServiceImpl(serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor);
@@ -230,8 +306,8 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getSocialAccounts()).hasSize(1);
         assertThat(result.getSocialAccounts().get(0).getUsername()).isEqualTo("功能正在开发中");
         verify(serpApiClient).googleSearch("JayChou");
-        verify(serpApiClient, never()).googleSearch("Jay Chou 鎶栭煶");
-        verify(serpApiClient, never()).googleSearch("Jay Chou 寰崥");
+        verify(serpApiClient, never()).googleSearch("Jay Chou 抖音");
+        verify(serpApiClient, never()).googleSearch("Jay Chou 微博");
     }
 
     @Test
