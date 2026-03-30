@@ -98,6 +98,9 @@ public class JinaReaderClientImpl implements JinaReaderClient {
     }
 
     private String normalizeOriginalUrl(String originalUrl) {
-        return originalUrl.replaceAll("\\s+", "");
+        if (!StringUtils.hasText(originalUrl)) {
+            return originalUrl;
+        }
+        return originalUrl.trim().replaceAll("\\s", "%20");
     }
 }

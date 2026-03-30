@@ -60,10 +60,10 @@ class JinaReaderClientImplTest {
     }
 
     @Test
-    void shouldRemoveWhitespaceFromOriginalUrlBeforeCallingJina() {
+    void shouldEncodeWhitespaceInBaiduBaikeUrlBeforeCallingJina() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("https://r.jina.ai/https://baike.baidu.com/en/item/LeiJun/985856"))
+        server.expect(requestTo("https://r.jina.ai/https://baike.baidu.com/en/item/Lei%20Jun/985856"))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("Lei Jun profile", MediaType.TEXT_PLAIN));
 
@@ -73,7 +73,7 @@ class JinaReaderClientImplTest {
         List<PageContent> pages = client.readPages(List.of("https://baike.baidu.com/en/item/Lei Jun/985856"));
 
         assertThat(pages).hasSize(1);
-        assertThat(pages.get(0).getUrl()).isEqualTo("https://baike.baidu.com/en/item/LeiJun/985856");
+        assertThat(pages.get(0).getUrl()).isEqualTo("https://baike.baidu.com/en/item/Lei%20Jun/985856");
         assertThat(pages.get(0).getContent()).isEqualTo("Lei Jun profile");
         server.verify();
     }
