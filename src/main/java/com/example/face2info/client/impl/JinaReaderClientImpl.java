@@ -34,6 +34,7 @@ public class JinaReaderClientImpl implements JinaReaderClient {
     @Override
     public List<PageContent> readPages(List<String> urls) {
         List<PageContent> pages = new ArrayList<>();
+        ApiCallException lastException = null;
         if (urls == null || urls.isEmpty()) {
             log.info("Jina 正文读取跳过，未收到可用链接");
             return pages;
@@ -44,7 +45,16 @@ public class JinaReaderClientImpl implements JinaReaderClient {
             if (!StringUtils.hasText(url)) {
                 continue;
             }
-            pages.add(readSinglePage(url));
+            try {
+                pages.add(readSinglePage(url));
+            } catch (ApiCallException ex) {
+                lastException = ex;
+                log.warn("Jina page read failed but batch will continue sourceUrl={} error={}",
+                        LogSanitizer.maskUrl(url), ex.getMessage());
+            }
+        }
+        if (pages.isEmpty() && lastException != null) {
+            throw lastException;
         }
         log.info("Jina 正文读取完成 successCount={}", pages.size());
         return pages;

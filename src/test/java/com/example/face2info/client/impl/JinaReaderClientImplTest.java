@@ -60,6 +60,37 @@ class JinaReaderClientImplTest {
     }
 
     @Test
+    void shouldKeepSuccessfulPagesWhenOneUrlFails() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://r.jina.ai/https://example.com/a"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("page-a", MediaType.TEXT_PLAIN));
+        server.expect(requestTo("https://r.jina.ai/https://example.com/b"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withBadRequest().body("{\"message\":\"bad url\"}").contentType(MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://r.jina.ai/https://example.com/c"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("page-c", MediaType.TEXT_PLAIN));
+
+        JinaReaderClientImpl client = new JinaReaderClientImpl(restTemplate,
+                createProperties("https://r.jina.ai/", "test-key"));
+
+        List<PageContent> pages = client.readPages(List.of(
+                "https://example.com/a",
+                "https://example.com/b",
+                "https://example.com/c"
+        ));
+
+        assertThat(pages).hasSize(2);
+        assertThat(pages).extracting(PageContent::getUrl)
+                .containsExactly("https://example.com/a", "https://example.com/c");
+        assertThat(pages).extracting(PageContent::getContent)
+                .containsExactly("page-a", "page-c");
+        server.verify();
+    }
+
+    @Test
     void shouldEncodeWhitespaceInBaiduBaikeUrlBeforeCallingJina() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
