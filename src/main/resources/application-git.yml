@@ -54,10 +54,14 @@ face2info:
     facecheck:
       base-url: https://facecheck.id
       upload-path: /api/upload_pic
+      search-path: /api/search
       api-key: ${FACECHECK_API_KEY:}
       connect-timeout-ms: 5000
       read-timeout-ms: 15000
+      poll-interval-ms: 1000
+      search-timeout-ms: 15000
       reset-prev-images: true
+      demo: false
     proxy:
       enabled: false
       host:

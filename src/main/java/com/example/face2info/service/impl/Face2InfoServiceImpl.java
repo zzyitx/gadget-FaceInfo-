@@ -3,6 +3,7 @@ package com.example.face2info.service.impl;
 import com.example.face2info.client.FaceCheckClient;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.FaceCheckMatchCandidate;
+import com.example.face2info.entity.internal.FaceCheckSearchResponse;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.response.FaceCheckMatch;
 import com.example.face2info.entity.response.FaceInfoResponse;
@@ -60,9 +61,14 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 aggregationResult.getPerson() == null ? null : aggregationResult.getPerson().getName());
 
         List<String> combinedErrors = new ArrayList<>(aggregationResult.getErrors());
+        List<String> warnings = new ArrayList<>(aggregationResult.getWarnings());
         List<FaceCheckMatch> facecheckMatches = new ArrayList<>();
         try {
-            facecheckMatches = faceCheckClient.upload(image).getItems().stream()
+            FaceCheckSearchResponse faceCheckResponse = faceCheckClient.search(image);
+            if (faceCheckResponse.isTimedOut()) {
+                warnings.add("FaceCheck 搜索超时");
+            }
+            facecheckMatches = faceCheckResponse.getItems().stream()
                     .map(this::toFacecheckMatch)
                     .toList();
         } catch (ApiCallException ex) {
@@ -92,13 +98,13 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
                 .setSocialAccounts(aggregationResult.getSocialAccounts());
 
-        String status = combinedErrors.isEmpty() ? "success" : "partial";
+        String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
         log.info("总流程结束 status={} personName={} warningCount={} errorCount={}",
-                status, person.getName(), aggregationResult.getWarnings().size(), combinedErrors.size());
+                status, person.getName(), warnings.size(), combinedErrors.size());
         return new FaceInfoResponse()
                 .setPerson(person)
                 .setNews(aggregationResult.getNews())
-                .setWarnings(aggregationResult.getWarnings())
+                .setWarnings(warnings)
                 .setImageMatches(evidence.getImageMatches())
                 .setFacecheckMatches(facecheckMatches)
                 .setStatus(status)

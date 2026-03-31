@@ -3,7 +3,7 @@ package com.example.face2info.service.impl;
 import com.example.face2info.client.FaceCheckClient;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.FaceCheckMatchCandidate;
-import com.example.face2info.entity.internal.FaceCheckUploadResponse;
+import com.example.face2info.entity.internal.FaceCheckSearchResponse;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.response.FaceInfoResponse;
@@ -22,6 +22,30 @@ import static org.mockito.Mockito.when;
 class Face2InfoServiceImplTest {
 
     @Test
+    void shouldReturnPartialAndWarningWhenFacecheckSearchTimesOut() {
+        ImageUtils imageUtils = mock(ImageUtils.class);
+        FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
+        InformationAggregationService aggregationService = mock(InformationAggregationService.class);
+        FaceCheckClient faceCheckClient = mock(FaceCheckClient.class);
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        RecognitionEvidence evidence = new RecognitionEvidence();
+
+        doNothing().when(imageUtils).validateImage(image);
+        when(recognitionService.recognize(image)).thenReturn(evidence);
+        when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate().setName("Jay Chou").setDescription("Jay Chou is a singer."))
+                .setWarnings(new java.util.ArrayList<>()));
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse().setTimedOut(true));
+
+        FaceInfoResponse response = new Face2InfoServiceImpl(
+                imageUtils, recognitionService, aggregationService, faceCheckClient).process(image);
+
+        assertThat(response.getStatus()).isEqualTo("partial");
+        assertThat(response.getWarnings()).contains("FaceCheck 搜索超时");
+        assertThat(response.getFacecheckMatches()).isEmpty();
+    }
+
+    @Test
     void shouldMapSummaryTagsAndWarningsToResponse() {
         ImageUtils imageUtils = mock(ImageUtils.class);
         FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
@@ -32,7 +56,7 @@ class Face2InfoServiceImplTest {
 
         doNothing().when(imageUtils).validateImage(image);
         when(recognitionService.recognize(image)).thenReturn(evidence);
-        when(faceCheckClient.upload(image)).thenReturn(new FaceCheckUploadResponse());
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse());
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate()
                         .setName("Jay Chou")
@@ -62,7 +86,7 @@ class Face2InfoServiceImplTest {
 
         doNothing().when(imageUtils).validateImage(image);
         when(recognitionService.recognize(image)).thenReturn(evidence);
-        when(faceCheckClient.upload(image)).thenReturn(new FaceCheckUploadResponse());
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse());
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate().setName("Jay Chou").setDescription("Jay Chou is a singer.")));
 
@@ -87,7 +111,7 @@ class Face2InfoServiceImplTest {
 
         doNothing().when(imageUtils).validateImage(image);
         when(recognitionService.recognize(image)).thenReturn(evidence);
-        when(faceCheckClient.upload(image)).thenReturn(new FaceCheckUploadResponse());
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse());
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate().setName("Jay Chou").setDescription("Jay Chou is a singer."))
                 .setErrors(java.util.List.of("news fetch failed: timeout")));
@@ -112,7 +136,7 @@ class Face2InfoServiceImplTest {
 
         doNothing().when(imageUtils).validateImage(image);
         when(recognitionService.recognize(image)).thenReturn(evidence);
-        when(faceCheckClient.upload(image)).thenReturn(new FaceCheckUploadResponse());
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse());
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate())
                 .setErrors(java.util.List.of("Unable to resolve person name from evidence")));
@@ -138,7 +162,7 @@ class Face2InfoServiceImplTest {
 
         doNothing().when(imageUtils).validateImage(image);
         when(recognitionService.recognize(image)).thenReturn(evidence);
-        when(faceCheckClient.upload(image)).thenReturn(new FaceCheckUploadResponse());
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse());
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate().setName("Jay Chou")));
 
@@ -161,7 +185,7 @@ class Face2InfoServiceImplTest {
         when(recognitionService.recognize(image)).thenReturn(evidence);
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate().setName("Jay Chou").setDescription("Jay Chou is a singer.")));
-        when(faceCheckClient.upload(image)).thenReturn(new FaceCheckUploadResponse()
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse()
                 .setItems(java.util.List.of(
                         new FaceCheckMatchCandidate()
                                 .setImageDataUrl("data:image/jpeg;base64,AAA")
@@ -193,7 +217,7 @@ class Face2InfoServiceImplTest {
         when(recognitionService.recognize(image)).thenReturn(evidence);
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate().setName("Jay Chou").setDescription("Jay Chou is a singer.")));
-        when(faceCheckClient.upload(image)).thenReturn(new FaceCheckUploadResponse());
+        when(faceCheckClient.search(image)).thenReturn(new FaceCheckSearchResponse());
 
         FaceInfoResponse response = new Face2InfoServiceImpl(
                 imageUtils, recognitionService, aggregationService, faceCheckClient).process(image);
@@ -215,7 +239,7 @@ class Face2InfoServiceImplTest {
         when(recognitionService.recognize(image)).thenReturn(evidence);
         when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate().setName("Jay Chou").setDescription("Jay Chou is a singer.")));
-        when(faceCheckClient.upload(image)).thenThrow(new ApiCallException("facecheck timeout"));
+        when(faceCheckClient.search(image)).thenThrow(new ApiCallException("facecheck timeout"));
 
         FaceInfoResponse response = new Face2InfoServiceImpl(
                 imageUtils, recognitionService, aggregationService, faceCheckClient).process(image);

@@ -2,7 +2,8 @@ package com.example.face2info.client.impl;
 
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.FaceCheckApiProperties;
-import com.example.face2info.entity.internal.FaceCheckUploadResponse;
+import com.example.face2info.entity.internal.FaceCheckMatchCandidate;
+import com.example.face2info.entity.internal.FaceCheckSearchResponse;
 import com.example.face2info.exception.ApiCallException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -22,18 +23,43 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class FaceCheckClientImplTest {
 
     @Test
-    void shouldMapUploadResponseItemsToMatchCandidates() {
+    void shouldExposeSearchResultContractForFinalMatches() {
+        FaceCheckSearchResponse response = new FaceCheckSearchResponse()
+                .setItems(java.util.List.of(new FaceCheckMatchCandidate().setSourceHost("instagram.com")))
+                .setTimedOut(true);
+
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.isTimedOut()).isTrue();
+    }
+
+    @Test
+    void shouldUploadThenPollSearchUntilItemsAppear() {
         RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).ignoreExpectOrder(true).build();
         server.expect(requestTo("https://facecheck.id/api/upload_pic"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {
                           "id_search":"req-1",
+                          "message":"uploaded"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://facecheck.id/api/search"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "message":"searching",
+                          "progress":35
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://facecheck.id/api/search"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
                           "output":{
                             "items":[
                               {
-                                "score":97.2,
+                                "score":97,
                                 "group":1,
                                 "base64":"AAA",
                                 "url":{"value":"https://www.instagram.com/p/demo"},
@@ -47,34 +73,80 @@ class FaceCheckClientImplTest {
 
         FaceCheckClientImpl client = new FaceCheckClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
-        FaceCheckUploadResponse response = client.upload(
+        FaceCheckSearchResponse response = client.search(
                 new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3}));
 
+        assertThat(response.isTimedOut()).isFalse();
         assertThat(response.getItems()).hasSize(1);
         assertThat(response.getItems().get(0).getSourceHost()).isEqualTo("instagram.com");
-        assertThat(response.getItems().get(0).getImageDataUrl()).isEqualTo("data:image/jpeg;base64,AAA");
         server.verify();
     }
 
     @Test
-    void shouldReturnEmptyItemsWhenFacecheckOutputIsMissing() {
+    void shouldThrowWhenSearchReturnsRemoteError() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://facecheck.id/api/upload_pic"))
                 .andExpect(method(HttpMethod.POST))
-                .andRespond(withSuccess("{\"id_search\":\"req-2\"}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("""
+                        {
+                          "id_search":"req-err"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://facecheck.id/api/search"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "error":"quota exceeded",
+                          "code":"403"
+                        }
+                        """, MediaType.APPLICATION_JSON));
 
         FaceCheckClientImpl client = new FaceCheckClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
-        FaceCheckUploadResponse response = client.upload(
+        assertThatThrownBy(() -> client.search(
+                new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3})))
+                .isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("facecheck");
+        server.verify();
+    }
+
+    @Test
+    void shouldReturnTimedOutResponseWhenSearchDoesNotFinishInTime() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).ignoreExpectOrder(true).build();
+        server.expect(requestTo("https://facecheck.id/api/upload_pic"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "id_search":"req-timeout"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://facecheck.id/api/search"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "message":"still searching",
+                          "progress":10
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        ApiProperties properties = createProperties();
+        properties.getApi().getFacecheck().setSearchTimeoutMillis(1);
+        properties.getApi().getFacecheck().setPollIntervalMillis(0);
+
+        FaceCheckClientImpl client = new FaceCheckClientImpl(restTemplate, new ObjectMapper(), properties);
+
+        FaceCheckSearchResponse response = client.search(
                 new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3}));
 
+        assertThat(response.isTimedOut()).isTrue();
         assertThat(response.getItems()).isEmpty();
         server.verify();
     }
 
     @Test
-    void shouldWrapRemoteErrorsAsApiCallException() {
+    void shouldWrapUploadErrorsAsApiCallException() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://facecheck.id/api/upload_pic"))
@@ -83,11 +155,10 @@ class FaceCheckClientImplTest {
 
         FaceCheckClientImpl client = new FaceCheckClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
-        assertThatThrownBy(() -> client.upload(
+        assertThatThrownBy(() -> client.search(
                 new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3})))
                 .isInstanceOf(ApiCallException.class)
                 .hasMessageContaining("facecheck");
-
         server.verify();
     }
 
@@ -96,6 +167,7 @@ class FaceCheckClientImplTest {
         properties.getApi().setFacecheck(new FaceCheckApiProperties());
         properties.getApi().getFacecheck().setBaseUrl("https://facecheck.id");
         properties.getApi().getFacecheck().setUploadPath("/api/upload_pic");
+        properties.getApi().getFacecheck().setSearchPath("/api/search");
         properties.getApi().getFacecheck().setApiKey("test-key");
         properties.getApi().getFacecheck().setResetPrevImages(true);
         return properties;
