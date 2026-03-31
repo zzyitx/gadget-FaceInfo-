@@ -19,13 +19,16 @@ class StaticPageTest {
     private MockMvc mockMvc;
 
     @Test
-    void shouldRenderUpdatedWorkflowSectionsOnIndexPage() throws Exception {
+    void shouldRenderFacecheckMatchSectionOnIndexPage() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("id=\"signalsCard\"")))
                 .andExpect(content().string(containsString("id=\"matchesCard\"")))
+                .andExpect(content().string(containsString("facecheck_matches")))
+                .andExpect(content().string(containsString("renderFacecheckMatches")))
+                .andExpect(content().string(containsString("FaceCheck")))
+                .andExpect(content().string(containsString("source_url")))
+                .andExpect(content().string(containsString("similarity_score")))
                 .andExpect(content().string(containsString("id=\"rawCard\"")))
-                .andExpect(content().string(containsString("Jina")))
                 .andExpect(content().string(containsString("<details")));
     }
 }

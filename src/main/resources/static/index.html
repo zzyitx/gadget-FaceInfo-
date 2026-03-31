@@ -522,7 +522,7 @@
 
             renderPerson(data.person, data.status, data.error);
             renderSignals(data);
-            renderImageMatches(data.image_matches || []);
+            renderFacecheckMatches(data.facecheck_matches || [], data.status, data.error);
             renderSocialAccounts(data.person && data.person.social_accounts ? data.person.social_accounts : []);
             renderNews(data.news || []);
 
@@ -550,8 +550,8 @@
             '<div class="meta-text">这次请求的线索摘要会在返回后刷新。</div>';
 
         matchesCard.innerHTML =
-            '<div class="eyebrow">图片匹配</div>' +
-            '<div class="empty">正在等待新的图片匹配结果。</div>';
+            '<div class="eyebrow">FaceCheck 匹配结果</div>' +
+            '<div class="empty">正在等待 FaceCheck 相似图片结果。</div>';
 
         socialCard.innerHTML =
             '<div class="eyebrow">社交账号</div>' +
@@ -570,6 +570,7 @@
             error: data.error || null,
             person: data.person || null,
             evidence_urls: data.person && data.person.evidence_urls ? data.person.evidence_urls : [],
+            facecheck_matches: (data.facecheck_matches || []).slice(0, 20),
             image_matches: (data.image_matches || []).slice(0, 20).map(function (item) {
                 return {
                     position: item.position || null,
@@ -644,33 +645,41 @@
             '</div>';
     }
 
-    function renderImageMatches(matches) {
+    function renderFacecheckMatches(matches, status, error) {
         if (!matches.length) {
             matchesCard.innerHTML =
-                '<div class="eyebrow">图片匹配</div>' +
-                '<div class="empty">当前请求没有返回图片匹配结果。</div>';
+                '<div class="eyebrow">FaceCheck 匹配结果</div>' +
+                '<div class="empty">' + escapeHtml(
+                    status === "partial" && error
+                        ? "FaceCheck 调用失败，本次未返回相似图片。"
+                        : "暂无 FaceCheck 相似图片结果。"
+                ) + '</div>';
             return;
         }
 
         const html = matches.slice(0, 20).map(function (item, index) {
-            const position = item.position || (index + 1);
-            const title = escapeHtml(item.title || "未命名结果");
-            const source = escapeHtml(item.source || "未知来源");
-            const link = item.link
-                ? '<div class="serp-link"><a href="' + escapeHtml(item.link) + '" target="_blank" rel="noreferrer">' + escapeHtml(item.link) + '</a></div>'
+            const position = item.index || (index + 1);
+            const source = escapeHtml(item.source_host || "未知来源");
+            const score = escapeHtml(item.similarity_score || 0);
+            const image = item.image_data_url
+                ? '<div class="preview" style="display:block;margin-top:0;"><img src="' + escapeHtml(item.image_data_url) + '" alt="FaceCheck match preview"></div>'
+                : '';
+            const link = item.source_url
+                ? '<div class="serp-link"><a href="' + escapeHtml(item.source_url) + '" target="_blank" rel="noreferrer">打开来源</a></div>'
                 : '<div class="serp-link">无链接</div>';
 
             return '<div class="serp-entry">' +
                 '<div class="pill">#' + escapeHtml(position) + '</div>' +
-                '<strong>' + title + '</strong>' +
-                '<div class="serp-meta">来源：' + source + '</div>' +
+                image +
+                '<strong>' + source + '</strong>' +
+                '<div class="serp-meta">相似度：' + score + '</div>' +
                 link +
                 '</div>';
         }).join("");
 
         matchesCard.innerHTML =
-            '<div class="eyebrow">图片匹配</div>' +
-            '<div class="meta-text">这些结果来自识别阶段的图片匹配，仅作为辅助线索，不代表最终人物结论。</div>' +
+            '<div class="eyebrow">FaceCheck 匹配结果</div>' +
+            '<div class="meta-text">这里展示 FaceCheck 返回的相似图片、相似度和来源。</div>' +
             '<div class="list">' + html + '</div>';
     }
 
@@ -726,8 +735,8 @@
             '<div class="eyebrow">识别线索</div>' +
             '<div class="empty">请求失败后未生成新的识别线索摘要。</div>';
         matchesCard.innerHTML =
-            '<div class="eyebrow">图片匹配</div>' +
-            '<div class="empty">请求失败后未生成图片匹配结果。</div>';
+            '<div class="eyebrow">FaceCheck 匹配结果</div>' +
+            '<div class="empty">请求失败后未生成 FaceCheck 匹配结果。</div>';
         socialCard.innerHTML =
             '<div class="eyebrow">社交账号</div>' +
             '<div class="empty">请求失败后未生成账号结果。</div>';
