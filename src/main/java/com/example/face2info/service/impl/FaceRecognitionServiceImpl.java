@@ -120,10 +120,9 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             if (response == null || response.getRoot() == null) {
                 continue;
             }
-            collectSeedQuery(queries, response.getRoot().path("knowledge_graph").path("title").asText(null));
-            collectSeedQueriesFromArray(queries, response.getRoot().path("visual_matches"));
+            collectSeedQuery(queries, firstNonBlank(response.getRoot(), "knowledgeGraph.title", "knowledge_graph.title"));
+            collectSeedQueriesFromArray(queries, response.getRoot().path("organic"));
             collectSeedQueriesFromArray(queries, response.getRoot().path("image_results"));
-            collectSeedQueriesFromArray(queries, response.getRoot().path("organic_results"));
             if (queries.size() >= MAX_SEED_QUERIES) {
                 break;
             }
@@ -152,9 +151,11 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
     private List<WebEvidence> extractWebEvidence(JsonNode root, String sourceEngine) {
         List<WebEvidence> evidences = new ArrayList<>();
-        collectWebEvidence(evidences, root.path("visual_matches"), sourceEngine);
+        if ("google_lens".equals(sourceEngine)) {
+            collectWebEvidence(evidences, root.path("organic"), sourceEngine);
+            return evidences;
+        }
         collectWebEvidence(evidences, root.path("image_results"), sourceEngine);
-        collectWebEvidence(evidences, root.path("organic_results"), sourceEngine);
         return evidences;
     }
 
@@ -181,12 +182,20 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
     private String firstNonBlank(JsonNode node, String... fields) {
         for (String field : fields) {
-            String value = node.path(field).asText(null);
+            String value = readPath(node, field);
             if (StringUtils.hasText(value)) {
                 return value;
             }
         }
         return null;
+    }
+
+    private String readPath(JsonNode node, String fieldPath) {
+        JsonNode current = node;
+        for (String segment : fieldPath.split("\\.")) {
+            current = current.path(segment);
+        }
+        return current.asText(null);
     }
 
     private List<WebEvidence> deduplicateWebEvidence(List<WebEvidence> evidences) {
@@ -204,7 +213,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     }
 
     private List<ImageMatch> extractImageMatches(JsonNode root) {
-        JsonNode visualMatches = root.path("visual_matches");
+        JsonNode visualMatches = root.path("organic");
         List<ImageMatch> matches = new ArrayList<>();
         if (!visualMatches.isArray()) {
             return matches;

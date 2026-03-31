@@ -35,9 +35,8 @@ class FaceRecognitionServiceImplTest {
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "knowledge_graph": { "title": "Jay Chou" },
-                          "visual_matches": [{
-                            "position": 1,
+                          "knowledgeGraph": { "title": "Jay Chou" },
+                          "organic": [{
                             "title": "Jay Chou profile",
                             "link": "https://example.com/a",
                             "source": "Lens"
@@ -80,8 +79,8 @@ class FaceRecognitionServiceImplTest {
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "knowledge_graph": { "title": "Jay Chou" },
-                          "visual_matches": [{ "title": "Jay Chou", "link": "https://example.com/a", "source": "Lens" }]
+                          "knowledgeGraph": { "title": "Jay Chou" },
+                          "organic": [{ "title": "Jay Chou", "link": "https://example.com/a", "source": "Lens" }]
                         }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
@@ -108,7 +107,7 @@ class FaceRecognitionServiceImplTest {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree(buildVisualMatchesPayload(25))));
+                .setRoot(objectMapper.readTree(buildOrganicPayload(25))));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
@@ -127,7 +126,7 @@ class FaceRecognitionServiceImplTest {
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
-                        { "knowledge_graph": { "title": "Lei Jun" } }
+                        { "knowledgeGraph": { "title": "Lei Jun" } }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
@@ -150,8 +149,8 @@ class FaceRecognitionServiceImplTest {
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "knowledge_graph": { "title": "Jay Chou" },
-                          "visual_matches": [{ "title": "Jay Chou profile", "link": "https://example.com/a", "source": "Lens" }]
+                          "knowledgeGraph": { "title": "Jay Chou" },
+                          "organic": [{ "title": "Jay Chou profile", "link": "https://example.com/a", "source": "Lens" }]
                         }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenThrow(new RuntimeException("timeout"));
@@ -174,7 +173,7 @@ class FaceRecognitionServiceImplTest {
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
-                        { "knowledge_graph": { "title": "Lei Jun" } }
+                        { "knowledgeGraph": { "title": "Lei Jun" } }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
@@ -198,8 +197,8 @@ class FaceRecognitionServiceImplTest {
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "knowledge_graph": { "title": "Jay Chou" },
-                          "visual_matches": [{ "title": "Jay Chou profile", "link": "https://example.com/a", "source": "Lens" }]
+                          "knowledgeGraph": { "title": "Jay Chou" },
+                          "organic": [{ "title": "Jay Chou profile", "link": "https://example.com/a", "source": "Lens" }]
                         }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
@@ -216,15 +215,14 @@ class FaceRecognitionServiceImplTest {
         assertThat(result.getWebEvidences()).extracting(WebEvidence::getUrl).contains("https://example.com/a");
     }
 
-    private String buildVisualMatchesPayload(int count) {
+    private String buildOrganicPayload(int count) {
         StringBuilder builder = new StringBuilder();
-        builder.append("{\"knowledge_graph\":{\"title\":\"Lei Jun\"},\"visual_matches\":[");
+        builder.append("{\"knowledgeGraph\":{\"title\":\"Lei Jun\"},\"organic\":[");
         for (int i = 1; i <= count; i++) {
             if (i > 1) {
                 builder.append(",");
             }
             builder.append("{")
-                    .append("\"position\":").append(i).append(",")
                     .append("\"title\":\"Match ").append(i).append("\",")
                     .append("\"link\":\"https://example.com/").append(i).append("\",")
                     .append("\"source\":\"Example\"")
