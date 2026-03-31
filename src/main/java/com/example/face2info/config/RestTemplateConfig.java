@@ -28,6 +28,7 @@ public class RestTemplateConfig {
     public RestTemplate restTemplate(ApiProperties properties) {
         int connectTimeout = max(
                 properties.getApi().getSerp().getConnectTimeoutMs(),
+                properties.getApi().getGoogle().getConnectTimeoutMs(),
                 properties.getApi().getNews().getConnectTimeoutMs(),
                 properties.getApi().getJina().getConnectTimeoutMs(),
                 properties.getApi().getKimi().getConnectTimeoutMs(),
@@ -35,6 +36,7 @@ public class RestTemplateConfig {
         );
         int readTimeout = max(
                 properties.getApi().getSerp().getReadTimeoutMs(),
+                properties.getApi().getGoogle().getReadTimeoutMs(),
                 properties.getApi().getNews().getReadTimeoutMs(),
                 properties.getApi().getJina().getReadTimeoutMs(),
                 properties.getApi().getKimi().getReadTimeoutMs(),

@@ -36,17 +36,6 @@ public class SerpApiClientImpl implements SerpApiClient {
     }
 
     @Override
-    public SerpApiResponse reverseImageSearchByUrl(String imageUrl) {
-        String url = buildUrl(Map.of(
-                "engine", "google_lens",
-                "url", imageUrl,
-                "api_key", apiKey()
-        ));
-        log.info("SerpAPI Google Lens 识图开始 imageUrl={}", imageUrl);
-        return execute("SerpAPI Google Lens 识图", url);
-    }
-
-    @Override
     public SerpApiResponse reverseImageSearchByUrlYandex(String imageUrl, String tab) {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("engine", "yandex_images");
@@ -80,17 +69,6 @@ public class SerpApiClientImpl implements SerpApiClient {
         String url = buildUrl(params);
         log.info("SerpAPI Bing 图片搜索开始 query={}", query);
         return execute("SerpAPI Bing 图片搜索", url);
-    }
-
-    @Override
-    public SerpApiResponse googleSearch(String query) {
-        Map<String, String> params = new LinkedHashMap<>();
-        params.put("engine", "google");
-        params.put("q", normalizeQuery(query));
-        params.put("api_key", apiKey());
-        String url = buildUrl(params);
-        log.info("SerpAPI Google 搜索开始 query={}", query);
-        return execute("SerpAPI Google 搜索", url);
     }
 
     private SerpApiResponse execute(String name, String url) {

@@ -1,5 +1,6 @@
 package com.example.face2info.service.impl;
 
+import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.entity.internal.RecognitionEvidence;
@@ -22,6 +23,7 @@ class FaceRecognitionServiceImplTest {
     private static final String PREVIEW_URL = "https://tempfile.org/kN8mP2xQvR7/preview";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
     private final SerpApiClient serpApiClient = mock(SerpApiClient.class);
     private final TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
     private final NameExtractor nameExtractor = new NameExtractor();
@@ -30,7 +32,7 @@ class FaceRecognitionServiceImplTest {
     void shouldUseBingAndYandexSourcesWhenCollectingEvidence() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
-        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
                           "knowledge_graph": { "title": "Jay Chou" },
@@ -61,7 +63,7 @@ class FaceRecognitionServiceImplTest {
                         }
                         """)));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
         RecognitionEvidence result = service.recognize(image);
 
@@ -75,7 +77,7 @@ class FaceRecognitionServiceImplTest {
     void shouldDeduplicateEvidenceUrlsAcrossSources() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
-        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
                           "knowledge_graph": { "title": "Jay Chou" },
@@ -93,7 +95,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
         RecognitionEvidence result = service.recognize(image);
 
@@ -105,7 +107,7 @@ class FaceRecognitionServiceImplTest {
     void shouldLimitVisualMatchesToTwenty() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
-        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree(buildVisualMatchesPayload(25))));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
@@ -114,7 +116,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
         assertThat(service.recognize(image).getImageMatches()).hasSize(20);
     }
@@ -123,7 +125,7 @@ class FaceRecognitionServiceImplTest {
     void shouldUploadImageThroughTmpfilesClientInterface() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
-        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         { "knowledge_graph": { "title": "Lei Jun" } }
                         """)));
@@ -134,18 +136,18 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
         assertThat(service.recognize(image).getSeedQueries()).contains("Lei Jun");
         verify(tmpfilesClient).uploadImage(image);
-        verify(serpApiClient).reverseImageSearchByUrl(PREVIEW_URL);
+        verify(googleSearchClient).reverseImageSearchByUrl(PREVIEW_URL);
     }
 
     @Test
     void shouldContinueWhenYandexFailsButLensProvidesEvidence() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
-        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
                           "knowledge_graph": { "title": "Jay Chou" },
@@ -157,7 +159,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
         RecognitionEvidence result = service.recognize(image);
 
@@ -170,7 +172,7 @@ class FaceRecognitionServiceImplTest {
     void shouldUseUploadedImageUrlForBingSearch() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
-        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         { "knowledge_graph": { "title": "Lei Jun" } }
                         """)));
@@ -181,7 +183,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
         service.recognize(image);
 
@@ -193,7 +195,7 @@ class FaceRecognitionServiceImplTest {
     void shouldContinueWhenBingImageUrlSearchFails() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
-        when(serpApiClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
                           "knowledge_graph": { "title": "Jay Chou" },
@@ -206,7 +208,7 @@ class FaceRecognitionServiceImplTest {
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenThrow(new RuntimeException("timeout"));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(serpApiClient, nameExtractor, tmpfilesClient);
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
         RecognitionEvidence result = service.recognize(image);
 

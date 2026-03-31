@@ -9,6 +9,15 @@ spring:
 
 face2info:
   api:
+    google:
+      search-url: https://google.serper.dev/search
+      lens-url: https://google.serper.dev/lens
+      api-key: ${SERPER_API_KEY:}
+      hl: zh-cn
+      connect-timeout-ms: 5000
+      read-timeout-ms: 10000
+      max-retries: 3
+      backoff-initial-ms: 300
     serp:
       base-url: https://serpapi.com/search.json
       api-key: ${SERP_API_KEY:}

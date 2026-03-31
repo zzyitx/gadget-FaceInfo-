@@ -1,5 +1,6 @@
 package com.example.face2info.service.impl;
 
+import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.entity.internal.RecognitionEvidence;
@@ -26,11 +27,16 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     private static final int MAX_IMAGE_MATCHES = 20;
     private static final int MAX_SEED_QUERIES = 3;
 
+    private final GoogleSearchClient googleSearchClient;
     private final SerpApiClient serpApiClient;
     private final NameExtractor nameExtractor;
     private final TmpfilesClient tmpfilesClient;
 
-    public FaceRecognitionServiceImpl(SerpApiClient serpApiClient, NameExtractor nameExtractor, TmpfilesClient tmpfilesClient) {
+    public FaceRecognitionServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      NameExtractor nameExtractor,
+                                      TmpfilesClient tmpfilesClient) {
+        this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.nameExtractor = nameExtractor;
         this.tmpfilesClient = tmpfilesClient;
@@ -56,7 +62,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         List<WebEvidence> webEvidences = new ArrayList<>();
 
         SerpApiResponse lensResponse = safeSearch("google_lens", imageUrl, evidence,
-                () -> serpApiClient.reverseImageSearchByUrl(imageUrl));
+                () -> googleSearchClient.reverseImageSearchByUrl(imageUrl));
         if (lensResponse != null && lensResponse.getRoot() != null) {
             evidence.setImageMatches(extractImageMatches(lensResponse.getRoot()));
             webEvidences.addAll(extractWebEvidence(lensResponse.getRoot(), "google_lens"));

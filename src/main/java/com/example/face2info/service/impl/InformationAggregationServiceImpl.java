@@ -1,5 +1,6 @@
 package com.example.face2info.service.impl;
 
+import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
@@ -44,17 +45,20 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String SOCIAL_PLACEHOLDER_URL = "#";
     private static final String SOCIAL_PLACEHOLDER_USERNAME = "功能正在开发中";
 
+    private final GoogleSearchClient googleSearchClient;
     private final SerpApiClient serpApiClient;
     private final NewsApiClient newsApiClient;
     private final JinaReaderClient jinaReaderClient;
     private final SummaryGenerationClient summaryGenerationClient;
     private final ThreadPoolTaskExecutor executor;
 
-    public InformationAggregationServiceImpl(SerpApiClient serpApiClient,
+    public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                             SerpApiClient serpApiClient,
                                              NewsApiClient newsApiClient,
                                              JinaReaderClient jinaReaderClient,
                                              SummaryGenerationClient summaryGenerationClient,
                                              @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor) {
+        this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.newsApiClient = newsApiClient;
         this.jinaReaderClient = jinaReaderClient;
@@ -269,7 +273,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private PersonAggregate collectPersonInfo(String name) {
         String normalizedName = normalizeName(name);
         log.info("人物详情聚合开始 resolvedName={} normalizedName={}", name, normalizedName);
-        SerpApiResponse response = serpApiClient.googleSearch(normalizedName);
+        SerpApiResponse response = googleSearchClient.googleSearch(normalizedName);
         if (response == null || response.getRoot() == null) {
             log.warn("人物详情聚合返回空结果 resolvedName={}", name);
             return new PersonAggregate().setName(name);

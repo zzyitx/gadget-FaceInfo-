@@ -24,6 +24,7 @@ public class ApiProperties {
     public static class Api {
 
         private SerpApiProperties serp = new SerpApiProperties();
+        private GoogleSearchProperties google = new GoogleSearchProperties();
         private NewsApiProperties news = new NewsApiProperties();
         private JinaApiProperties jina = new JinaApiProperties();
         private KimiApiProperties kimi = new KimiApiProperties();
