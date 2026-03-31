@@ -136,6 +136,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
 
         List<PageContent> pages = List.of();
+//        List<PageContent> pages = List.of();
         try {
             pages = jinaReaderClient.readPages(urls);
             log.info("Jina 正文提取完成 fallbackName={} pageCount={}", fallbackName, pages == null ? 0 : pages.size());
@@ -279,15 +280,15 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return new PersonAggregate().setName(name);
         }
         JsonNode root = response.getRoot();
-        JsonNode knowledgeGraph = root.path("knowledge_graph");
+        JsonNode knowledgeGraph = firstPresent(root, "knowledgeGraph", "knowledge_graph");
         PersonAggregate aggregate = new PersonAggregate().setName(name);
-        if (!knowledgeGraph.isMissingNode() && !knowledgeGraph.isNull()) {
+        if (knowledgeGraph != null && !knowledgeGraph.isMissingNode() && !knowledgeGraph.isNull()) {
             aggregate.setDescription(knowledgeGraph.path("description").asText(null));
             aggregate.setOfficialWebsite(firstText(knowledgeGraph, "website", "official_website"));
             aggregate.setWikipedia(firstText(knowledgeGraph, "wikipedia", "wikipedia_url"));
         }
         if (!StringUtils.hasText(aggregate.getDescription())) {
-            JsonNode organicResults = root.path("organic_results");
+            JsonNode organicResults = root.path("organic");
             if (organicResults.isArray()) {
                 for (JsonNode item : organicResults) {
                     String snippet = item.path("snippet").asText(null);
@@ -330,7 +331,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (response == null || response.getRoot() == null) {
             return accounts;
         }
-        JsonNode organicResults = response.getRoot().path("organic_results");
+        JsonNode organicResults = response.getRoot().path("organic");
         if (!organicResults.isArray()) {
             return accounts;
         }
@@ -429,6 +430,16 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         for (String field : fields) {
             String value = node.path(field).asText(null);
             if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private JsonNode firstPresent(JsonNode root, String... fields) {
+        for (String field : fields) {
+            JsonNode value = root.path(field);
+            if (!value.isMissingNode() && !value.isNull()) {
                 return value;
             }
         }

@@ -170,7 +170,7 @@ class InformationAggregationServiceImplTest {
                         .setSummary("Jay Chou is a singer.")
                         .setEvidenceUrls(List.of("https://example.com/a")));
         when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback description\"}}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
@@ -208,7 +208,7 @@ class InformationAggregationServiceImplTest {
                         .setSummary("Jay Chou is a singer.")
                         .setEvidenceUrls(List.of("https://example.com/a")));
         when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback description\"}}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
@@ -239,7 +239,7 @@ class InformationAggregationServiceImplTest {
                 .setSummary("Jay Chou is a Mandopop singer.")
                 .setEvidenceUrls(List.of("https://example.com/a")));
         when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback\",\"website\":\"https://jay.example.com\"}}")));
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback\",\"website\":\"https://jay.example.com\"}}")));
         when(newsApiClient.searchNews("Jay Chou")).thenReturn(new NewsApiResponse()
                 .setRoot(objectMapper.readTree("{\"articles\":[]}")));
 
@@ -269,7 +269,7 @@ class InformationAggregationServiceImplTest {
                 .setSummary("Lei Jun is an entrepreneur.")
                 .setEvidenceUrls(List.of("https://example.com/a")));
         when(googleSearchClient.googleSearch("LeiJun")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback\"}}")));
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback\"}}")));
 
         InformationAggregationServiceImpl service =
                 new InformationAggregationServiceImpl(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor);
@@ -361,7 +361,7 @@ class InformationAggregationServiceImplTest {
             Thread.sleep(250);
             return new SerpApiResponse().setRoot(objectMapper.readTree("""
                     {
-                      "knowledge_graph": {
+                      "knowledgeGraph": {
                         "description": "华语歌手",
                         "website": "https://jay.example.com",
                         "wikipedia": "https://zh.wikipedia.org/wiki/Jay_Chou"
@@ -401,7 +401,7 @@ class InformationAggregationServiceImplTest {
                 .setResolvedName("Jay Chou")
                 .setSummary("Jay Chou is a singer"));
         when(googleSearchClient.googleSearch(anyString())).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Mandopop singer\"}}")));
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Mandopop singer\"}}")));
 
         InformationAggregationServiceImpl service =
                 new InformationAggregationServiceImpl(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor);
@@ -429,7 +429,7 @@ class InformationAggregationServiceImplTest {
                 .setResolvedName("Jay Chou")
                 .setSummary("Jay Chou is a singer."));
         when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback description\"}}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
@@ -453,7 +453,7 @@ class InformationAggregationServiceImplTest {
         when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
         when(summaryGenerationClient.summarizePerson("Jay Chou", pages)).thenThrow(new RuntimeException("INVALID_RESPONSE"));
         when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback description\"}}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
@@ -465,8 +465,43 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getDescription()).isEqualTo("Fallback description (由 SerpAPI 聚合)");
     }
 
+    @Test
+    void shouldUseSerperOrganicSnippetAsFallbackDescription() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setContent("body"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        when(summaryGenerationClient.summarizePerson("Lei Jun", pages)).thenThrow(new RuntimeException("INVALID_RESPONSE"));
+        when(googleSearchClient.googleSearch("LeiJun")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "organic": [
+                            {
+                              "title": "Lei Jun Douyin",
+                              "link": "https://www.douyin.com/wiki/lei-jun",
+                              "source": "Douyin",
+                              "snippet": "Lei Jun is Xiaomi founder."
+                            }
+                          ]
+                        }
+                        """)));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Lei Jun"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getSummary()).isNull();
+        assertThat(result.getPerson().getDescription()).isEqualTo("Lei Jun is Xiaomi founder. (由 SerpAPI 聚合)");
+    }
+
     private SerpApiResponse emptySerpResponse() throws Exception {
-        return new SerpApiResponse().setRoot(objectMapper.readTree("{\"organic_results\":[]}"));
+        return new SerpApiResponse().setRoot(objectMapper.readTree("{\"organic\":[]}"));
     }
 
     private ThreadPoolTaskExecutor executor() {
