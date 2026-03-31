@@ -21,7 +21,8 @@
 
 项目当前集成了以下外部能力：
 
-- `SerpAPI`：用于 Google Lens 反向搜图和 Google 搜索
+- `Serper`：用于 Google Lens 反向搜图和 Google 搜索
+- `SerpAPI`：当前用于 Yandex 和 Bing 图像搜索
 - `NewsAPI`：用于查询相关新闻
 - `tempfile.org`：用于把上传图片转换成可公开访问的临时 URL
 
@@ -32,6 +33,7 @@
 所有第三方密钥都必须通过环境变量注入，禁止把真实值写入仓库中的 `application.yml`。
 
 - `SERP_API_KEY`
+- `SERPER_API_KEY`
 - `NEWS_API_KEY`
 - `JINA_API_KEY`
 - `SUMMARY_API_KEY`
