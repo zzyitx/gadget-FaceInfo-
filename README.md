@@ -97,3 +97,10 @@ mvn clean test
 - 需要配置环境变量 `KIMI_API_KEY`，如有必要可额外配置 `KIMI_API_BASE_URL`、`KIMI_MODEL` 和 `KIMI_SYSTEM_PROMPT`。
 - Kimi 处理成功时，接口会在响应中补充 `person.summary` 和 `person.tags`。
 - Kimi 调用失败时，接口仍返回原有聚合结果，并在顶层 `warnings` 中返回 `正文智能处理暂时不可用`。
+
+## FaceCheck 图片匹配
+
+- 通过 `face2info.api.facecheck` 配置接入 `FaceCheck`
+- 需要配置环境变量 `FACECHECK_API_KEY`
+- 页面中的图片匹配区域优先展示 `facecheck_matches`
+- `FaceCheck` 调用失败时不会阻断现有人物聚合流程，接口可能返回 `partial`

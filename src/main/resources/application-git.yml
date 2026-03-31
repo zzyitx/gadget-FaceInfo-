@@ -51,6 +51,13 @@ face2info:
       model: ${SUMMARY_MODEL:}
       connect-timeout-ms: 5000
       read-timeout-ms: 15000
+    facecheck:
+      base-url: https://facecheck.id
+      upload-path: /api/upload_pic
+      api-key: ${FACECHECK_API_KEY:}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 15000
+      reset-prev-images: true
     proxy:
       enabled: false
       host:

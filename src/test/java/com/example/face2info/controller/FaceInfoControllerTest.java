@@ -1,6 +1,7 @@
 package com.example.face2info.controller;
 
 import com.example.face2info.entity.response.FaceInfoResponse;
+import com.example.face2info.entity.response.FaceCheckMatch;
 import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.exception.GlobalExceptionHandler;
 import com.example.face2info.service.Face2InfoService;
@@ -40,6 +41,29 @@ class FaceInfoControllerTest {
         mockMvc.perform(multipart("/api/face2info").file(image))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
+    }
+
+    @Test
+    void shouldExposeFaceCheckMatchesInResponseJson() throws Exception {
+        when(face2InfoService.process(any())).thenReturn(new FaceInfoResponse()
+                .setStatus("success")
+                .setFacecheckMatches(java.util.List.of(
+                        new FaceCheckMatch()
+                                .setImageDataUrl("data:image/jpeg;base64,AAA")
+                                .setSimilarityScore(97.2)
+                                .setSourceHost("instagram.com")
+                                .setSourceUrl("https://instagram.com/p/demo")
+                                .setGroup(1)
+                                .setSeen(3)
+                                .setIndex(0)
+                )));
+
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        mockMvc.perform(multipart("/api/face2info").file(image))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.facecheck_matches[0].image_data_url").value("data:image/jpeg;base64,AAA"))
+                .andExpect(jsonPath("$.facecheck_matches[0].similarity_score").value(97.2))
+                .andExpect(jsonPath("$.facecheck_matches[0].source_host").value("instagram.com"));
     }
 
     @Test
@@ -84,10 +108,27 @@ class FaceInfoControllerTest {
     }
 
     @Test
+    void shouldContainFacecheckSectionInApplicationGitConfig() throws Exception {
+        String content = Files.readString(Path.of("src/main/resources/application-git.yml"));
+
+        assertThat(content).contains("facecheck:");
+        assertThat(content).contains("upload-path:");
+        assertThat(content).contains("reset-prev-images:");
+    }
+
+    @Test
     void shouldTrackApplicationGitConfigAndIgnoreLocalApplicationConfig() throws Exception {
         String ignoreContent = Files.readString(Path.of(".gitignore"));
 
         assertThat(ignoreContent).contains("src/main/resources/application.yml");
         assertThat(ignoreContent).contains("!src/main/resources/application-git.yml");
+    }
+
+    @Test
+    void shouldMentionFacecheckConfigInReadme() throws Exception {
+        String content = Files.readString(Path.of("README.md"));
+
+        assertThat(content).contains("FaceCheck");
+        assertThat(content).contains("FACECHECK_API_KEY");
     }
 }

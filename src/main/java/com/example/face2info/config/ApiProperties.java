@@ -28,6 +28,7 @@ public class ApiProperties {
         private JinaApiProperties jina = new JinaApiProperties();
         private KimiApiProperties kimi = new KimiApiProperties();
         private SummaryApiProperties summary = new SummaryApiProperties();
+        private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();
         private Proxy proxy = new Proxy();
 
     }
