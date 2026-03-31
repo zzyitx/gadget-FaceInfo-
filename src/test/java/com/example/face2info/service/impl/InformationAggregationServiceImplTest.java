@@ -5,6 +5,7 @@ import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
+import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.NewsApiResponse;
 import com.example.face2info.entity.internal.PageContent;
@@ -85,6 +86,102 @@ class InformationAggregationServiceImplTest {
 
         assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
         assertThat(profile.getSummary()).contains("Mandopop singer");
+    }
+
+    @Test
+    void shouldOnlyReadTopFiveUrlsByDefault() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<String> expectedUrls = List.of(
+                "https://example.com/1",
+                "https://example.com/2",
+                "https://example.com/3",
+                "https://example.com/4",
+                "https://example.com/5"
+        );
+        when(jinaReaderClient.readPages(expectedUrls)).thenReturn(List.of());
+        when(summaryGenerationClient.summarizePerson("unknown", List.of()))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("unknown"));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                serpApiClient,
+                newsApiClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor,
+                createApiProperties(null)
+        );
+
+        service.resolveProfileFromEvidence(List.of(
+                new WebEvidence().setUrl("https://example.com/1"),
+                new WebEvidence().setUrl("https://example.com/2"),
+                new WebEvidence().setUrl("https://example.com/3"),
+                new WebEvidence().setUrl("https://example.com/4"),
+                new WebEvidence().setUrl("https://example.com/5"),
+                new WebEvidence().setUrl("https://example.com/6"),
+                new WebEvidence().setUrl("https://example.com/7")
+        ), "unknown");
+
+        verify(jinaReaderClient).readPages(expectedUrls);
+        verify(jinaReaderClient, never()).readPages(List.of(
+                "https://example.com/1",
+                "https://example.com/2",
+                "https://example.com/3",
+                "https://example.com/4",
+                "https://example.com/5",
+                "https://example.com/6",
+                "https://example.com/7"
+        ));
+    }
+
+    @Test
+    void shouldRespectConfiguredMaxPageReads() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<String> expectedUrls = List.of(
+                "https://example.com/1",
+                "https://example.com/2",
+                "https://example.com/3"
+        );
+        when(jinaReaderClient.readPages(expectedUrls)).thenReturn(List.of());
+        when(summaryGenerationClient.summarizePerson("unknown", List.of()))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("unknown"));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                serpApiClient,
+                newsApiClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor,
+                createApiProperties(3)
+        );
+
+        service.resolveProfileFromEvidence(List.of(
+                new WebEvidence().setUrl("https://example.com/1"),
+                new WebEvidence().setUrl("https://example.com/2"),
+                new WebEvidence().setUrl("https://example.com/3"),
+                new WebEvidence().setUrl("https://example.com/4"),
+                new WebEvidence().setUrl("https://example.com/5")
+        ), "unknown");
+
+        verify(jinaReaderClient).readPages(expectedUrls);
+        verify(jinaReaderClient, never()).readPages(List.of(
+                "https://example.com/1",
+                "https://example.com/2",
+                "https://example.com/3",
+                "https://example.com/4",
+                "https://example.com/5"
+        ));
     }
 
     @Test
@@ -502,6 +599,14 @@ class InformationAggregationServiceImplTest {
 
     private SerpApiResponse emptySerpResponse() throws Exception {
         return new SerpApiResponse().setRoot(objectMapper.readTree("{\"organic\":[]}"));
+    }
+
+    private ApiProperties createApiProperties(Integer maxPageReads) {
+        ApiProperties properties = new ApiProperties();
+        if (maxPageReads != null) {
+            properties.getApi().getJina().setMaxPageReads(maxPageReads);
+        }
+        return properties;
     }
 
     private ThreadPoolTaskExecutor executor() {

@@ -16,4 +16,5 @@ public class JinaApiProperties {
     private int readTimeoutMs = 15000;
     private int maxRetries = 2;
     private long backoffInitialMs = 300L;
+    private int maxPageReads = 5;
 }

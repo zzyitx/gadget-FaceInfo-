@@ -39,6 +39,7 @@ face2info:
     jina:
       base-url: https://r.jina.ai/
       api-key: ${JINA_API_KEY:}
+      max-page-reads: 5
       connect-timeout-ms: 5000
       read-timeout-ms: 15000
       max-retries: 2

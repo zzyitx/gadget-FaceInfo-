@@ -5,6 +5,7 @@ import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
+import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.NewsApiResponse;
 import com.example.face2info.entity.internal.PageContent;
@@ -37,7 +38,6 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class InformationAggregationServiceImpl implements InformationAggregationService {
 
-    private static final int MAX_PAGE_URLS = 20;
     private static final String SUMMARY_WARNING = "正文智能处理暂时不可用";
     private static final String KIMI_SUFFIX = " (由 Kimi 总结)";
     private static final String SERP_API_SUFFIX = " (由 SerpAPI 聚合)";
@@ -51,19 +51,39 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final JinaReaderClient jinaReaderClient;
     private final SummaryGenerationClient summaryGenerationClient;
     private final ThreadPoolTaskExecutor executor;
+    private final ApiProperties properties;
 
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
                                              SerpApiClient serpApiClient,
                                              NewsApiClient newsApiClient,
                                              JinaReaderClient jinaReaderClient,
                                              SummaryGenerationClient summaryGenerationClient,
-                                             @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor) {
+                                             @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor,
+                                             ApiProperties properties) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.newsApiClient = newsApiClient;
         this.jinaReaderClient = jinaReaderClient;
         this.summaryGenerationClient = summaryGenerationClient;
         this.executor = executor;
+        this.properties = properties;
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      NewsApiClient newsApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor) {
+        this(
+                googleSearchClient,
+                serpApiClient,
+                newsApiClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor,
+                new ApiProperties()
+        );
     }
 
     @Override
@@ -200,11 +220,12 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (evidences == null || evidences.isEmpty()) {
             return List.of();
         }
+        int maxPageReads = Math.max(1, properties.getApi().getJina().getMaxPageReads());
         Set<String> urls = new LinkedHashSet<>();
         evidences.stream()
                 .filter(item -> StringUtils.hasText(item.getUrl()))
                 .forEach(item -> {
-                    if (urls.size() < MAX_PAGE_URLS) {
+                    if (urls.size() < maxPageReads) {
                         urls.add(item.getUrl());
                     }
                 });
