@@ -2,6 +2,7 @@ package com.example.face2info.client.impl;
 
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.GoogleSearchProperties;
+import com.example.face2info.entity.internal.SerpApiResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -9,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -27,12 +29,25 @@ class GoogleSearchClientImplTest {
                 .andExpect(content().json("""
                         {"q":"Lei Jun 抖音","hl":"zh-cn"}
                         """))
-                .andRespond(withSuccess("{\"organic_results\":[]}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("""
+                        {
+                          "organic": [
+                            {
+                              "title": "Lei Jun Douyin",
+                              "link": "https://www.douyin.com/wiki/lei-jun",
+                              "source": "Douyin",
+                              "snippet": "Lei Jun is Xiaomi founder."
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
 
         GoogleSearchClientImpl client = new GoogleSearchClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
-        client.googleSearch("Lei%20Jun%20%E6%8A%96%E9%9F%B3");
+        SerpApiResponse response = client.googleSearch("Lei%20Jun%20%E6%8A%96%E9%9F%B3");
 
+        assertThat(response.getRoot().path("organic")).hasSize(1);
+        assertThat(response.getRoot().path("organic").get(0).path("title").asText()).isEqualTo("Lei Jun Douyin");
         server.verify();
     }
 
@@ -46,12 +61,27 @@ class GoogleSearchClientImplTest {
                 .andExpect(content().json("""
                         {"url":"https://example.com/image.png","hl":"zh-cn"}
                         """))
-                .andRespond(withSuccess("{\"visual_matches\":[]}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("""
+                        {
+                          "organic": [
+                            {
+                              "title": "Lei Jun",
+                              "link": "https://commons.wikimedia.org/wiki/File:Lei_Jun.jpg",
+                              "source": "Wikimedia.org",
+                              "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Lei_Jun.jpg",
+                              "thumbnailUrl": "https://encrypted-tbn2.gstatic.com/images?q=tbn:test"
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
 
         GoogleSearchClientImpl client = new GoogleSearchClientImpl(restTemplate, new ObjectMapper(), createProperties());
 
-        client.reverseImageSearchByUrl("https://example.com/image.png");
+        SerpApiResponse response = client.reverseImageSearchByUrl("https://example.com/image.png");
 
+        assertThat(response.getRoot().path("organic")).hasSize(1);
+        assertThat(response.getRoot().path("organic").get(0).path("imageUrl").asText())
+                .isEqualTo("https://upload.wikimedia.org/wikipedia/commons/0/0f/Lei_Jun.jpg");
         server.verify();
     }
 
