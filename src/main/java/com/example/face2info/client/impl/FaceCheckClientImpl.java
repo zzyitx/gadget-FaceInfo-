@@ -86,7 +86,7 @@ public class FaceCheckClientImpl implements FaceCheckClient {
             if (hasRemoteError(body)) {
                 throw new ApiCallException("facecheck search failed: " + body.path("error").asText(""));
             }
-            JsonNode itemsNode = body.path("output").path("items");
+            JsonNode itemsNode = extractItemsNode(body);
             if (itemsNode.isArray()) {
                 return new FaceCheckSearchResponse().setItems(mapItems(itemsNode));
             }
@@ -119,9 +119,8 @@ public class FaceCheckClientImpl implements FaceCheckClient {
     private JsonNode doSearchRequest(String endpoint, String idSearch) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id_search", idSearch);
-        body.put("with_progress", true);
-        body.put("status_only", false);
         body.put("demo", properties.getApi().getFacecheck().isDemo());
+        body.put("page", 1);
 
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(
@@ -152,7 +151,8 @@ public class FaceCheckClientImpl implements FaceCheckClient {
         List<FaceCheckMatchCandidate> items = new ArrayList<>();
         for (JsonNode itemNode : itemNodes) {
             FaceCheckMatchCandidate candidate = mapItem(itemNode);
-            if (StringUtils.hasText(candidate.getImageDataUrl())) {
+            if (StringUtils.hasText(candidate.getImageDataUrl())
+                    || StringUtils.hasText(candidate.getSourceUrl())) {
                 items.add(candidate);
             }
         }
@@ -172,15 +172,54 @@ public class FaceCheckClientImpl implements FaceCheckClient {
     }
 
     private FaceCheckMatchCandidate mapItem(JsonNode item) {
-        String sourceUrl = item.path("url").path("value").asText("");
+        String sourceUrl = readSourceUrl(item);
         return new FaceCheckMatchCandidate()
-                .setImageDataUrl(toDataUrl(item.path("base64").asText("")))
+                .setImageDataUrl(readImageData(item))
                 .setSimilarityScore(item.path("score").asDouble(0))
-                .setSourceHost(extractHost(sourceUrl))
+                .setSourceHost(readSourceHost(item, sourceUrl))
                 .setSourceUrl(sourceUrl)
                 .setGroup(item.path("group").asInt(0))
                 .setSeen(item.path("seen").asInt(0))
                 .setIndex(item.path("index").asInt(0));
+    }
+
+    private JsonNode extractItemsNode(JsonNode body) {
+        JsonNode outputNode = body.path("output");
+        if (outputNode.isArray()) {
+            return outputNode;
+        }
+        return outputNode.path("items");
+    }
+
+    private String readSourceUrl(JsonNode item) {
+        if (item.path("url").isObject()) {
+            return item.path("url").path("value").asText("");
+        }
+        String link = item.path("link").asText("");
+        if (StringUtils.hasText(link)) {
+            return link;
+        }
+        return item.path("url").asText("");
+    }
+
+    private String readImageData(JsonNode item) {
+        String base64 = item.path("base64").asText("");
+        if (StringUtils.hasText(base64)) {
+            return toDataUrl(base64);
+        }
+        String thumbnail = item.path("thumbnail").asText("");
+        if (StringUtils.hasText(thumbnail)) {
+            return thumbnail;
+        }
+        return item.path("img_url").asText("");
+    }
+
+    private String readSourceHost(JsonNode item, String sourceUrl) {
+        String sourceHost = item.path("source").asText("");
+        if (StringUtils.hasText(sourceHost)) {
+            return sourceHost;
+        }
+        return extractHost(sourceUrl);
     }
 
     private String toDataUrl(String base64) {

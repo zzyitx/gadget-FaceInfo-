@@ -44,7 +44,7 @@ class FaceCheckClientImplTest {
                           "message":"uploaded"
                         }
                         """, MediaType.APPLICATION_JSON));
-        server.expect(requestTo("https://facecheck.id/api/search"))
+        server.expect(requestTo("https://facecheck.id/api/get_results"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {
@@ -52,7 +52,7 @@ class FaceCheckClientImplTest {
                           "progress":35
                         }
                         """, MediaType.APPLICATION_JSON));
-        server.expect(requestTo("https://facecheck.id/api/search"))
+        server.expect(requestTo("https://facecheck.id/api/get_results"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {
@@ -83,6 +83,59 @@ class FaceCheckClientImplTest {
     }
 
     @Test
+    void shouldSupportGetResultsContractWithOutputArray() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).ignoreExpectOrder(true).build();
+        server.expect(requestTo("https://facecheck.id/api/upload_pic"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "id_search":"req-demo",
+                          "message":"uploaded"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://facecheck.id/api/get_results"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "message":"searching",
+                          "progress":30
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://facecheck.id/api/get_results"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "output":[
+                            {
+                              "score":98.4,
+                              "thumbnail":"https://cdn.example.com/thumb.jpg",
+                              "link":"https://www.instagram.com/p/demo",
+                              "source":"instagram.com",
+                              "index":2,
+                              "seen":7
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        ApiProperties properties = createProperties();
+        properties.getApi().getFacecheck().setSearchPath("/api/get_results");
+        FaceCheckClientImpl client = new FaceCheckClientImpl(restTemplate, new ObjectMapper(), properties);
+
+        FaceCheckSearchResponse response = client.search(
+                new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3}));
+
+        assertThat(response.isTimedOut()).isFalse();
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.getItems().get(0).getImageDataUrl()).isEqualTo("https://cdn.example.com/thumb.jpg");
+        assertThat(response.getItems().get(0).getSimilarityScore()).isEqualTo(98.4);
+        assertThat(response.getItems().get(0).getSourceHost()).isEqualTo("instagram.com");
+        assertThat(response.getItems().get(0).getSourceUrl()).isEqualTo("https://www.instagram.com/p/demo");
+        server.verify();
+    }
+
+    @Test
     void shouldThrowWhenSearchReturnsRemoteError() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
@@ -93,7 +146,7 @@ class FaceCheckClientImplTest {
                           "id_search":"req-err"
                         }
                         """, MediaType.APPLICATION_JSON));
-        server.expect(requestTo("https://facecheck.id/api/search"))
+        server.expect(requestTo("https://facecheck.id/api/get_results"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {
@@ -122,7 +175,7 @@ class FaceCheckClientImplTest {
                           "id_search":"req-timeout"
                         }
                         """, MediaType.APPLICATION_JSON));
-        server.expect(requestTo("https://facecheck.id/api/search"))
+        server.expect(requestTo("https://facecheck.id/api/get_results"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {
@@ -167,7 +220,7 @@ class FaceCheckClientImplTest {
         properties.getApi().setFacecheck(new FaceCheckApiProperties());
         properties.getApi().getFacecheck().setBaseUrl("https://facecheck.id");
         properties.getApi().getFacecheck().setUploadPath("/api/upload_pic");
-        properties.getApi().getFacecheck().setSearchPath("/api/search");
+        properties.getApi().getFacecheck().setSearchPath("/api/get_results");
         properties.getApi().getFacecheck().setApiKey("test-key");
         properties.getApi().getFacecheck().setResetPrevImages(true);
         return properties;
