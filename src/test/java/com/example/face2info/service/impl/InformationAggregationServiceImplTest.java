@@ -9,6 +9,7 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.NewsApiResponse;
 import com.example.face2info.entity.internal.PageContent;
+import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SerpApiResponse;
@@ -58,6 +59,141 @@ class InformationAggregationServiceImplTest {
         } finally {
             localExecutor.shutdown();
         }
+    }
+
+    @Test
+    void shouldSummarizePagesOneByOneBeforeFinalProfileAggregation() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent pageA = new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Page A");
+        PageContent pageB = new PageContent()
+                .setUrl("https://example.com/b")
+                .setTitle("B")
+                .setContent("Page B");
+        List<PageContent> pages = List.of(pageA, pageB);
+        PageSummary summaryA = new PageSummary()
+                .setSourceUrl("https://example.com/a")
+                .setTitle("A")
+                .setSummary("Summary A");
+        PageSummary summaryB = new PageSummary()
+                .setSourceUrl("https://example.com/b")
+                .setTitle("B")
+                .setSummary("Summary B");
+        when(jinaReaderClient.readPages(List.of("https://example.com/a", "https://example.com/b"))).thenReturn(pages);
+        when(summaryGenerationClient.summarizePage("unknown", pageA)).thenReturn(summaryA);
+        when(summaryGenerationClient.summarizePage("unknown", pageB)).thenReturn(summaryB);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", List.of(summaryA, summaryB)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("Final Summary")
+                        .setEvidenceUrls(List.of("https://example.com/a", "https://example.com/b")));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        );
+
+        ResolvedPersonProfile profile = service.resolveProfileFromEvidence(List.of(
+                new WebEvidence().setUrl("https://example.com/a"),
+                new WebEvidence().setUrl("https://example.com/b")
+        ), "unknown");
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        assertThat(profile.getSummary()).isEqualTo("Final Summary");
+        assertThat(profile.getEvidenceUrls()).containsExactly("https://example.com/a", "https://example.com/b");
+        verify(summaryGenerationClient).summarizePage("unknown", pageA);
+        verify(summaryGenerationClient).summarizePage("unknown", pageB);
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", List.of(summaryA, summaryB));
+    }
+
+    @Test
+    void shouldSkipFailedPageSummariesAndStillBuildFinalProfileWhenAtLeastOnePageSucceeds() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent pageA = new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Page A");
+        PageContent pageB = new PageContent()
+                .setUrl("https://example.com/b")
+                .setTitle("B")
+                .setContent("Page B");
+        PageSummary summaryB = new PageSummary()
+                .setSourceUrl("https://example.com/b")
+                .setTitle("B")
+                .setSummary("Summary B");
+        when(jinaReaderClient.readPages(List.of("https://example.com/a", "https://example.com/b")))
+                .thenReturn(List.of(pageA, pageB));
+        when(summaryGenerationClient.summarizePage("unknown", pageA))
+                .thenThrow(new RuntimeException("INVALID_RESPONSE"));
+        when(summaryGenerationClient.summarizePage("unknown", pageB))
+                .thenReturn(summaryB);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", List.of(summaryB)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("Final Summary")
+                        .setEvidenceUrls(List.of("https://example.com/b")));
+
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).resolveProfileFromEvidence(List.of(
+                new WebEvidence().setUrl("https://example.com/a"),
+                new WebEvidence().setUrl("https://example.com/b")
+        ), "unknown");
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        assertThat(profile.getSummary()).isEqualTo("Final Summary");
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", List.of(summaryB));
+    }
+
+    @Test
+    void shouldReturnFallbackProfileAndWarningWhenNoPageSummarySucceeds() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        SerpApiClient serpApiClient = mock(SerpApiClient.class);
+        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent pageA = new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Page A");
+        PageContent pageB = new PageContent()
+                .setUrl("https://example.com/b")
+                .setTitle("B")
+                .setContent("Page B");
+        when(jinaReaderClient.readPages(List.of("https://example.com/a", "https://example.com/b")))
+                .thenReturn(List.of(pageA, pageB));
+        when(summaryGenerationClient.summarizePage("unknown", pageA))
+                .thenThrow(new RuntimeException("INVALID_RESPONSE"));
+        when(summaryGenerationClient.summarizePage("unknown", pageB))
+                .thenThrow(new RuntimeException("TIMEOUT"));
+        when(googleSearchClient.googleSearch("unknown")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("unknown"))
+                .setWebEvidences(List.of(
+                        new WebEvidence().setUrl("https://example.com/a"),
+                        new WebEvidence().setUrl("https://example.com/b")
+                )));
+
+        assertThat(result.getPerson().getSummary()).isNull();
+        assertThat(result.getPerson().getDescription()).isEqualTo("Fallback description (鐢?SerpAPI 鑱氬悎)");
+        assertThat(result.getWarnings()).hasSize(1);
+        verify(summaryGenerationClient, never()).summarizePersonFromPageSummaries(org.mockito.ArgumentMatchers.eq("unknown"), org.mockito.ArgumentMatchers.anyList());
     }
 
     @Test
