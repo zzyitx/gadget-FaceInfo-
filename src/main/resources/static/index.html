@@ -1,1118 +1,827 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="data:,">
-    <title>Face2Info 人脸信息聚合</title>
-    <style>
-        :root {
-            --bg: #f5eee6;
-            --bg-soft: #fbf7f2;
-            --surface: rgba(255, 251, 247, 0.94);
-            --surface-strong: rgba(255, 247, 240, 0.98);
-            --surface-muted: rgba(255, 255, 255, 0.74);
-            --ink: #201714;
-            --ink-soft: #64574f;
-            --line: rgba(32, 23, 20, 0.1);
-            --accent: #ab5131;
-            --accent-deep: #73311d;
-            --ok: #2f6c47;
-            --warn: #98651a;
-            --danger: #9a3b2d;
-            --shadow-lg: 0 32px 80px rgba(72, 44, 28, 0.14);
-            --shadow-md: 0 18px 44px rgba(72, 44, 28, 0.1);
-            --radius-xl: 32px;
-            --radius-lg: 24px;
-            --radius-md: 18px;
-            --max-width: 1240px;
-        }
-
-        * { box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
-
-        body {
-            margin: 0;
-            min-height: 100vh;
-            color: var(--ink);
-            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-            background:
-                radial-gradient(circle at top left, rgba(171, 81, 49, 0.16), transparent 28%),
-                radial-gradient(circle at 82% 12%, rgba(115, 49, 29, 0.12), transparent 20%),
-                linear-gradient(180deg, #f0e3d4 0%, var(--bg) 32%, #f8f4ef 100%);
-        }
-
-        a { color: var(--accent-deep); }
-        code, pre { font-family: "Consolas", "SFMono-Regular", monospace; }
-
-        .page {
-            width: min(var(--max-width), calc(100% - 32px));
-            margin: 24px auto 40px;
-        }
-
-        .hero,
-        .card,
-        .upload-card {
-            border: 1px solid var(--line);
-            border-radius: var(--radius-xl);
-            background: var(--surface);
-            box-shadow: var(--shadow-lg);
-        }
-
-        .hero {
-            position: relative;
-            overflow: hidden;
-            padding: 30px;
-        }
-
-        .hero::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background:
-                linear-gradient(140deg, rgba(255, 255, 255, 0.36), transparent 45%),
-                radial-gradient(circle at right top, rgba(171, 81, 49, 0.14), transparent 28%);
-            pointer-events: none;
-        }
-
-        .hero-grid {
-            position: relative;
-            display: grid;
-            gap: 24px;
-        }
-
-        .eyebrow {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 7px 12px;
-            border-radius: 999px;
-            background: rgba(171, 81, 49, 0.1);
-            color: var(--accent-deep);
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-
-        .hero-copy {
-            display: grid;
-            gap: 20px;
-            align-content: space-between;
-            min-height: 100%;
-        }
-
-        .hero-copy h1 {
-            margin: 0;
-            max-width: 10ch;
-            font-family: "Georgia", "Times New Roman", serif;
-            font-size: clamp(40px, 6vw, 72px);
-            line-height: 0.96;
-            letter-spacing: -0.03em;
-        }
-
-        .hero-copy p,
-        .card p,
-        .meta-text,
-        .empty,
-        .status-note,
-        .item p,
-        summary,
-        .tip {
-            margin: 0;
-            color: var(--ink-soft);
-            line-height: 1.75;
-        }
-
-        .hero-copy p {
-            max-width: 62ch;
-            font-size: 16px;
-            line-height: 1.8;
-        }
-
-        .hero-tags,
-        .hero-metrics,
-        .tags,
-        .list,
-        .match-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .hero-tag,
-        .chip,
-        .pill {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            padding: 8px 12px;
-            font-size: 12px;
-            line-height: 1;
-        }
-
-        .hero-tag {
-            border: 1px solid rgba(115, 49, 29, 0.18);
-            background: rgba(255, 255, 255, 0.62);
-            color: var(--accent-deep);
-        }
-
-        .hero-metric {
-            min-width: 148px;
-            padding: 16px 18px;
-            border-radius: 20px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.6);
-            box-shadow: var(--shadow-md);
-        }
-
-        .hero-metric strong {
-            display: block;
-            margin-bottom: 6px;
-            color: var(--ink-soft);
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-
-        .hero-metric span {
-            font-size: 15px;
-            line-height: 1.7;
-        }
-
-        .upload-card {
-            display: grid;
-            gap: 18px;
-            padding: 24px;
-            background: linear-gradient(180deg, rgba(255, 249, 244, 0.98), rgba(255, 253, 250, 0.92));
-        }
-
-        .upload-card h2,
-        .card h2 {
-            margin: 0;
-            font-size: 24px;
-            line-height: 1.2;
-        }
-
-        .section-title {
-            display: grid;
-            gap: 8px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 700;
-        }
-
-        .dropzone {
-            padding: 18px;
-            border: 1px dashed rgba(115, 49, 29, 0.32);
-            border-radius: 22px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 238, 229, 0.7));
-        }
-
-        input[type="file"] {
-            width: 100%;
-            color: var(--ink-soft);
-            font: inherit;
-        }
-
-        .preview {
-            display: none;
-            margin-top: 14px;
-            overflow: hidden;
-            border-radius: 18px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.7);
-        }
-
-        .preview img {
-            display: block;
-            width: 100%;
-            max-height: 290px;
-            object-fit: cover;
-        }
-
-        button {
-            width: 100%;
-            border: 0;
-            border-radius: 999px;
-            padding: 16px 18px;
-            color: #fff;
-            font: inherit;
-            font-weight: 700;
-            cursor: pointer;
-            background: linear-gradient(135deg, var(--accent-deep), var(--accent));
-            box-shadow: 0 18px 30px rgba(115, 49, 29, 0.24);
-            transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
-        }
-
-        button:hover:not(:disabled) {
-            transform: translateY(-1px);
-            box-shadow: 0 22px 34px rgba(115, 49, 29, 0.26);
-        }
-
-        button:disabled {
-            opacity: 0.72;
-            cursor: wait;
-            transform: none;
-        }
-
-        .status {
-            padding: 16px 18px;
-            border-radius: 20px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.78);
-        }
-
-        .status-label {
-            color: var(--ink-soft);
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-        }
-
-        .status-text {
-            margin-top: 8px;
-            font-size: 18px;
-            font-weight: 700;
-        }
-
-        .status-note {
-            margin-top: 6px;
-            font-size: 14px;
-        }
-
-        .status-success .status-text { color: var(--ok); }
-        .status-partial .status-text { color: var(--warn); }
-        .status-failed .status-text { color: var(--danger); }
-
-        .main-layout {
-            display: grid;
-            grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-            gap: 18px;
-            align-items: start;
-            margin-top: 20px;
-        }
-
-        .results {
-            display: grid;
-            gap: 18px;
-        }
-
-        .card {
-            padding: 24px;
-            background: var(--surface-muted);
-        }
-
-        .card.primary-card {
-            padding: 28px;
-            background: linear-gradient(180deg, var(--surface-strong), rgba(255, 255, 255, 0.88));
-        }
-
-        .section-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-
-        .section-header.compact {
-            margin-bottom: 12px;
-        }
-
-        .hero-name {
-            margin: 0;
-            font-family: "Georgia", "Times New Roman", serif;
-            font-size: clamp(34px, 4vw, 48px);
-            line-height: 1.04;
-            letter-spacing: -0.03em;
-        }
-
-        .pill {
-            background: rgba(32, 23, 20, 0.06);
-            color: var(--ink);
-        }
-
-        .chip {
-            border: 1px solid rgba(115, 49, 29, 0.12);
-            background: rgba(171, 81, 49, 0.08);
-            color: var(--accent-deep);
-        }
-
-        .description {
-            max-width: 74ch;
-            color: var(--ink);
-            font-size: 16px;
-            line-height: 1.9;
-        }
-
-        .summary-list {
-            display: grid;
-            gap: 10px;
-            margin: 16px 0 0;
-            padding: 0;
-            list-style: none;
-        }
-
-        .summary-list li {
-            padding-left: 18px;
-            position: relative;
-            color: var(--ink-soft);
-            line-height: 1.7;
-        }
-
-        .summary-list li::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 11px;
-            width: 7px;
-            height: 7px;
-            border-radius: 999px;
-            background: var(--accent);
-        }
-
-        .secondary-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 18px;
-        }
-
-        .match-list,
-        .list {
-            display: grid;
-            gap: 12px;
-            margin-top: 14px;
-        }
-
-        .match-entry,
-        .item {
-            padding: 16px;
-            border-radius: 20px;
-            border: 1px solid var(--line);
-        }
-
-        .match-entry {
-            background: rgba(255, 255, 255, 0.82);
-        }
-
-        .item {
-            background: rgba(240, 217, 202, 0.46);
-        }
-
-        .match-entry a,
-        .item a {
-            color: var(--ink);
-            text-decoration: none;
-            font-weight: 700;
-        }
-
-        .match-entry a:hover,
-        .item a:hover {
-            text-decoration: underline;
-        }
-
-        .match-card-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
-
-        .match-score {
-            color: var(--ink-soft);
-            font-size: 13px;
-        }
-
-        .match-preview {
-            overflow: hidden;
-            margin-bottom: 12px;
-            border-radius: 18px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.72);
-        }
-
-        .match-preview img {
-            display: block;
-            width: 100%;
-            max-height: 220px;
-            object-fit: cover;
-        }
-
-        .match-source {
-            font-size: 15px;
-            line-height: 1.7;
-        }
-
-        .debug-panel-body pre {
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.72);
-            padding: 12px 14px 4px;
-        }
-
-        .news-card {
-            padding: 0;
-            overflow: hidden;
-        }
-
-        .social-card {
-            padding: 0;
-            overflow: hidden;
-        }
-
-        .debug-panel {
-            padding: 0;
-            overflow: hidden;
-        }
-
-        .news-card > summary,
-        .social-card > summary,
-        .debug-panel > summary {
-            display: block;
-            list-style: none;
-            cursor: pointer;
-            padding: 24px;
-        }
-
-        .news-card > summary::-webkit-details-marker,
-        .social-card > summary::-webkit-details-marker,
-        .debug-panel > summary::-webkit-details-marker {
-            display: none;
-        }
-
-        .news-card-body,
-        .social-card-body,
-        .debug-panel-body {
-            padding: 0 24px 24px;
-        }
-
-        .news-card .section-header.compact,
-        .social-card .section-header.compact,
-        .debug-panel .section-header.compact {
-            margin-bottom: 0;
-        }
-
-        .news-toggle {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .news-toggle::before {
-            content: "展开";
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 46px;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: rgba(171, 81, 49, 0.1);
-            color: var(--accent-deep);
-            font-size: 12px;
-            font-weight: 700;
-            line-height: 1;
-        }
-
-        .news-card[open] .news-toggle::before {
-            content: "收起";
-        }
-
-        .news-source-link {
-            margin-top: 10px;
-        }
-
-        .article-group + .article-group {
-            margin-top: 18px;
-        }
-
-        .article-group .section-title h2 {
-            font-size: 18px;
-        }
-
-        .debug-panel[open] {
-            background: rgba(255, 255, 255, 0.9);
-        }
-
-        pre {
-            margin: 12px 0 8px;
-            white-space: pre-wrap;
-            word-break: break-word;
-            font-size: 13px;
-            line-height: 1.7;
-        }
-
-        .empty {
-            font-size: 15px;
-        }
-
-        @media (max-width: 1024px) {
-            .main-layout,
-            .secondary-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .hero-copy h1 {
-                max-width: none;
-            }
-        }
-
-        @media (max-width: 720px) {
-            .page {
-                width: min(100% - 20px, var(--max-width));
-            }
-
-            .hero,
-            .card,
-            .upload-card {
-                border-radius: 24px;
-            }
-
-            .hero,
-            .upload-card,
-            .card {
-                padding: 18px;
-            }
-
-            .hero-copy h1 {
-                font-size: clamp(34px, 12vw, 52px);
-            }
-
-            .section-header {
-                flex-direction: column;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face2Info</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", sans-serif;
+      background: #f5eee6;
+      color: #201714;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 24px));
+      margin: 24px auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero,
+    .card,
+    .upload-card {
+      padding: 24px;
+      border: 1px solid rgba(32, 23, 20, 0.12);
+      border-radius: 24px;
+      background: #fffaf6;
+      box-shadow: 0 18px 40px rgba(72, 44, 28, 0.12);
+    }
+
+    .main-layout,
+    .secondary-grid,
+    .results,
+    .section-title,
+    .summary-list,
+    .match-list,
+    .list {
+      display: grid;
+    }
+
+    .main-layout,
+    .secondary-grid {
+      gap: 18px;
+    }
+
+    .main-layout {
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .results {
+      gap: 14px;
+    }
+
+    .section-title {
+      gap: 14px;
+    }
+
+    .summary-list,
+    .match-list,
+    .list {
+      gap: 12px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .eyebrow,
+    .pill,
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .eyebrow {
+      background: rgba(171, 81, 49, 0.1);
+      color: #73311d;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .pill {
+      background: rgba(32, 23, 20, 0.06);
+    }
+
+    .chip {
+      background: rgba(171, 81, 49, 0.08);
+      color: #73311d;
+    }
+
+    .hero-name,
+    .hero h1 {
+      margin: 0;
+      font-family: Georgia, serif;
+    }
+
+    .hero h1 {
+      font-size: clamp(40px, 6vw, 68px);
+      line-height: 0.96;
+    }
+
+    .status {
+      padding: 16px;
+      border: 1px solid rgba(32, 23, 20, 0.12);
+      border-radius: 18px;
+      background: #fff;
+    }
+
+    .status-success {
+      border-color: rgba(48, 127, 74, 0.24);
+      background: #f6fff8;
+    }
+
+    .status-partial {
+      border-color: rgba(171, 81, 49, 0.24);
+      background: #fff9f4;
+    }
+
+    .status-failed {
+      border-color: rgba(166, 58, 58, 0.24);
+      background: #fff7f7;
+    }
+
+    .status-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #64574f;
+    }
+
+    .status-text {
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .status-note,
+    .meta-text,
+    .empty,
+    .tip,
+    .item p {
+      color: #64574f;
+      line-height: 1.7;
+    }
+
+    .dropzone {
+      padding: 16px;
+      border: 1px dashed rgba(115, 49, 29, 0.28);
+      border-radius: 20px;
+      background: #fff;
+    }
+
+    input[type="file"] {
+      width: 100%;
+    }
+
+    .preview {
+      display: none;
+      overflow: hidden;
+      margin-top: 12px;
+      border: 1px solid rgba(32, 23, 20, 0.12);
+      border-radius: 18px;
+    }
+
+    .preview img {
+      display: block;
+      width: 100%;
+      max-height: 280px;
+      object-fit: cover;
+    }
+
+    button {
+      width: 100%;
+      padding: 16px 18px;
+      border: 0;
+      border-radius: 999px;
+      color: #fff;
+      background: linear-gradient(135deg, #73311d, #ab5131);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.72;
+      cursor: wait;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .image-item,
+    .item {
+      border: 1px solid rgba(32, 23, 20, 0.12);
+      border-radius: 20px;
+    }
+
+    .image-item {
+      position: relative;
+      min-height: 270px;
+      overflow: hidden;
+      cursor: pointer;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(32, 23, 20, 0.72)),
+        #fff;
+    }
+
+    .image-item img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .image-info {
+      position: absolute;
+      right: 14px;
+      bottom: 14px;
+      left: 14px;
+      display: grid;
+      gap: 6px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(32, 23, 20, 0.22), rgba(32, 23, 20, 0.78));
+      color: #fff;
+    }
+
+    .image-info .source {
+      font-size: 13px;
+      text-transform: uppercase;
+      opacity: 0.86;
+    }
+
+    .image-info .title {
+      font-size: 16px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+
+    .image-info .score {
+      font-size: 14px;
+    }
+
+    .item {
+      padding: 16px;
+      background: rgba(240, 217, 202, 0.46);
+    }
+
+    .item a {
+      color: #201714;
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .news-card,
+    .social-card,
+    .debug-panel {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .news-card > summary,
+    .social-card > summary,
+    .debug-panel > summary {
+      display: block;
+      padding: 24px;
+      cursor: pointer;
+    }
+
+    .news-card-body,
+    .social-card-body,
+    .debug-panel-body {
+      padding: 0 24px 24px;
+    }
+
+    .news-toggle::before {
+      content: "Expand";
+      display: inline-flex;
+      justify-content: center;
+      min-width: 46px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(171, 81, 49, 0.1);
+      color: #73311d;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .news-card[open] .news-toggle::before,
+    .social-card[open] .news-toggle::before,
+    .debug-panel[open] .news-toggle::before {
+      content: "Collapse";
+    }
+
+    .news-source-link {
+      margin-top: 10px;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    pre {
+      margin: 12px 0 0;
+      padding: 12px 14px;
+      border: 1px solid rgba(32, 23, 20, 0.12);
+      border-radius: 18px;
+      background: #fff;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    @media (max-width: 1024px) {
+      .main-layout,
+      .secondary-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
 <div class="page">
-    <section class="hero">
-        <div class="hero-grid">
-            <div class="hero-copy">
-                <div>
-                    <div class="eyebrow">Face2Info</div>
-                    <h1>上传一张脸，先看结论，再看比对。</h1>
-                </div>
-
-                <p>
-                    这是一个面向公开信息聚合的检索页。上传人脸照片后，页面会优先给出人物简介，再补充图片匹配、公开社交账号和近期新闻，
-                    让结果从“是否像”回到“这个人是谁”。
-                </p>
-
-                <div class="hero-tags">
-                    <span class="hero-tag">人物简介优先</span>
-                    <span class="hero-tag">图片匹配辅助比对</span>
-                    <span class="hero-tag">公开信息聚合</span>
-                </div>
-
-                <div class="hero-metrics">
-                    <div class="hero-metric">
-                        <strong>接口地址</strong>
-                        <span><code>POST /api/face2info</code></span>
-                    </div>
-                    <div class="hero-metric">
-                        <strong>结果状态</strong>
-                        <span>success / partial / failed</span>
-                    </div>
-                    <div class="hero-metric">
-                        <strong>展示顺序</strong>
-                        <span>简介 → 比对 → 公开信息</span>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </section>
-
-    <div class="main-layout">
-        <aside class="upload-card upload-panel" id="uploadPanel">
-            <form id="faceForm">
-                <div class="section-title">
-                    <span class="eyebrow">上传分析</span>
-                    <h2>选择图片并开始聚合</h2>
-                    <p class="meta-text">建议使用清晰、正面、主体单一的人脸照片，以提高识别稳定性。</p>
-                </div>
-
-                <div>
-                    <label for="image">选择图片</label>
-                    <div class="dropzone">
-                        <input id="image" name="image" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required>
-                        <div class="tip">支持 jpg、jpeg、png。页面仅展示本次结果，不做持久化缓存。</div>
-                        <div class="preview" id="preview">
-                            <img id="previewImage" alt="图片预览">
-                        </div>
-                    </div>
-                </div>
-
-                <button id="submitButton" type="submit">开始分析</button>
-
-                <section class="status" id="statusBox" aria-live="polite">
-                    <div class="status-label">当前状态</div>
-                    <div class="status-text" id="statusText">等待上传</div>
-                    <div class="status-note" id="statusNote">上传后将返回人物简介、图片匹配、社交账号和新闻结果。</div>
-                </section>
-            </form>
-        </aside>
-
-        <main class="results">
-        <section class="card primary-card" id="personCard">
-            <div class="section-header">
-                <div class="section-title">
-                    <span class="eyebrow">人物简介</span>
-                    <h2 class="hero-name">尚未识别</h2>
-                </div>
-            </div>
-            <p class="description">上传图片后，这里会优先显示聚合后的人物名称、简介和状态说明。</p>
-            <ul class="summary-list">
-                <li>人物简介是页面的主结论。</li>
-                <li>图片匹配会独立展示，但只作为辅助比对。</li>
-                <li>部分来源失败时，页面仍会尽量保留可用结果。</li>
-            </ul>
-        </section>
-
-        <section class="card" id="matchesCard">
-            <div class="section-header compact">
-                <div class="section-title">
-                    <span class="eyebrow">辅助比对</span>
-                    <h2>图片匹配</h2>
-                </div>
-                <span class="pill">独立板块</span>
-            </div>
-            <p class="empty">暂无图片匹配结果。</p>
-        </section>
-
-        <section class="secondary-grid">
-            <details class="card social-card" id="socialCard">
-                <summary>
-                    <div class="section-header compact">
-                        <div class="section-title">
-                            <span class="eyebrow">公开信息</span>
-                            <h2>社交账号</h2>
-                        </div>
-                        <span class="pill news-toggle">默认折叠</span>
-                    </div>
-                </summary>
-                <div class="social-card-body">
-                    <p class="empty">暂无社交账号结果。</p>
-                </div>
-            </details>
-
-            <details class="card news-card" id="newsCard">
-                <summary>
-                    <div class="section-header compact">
-                        <div class="section-title">
-                            <span class="eyebrow">公开信息</span>
-                            <h2>相关文章</h2>
-                        </div>
-                        <span class="pill news-toggle">默认折叠</span>
-                    </div>
-                </summary>
-                <div class="news-card-body">
-                    <p class="empty">暂无新闻结果。</p>
-                </div>
-            </details>
-        </section>
-
-        <details class="card debug-panel" id="debugPanel">
-            <summary>
-                <div class="section-header compact">
-                    <div class="section-title">
-                        <span class="eyebrow">调试</span>
-                        <h2>原始 JSON</h2>
-                    </div>
-                    <span class="pill news-toggle">默认折叠</span>
-                </div>
-            </summary>
-            <div class="debug-panel-body">
-                <pre id="rawResponse">{}</pre>
-            </div>
-        </details>
-        </main>
+  <section class="hero">
+    <div class="section-title">
+      <div class="eyebrow">Face2Info</div>
+      <h1>Upload a face, then compare the images.</h1>
+      <p class="meta-text">
+        Image matches come from Serper and each thumbnail links to its mapped article.
+      </p>
     </div>
+  </section>
+
+  <div class="main-layout">
+    <aside class="upload-card upload-panel" id="uploadPanel">
+      <form id="faceForm">
+        <div class="section-title">
+          <span class="eyebrow">Upload</span>
+          <h2>Select an image</h2>
+        </div>
+
+        <div>
+          <label for="image">Choose image</label>
+          <div class="dropzone">
+            <input
+              id="image"
+              name="image"
+              type="file"
+              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+              required
+            >
+            <div class="tip">Supports jpg, jpeg, png.</div>
+            <div class="preview" id="preview">
+              <img id="previewImage" alt="preview">
+            </div>
+          </div>
+        </div>
+
+        <button id="submitButton" type="submit">Start</button>
+
+        <section class="status" id="statusBox" aria-live="polite">
+          <div class="status-label">Status</div>
+          <div class="status-text" id="statusText">Idle</div>
+          <div class="status-note" id="statusNote">
+            The result includes person info, image matches, accounts and news.
+          </div>
+        </section>
+      </form>
+    </aside>
+
+    <main class="results">
+      <section class="card primary-card" id="personCard">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="eyebrow">Person</span>
+            <h2 class="hero-name">Unknown</h2>
+          </div>
+        </div>
+        <p class="description">Person summary appears here first.</p>
+      </section>
+
+      <section class="card" id="matchesCard">
+        <div class="section-header compact">
+          <div class="section-title">
+            <span class="eyebrow">Image Match</span>
+            <h2>Image Matches</h2>
+          </div>
+          <span class="pill">Serper</span>
+        </div>
+        <p class="empty">No image matches yet.</p>
+      </section>
+
+      <section class="secondary-grid">
+        <details class="card social-card" id="socialCard">
+          <summary>
+            <div class="section-header compact">
+              <div class="section-title">
+                <span class="eyebrow">Public</span>
+                <h2>Accounts</h2>
+              </div>
+              <span class="pill news-toggle">Collapsed</span>
+            </div>
+          </summary>
+          <div class="social-card-body">
+            <p class="empty">No accounts yet.</p>
+          </div>
+        </details>
+
+        <details class="card news-card" id="newsCard">
+          <summary>
+            <div class="section-header compact">
+              <div class="section-title">
+                <span class="eyebrow">Public</span>
+                <h2>Articles</h2>
+              </div>
+              <span class="pill news-toggle">Collapsed</span>
+            </div>
+          </summary>
+          <div class="news-card-body">
+            <p class="empty">No articles yet.</p>
+          </div>
+        </details>
+      </section>
+
+      <details class="card debug-panel" id="debugPanel">
+        <summary>
+          <div class="section-header compact">
+            <div class="section-title">
+              <span class="eyebrow">Debug</span>
+              <h2>Raw JSON</h2>
+            </div>
+            <span class="pill news-toggle">Collapsed</span>
+          </div>
+        </summary>
+        <div class="debug-panel-body">
+          <pre id="rawResponse">{}</pre>
+        </div>
+      </details>
+    </main>
+  </div>
 </div>
 
 <script>
-    const form = document.getElementById("faceForm");
-    const imageInput = document.getElementById("image");
-    const preview = document.getElementById("preview");
-    const previewImage = document.getElementById("previewImage");
-    const submitButton = document.getElementById("submitButton");
-    const statusBox = document.getElementById("statusBox");
-    const statusText = document.getElementById("statusText");
-    const statusNote = document.getElementById("statusNote");
-    const rawResponseEl = document.getElementById("rawResponse");
-    const personCard = document.getElementById("personCard");
-    const matchesCard = document.getElementById("matchesCard");
-    const socialCard = document.getElementById("socialCard");
-    const newsCard = document.getElementById("newsCard");
+  const form = document.getElementById("faceForm");
+  const imageInput = document.getElementById("image");
+  const preview = document.getElementById("preview");
+  const previewImage = document.getElementById("previewImage");
+  const submitButton = document.getElementById("submitButton");
+  const statusBox = document.getElementById("statusBox");
+  const statusText = document.getElementById("statusText");
+  const statusNote = document.getElementById("statusNote");
+  const rawResponseEl = document.getElementById("rawResponse");
+  const personCard = document.getElementById("personCard");
+  const matchesCard = document.getElementById("matchesCard");
+  const socialCard = document.getElementById("socialCard");
+  const newsCard = document.getElementById("newsCard");
 
-    imageInput.addEventListener("change", function () {
-        const file = imageInput.files[0];
-        if (!file) {
-            preview.style.display = "none";
-            previewImage.removeAttribute("src");
-            return;
-        }
+  imageInput.addEventListener("change", handleImageChange);
+  form.addEventListener("submit", handleSubmit);
+  matchesCard.addEventListener("click", handleMatchCardClick);
 
-        const objectUrl = URL.createObjectURL(file);
-        previewImage.src = objectUrl;
-        preview.style.display = "block";
-        previewImage.onload = function () {
-            URL.revokeObjectURL(objectUrl);
-        };
-    });
+  function handleImageChange() {
+    const [file] = imageInput.files;
 
-    form.addEventListener("submit", async function (event) {
-        event.preventDefault();
-
-        const file = imageInput.files[0];
-        if (!file) {
-            setStatus("failed", "请求失败", "需要先选择一张图片才能开始分析。");
-            return;
-        }
-
-        resetResultCards();
-
-        const formData = new FormData();
-        formData.append("image", file);
-
-        submitButton.disabled = true;
-        setStatus("loading", "分析中", "正在聚合人物简介和相关公开信息。");
-
-        try {
-            const response = await fetch("/api/face2info", {
-                method: "POST",
-                body: formData
-            });
-
-            const data = await response.json();
-            rawResponseEl.textContent = JSON.stringify(buildSimplifiedJson(data), null, 2);
-
-            if (!response.ok || data.status === "failed") {
-                renderError(data);
-                setStatus("failed", "请求失败", data.error || "这次请求没有返回可用结果。");
-                return;
-            }
-
-            renderPerson(data.person, data.status, data.error);
-            renderFacecheckMatches(data.facecheck_matches || [], data.status, data.error);
-            renderSocialAccounts(data.person && data.person.social_accounts ? data.person.social_accounts : []);
-            renderArticleGroups(data.image_matches || [], data.news || []);
-
-            if (data.status === "partial") {
-                setStatus("partial", "部分完成", data.error || "已返回当前可用的聚合结果。");
-            } else {
-                setStatus("success", "已完成", "已生成人物简介，并补充辅助比对与公开信息。");
-            }
-        } catch (error) {
-            renderError({ error: error.message || "未知异常" });
-            setStatus("failed", "请求失败", "请检查服务端日志或稍后重试。");
-        } finally {
-            submitButton.disabled = false;
-        }
-    });
-
-    function resetResultCards() {
-        personCard.innerHTML =
-            '<div class="section-header">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">人物简介</span>' +
-            '<h2 class="hero-name">正在聚合</h2>' +
-            '</div>' +
-            '</div>' +
-            '<p class="description">系统正在生成本次请求的人物简介，请稍候。</p>';
-
-        matchesCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">辅助比对</span>' +
-            '<h2>图片匹配</h2>' +
-            '</div>' +
-            '<span class="pill">独立板块</span>' +
-            '</div>' +
-            '<p class="empty">正在等待图片匹配结果。</p>';
-
-        socialCard.innerHTML = renderSocialCard('<p class="empty">正在整理社交账号结果。</p>');
-
-        newsCard.innerHTML = renderNewsCard('<p class="empty">正在整理相关文章结果。</p>');
-
-        rawResponseEl.textContent = "{}";
+    if (!file) {
+      preview.style.display = "none";
+      previewImage.removeAttribute("src");
+      return;
     }
 
-    function buildSimplifiedJson(data) {
+    const objectUrl = URL.createObjectURL(file);
+    previewImage.src = objectUrl;
+    preview.style.display = "block";
+    previewImage.onload = function onPreviewLoad() {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+
+    const [file] = imageInput.files;
+    if (!file) {
+      setStatus("failed", "Request failed", "Choose an image first.");
+      return;
+    }
+
+    resetResultCards();
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    submitButton.disabled = true;
+    setStatus("loading", "Loading", "Collecting public information.");
+
+    try {
+      const response = await fetch("/api/face2info", {
+        method: "POST",
+        body: formData
+      });
+      const data = await response.json();
+
+      rawResponseEl.textContent = JSON.stringify(buildSimplifiedJson(data), null, 2);
+
+      if (!response.ok || data.status === "failed") {
+        renderError(data);
+        setStatus(
+          "failed",
+          "Request failed",
+          data.error || "No usable result returned."
+        );
+        return;
+      }
+
+      renderPerson(data.person, data.status, data.error);
+      renderImageMatches(data.image_matches || [], data.status, data.error);
+      renderSocialAccounts(
+        data.person && data.person.social_accounts ? data.person.social_accounts : []
+      );
+      renderArticleGroups(data.news || []);
+
+      setStatus(
+        data.status === "partial" ? "partial" : "success",
+        data.status === "partial" ? "Partial" : "Done",
+        data.error || (
+          data.status === "partial"
+            ? "Returned current usable result."
+            : "Generated overview and image matches."
+        )
+      );
+    } catch (error) {
+      renderError({ error: error.message || "Unknown error" });
+      setStatus("failed", "Request failed", "Check server logs and retry.");
+    } finally {
+      submitButton.disabled = false;
+    }
+  }
+
+  function handleMatchCardClick(event) {
+    const matchItem = event.target.closest("[data-link]");
+    if (!matchItem || !matchesCard.contains(matchItem)) {
+      return;
+    }
+
+    window.open(matchItem.dataset.link, "_blank");
+  }
+
+  function resetResultCards() {
+    personCard.innerHTML = [
+      buildSectionHeader("Person", "Loading"),
+      '<p class="description">Generating person overview.</p>'
+    ].join("");
+
+    matchesCard.innerHTML = [
+      buildLabeledHeader("Image Match", "Image Matches", "Serper"),
+      '<p class="empty">Waiting for image matches.</p>'
+    ].join("");
+
+    socialCard.innerHTML = renderSocialCard('<p class="empty">Loading accounts.</p>');
+    newsCard.innerHTML = renderNewsCard('<p class="empty">Loading articles.</p>');
+    rawResponseEl.textContent = "{}";
+  }
+
+  function buildSimplifiedJson(data) {
+    return {
+      status: data.status || null,
+      error: data.error || null,
+      person: data.person || null,
+      image_matches: (data.image_matches || []).slice(0, 20).map(function mapMatch(item) {
         return {
-            status: data.status || null,
-            error: data.error || null,
-            person: data.person || null,
-            facecheck_matches: (data.facecheck_matches || []).slice(0, 20),
-            image_matches: (data.image_matches || []).slice(0, 20).map(function (item) {
-                return {
-                    position: item.position || null,
-                    title: item.title || null,
-                    source: item.source || null,
-                    link: item.link || null
-                };
-            }),
-            news: (data.news || []).slice(0, 20)
+          position: item.position || null,
+          title: item.title || null,
+          source: item.source || null,
+          link: item.link || null,
+          thumbnail_url: item.thumbnail_url || null,
+          similarity_score: item.similarity_score || null
         };
+      }),
+      news: (data.news || []).slice(0, 20)
+    };
+  }
+
+  function renderPerson(person, status, error) {
+    if (!person) {
+      personCard.innerHTML = [
+        buildSectionHeader("Person", "Failed"),
+        '<p class="description">' + escapeHtml(error || "No person information.") + "</p>"
+      ].join("");
+      return;
     }
 
-    function renderPerson(person, status, error) {
-        if (!person) {
-            personCard.innerHTML =
-                '<div class="section-header">' +
-                '<div class="section-title">' +
-                '<span class="eyebrow">人物简介</span>' +
-                '<h2 class="hero-name">识别失败</h2>' +
-                '</div>' +
-                '</div>' +
-                '<p class="description">' + escapeHtml(error || "没有获得人物信息。") + '</p>';
-            return;
-        }
+    const statusLabel = status === "partial" ? "Partial" : "Done";
+    const tags = Array.isArray(person.tags) ? person.tags.filter(Boolean) : [];
+    const tagsHtml = tags.length
+      ? '<div class="tags">' + tags.slice(0, 8).map(function mapTag(tag) {
+        return '<span class="chip">' + escapeHtml(tag) + "</span>";
+      }).join("") + "</div>"
+      : "";
 
-        const statusLabel = status === "partial" ? "部分完成" : "已完成";
-        const tags = Array.isArray(person.tags) ? person.tags.filter(Boolean) : [];
-        const tagsHtml = tags.length
-            ? '<div class="tags">' + tags.slice(0, 8).map(function (tag) {
-                return '<span class="chip">' + escapeHtml(tag) + '</span>';
-            }).join("") + '</div>'
-            : "";
+    personCard.innerHTML = [
+      buildSectionHeader("Person", person.name || "Unknown", statusLabel),
+      '<p class="description">' + escapeHtml(person.description || "No description.") + "</p>",
+      tagsHtml
+    ].join("");
+  }
 
-        personCard.innerHTML =
-            '<div class="section-header">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">人物简介</span>' +
-            '<h2 class="hero-name">' + escapeHtml(person.name || "未识别姓名") + '</h2>' +
-            '</div>' +
-            '<span class="pill">' + escapeHtml(statusLabel) + '</span>' +
-            '</div>' +
-            '<p class="description">' + escapeHtml(person.description || "暂无简介。") + '</p>' +
-            tagsHtml;
+  function renderImageMatches(matches, status, error) {
+    if (!matches.length) {
+      matchesCard.innerHTML = [
+        buildLabeledHeader("Image Match", "Image Matches", "Serper"),
+        '<p class="empty">' + escapeHtml(
+          status === "partial" && error ? "Partial result only." : "No image matches."
+        ) + "</p>"
+      ].join("");
+      return;
     }
 
-    function renderFacecheckMatches(matches, status, error) {
-        if (!matches.length) {
-            matchesCard.innerHTML =
-                '<div class="section-header compact">' +
-                '<div class="section-title">' +
-                '<span class="eyebrow">辅助比对</span>' +
-                '<h2>图片匹配</h2>' +
-                '</div>' +
-                '<span class="pill">独立板块</span>' +
-                '</div>' +
-                '<p class="empty">' + escapeHtml(
-                    status === "partial" && error
-                        ? "图片匹配未完整返回，本次仅展示其他可用结果。"
-                        : "暂无可展示的图片匹配结果。"
-                ) + '</p>';
-            return;
-        }
+    const html = matches.slice(0, 20).map(function mapMatch(item, index) {
+      const confidence = Number(item.similarity_score || 0).toFixed(2);
+      const title = escapeHtml(item.title || "Untitled");
+      const source = escapeHtml(item.source || "Unknown");
+      const target = item.link || item.thumbnail_url || "#";
+      const safeTarget = escapeHtml(target);
+      const image = item.thumbnail_url
+        ? '<img src="' + escapeHtml(item.thumbnail_url) + '" alt="' + title + '" onerror="this.style.display=\'none\'">'
+        : "";
 
-        const html = matches.slice(0, 20).map(function (item, index) {
-            const position = item.index || (index + 1);
-            const score = escapeHtml(item.similarity_score || 0);
-            const source = escapeHtml(item.source_host || "未知来源");
-            const image = item.image_data_url
-                ? '<div class="match-preview"><img src="' + escapeHtml(item.image_data_url) + '" alt="图片匹配预览"></div>'
-                : "";
-            const link = item.source_url
-                ? '<a href="' + escapeHtml(item.source_url) + '" target="_blank" rel="noreferrer">打开来源页面</a>'
-                : '<span class="match-score">无来源链接</span>';
+      return [
+        '<div class="image-item" data-link="' + safeTarget + '">',
+        image,
+        '<div class="image-info">',
+        '<div class="source">#' + escapeHtml(item.position || index + 1) + " · " + source + "</div>",
+        '<div class="title">' + title + "</div>",
+        '<div class="score">👤 ' + escapeHtml(confidence) + "% 匹配</div>",
+        "</div>",
+        "</div>"
+      ].join("");
+    }).join("");
 
-            return '<article class="match-entry">' +
-                '<div class="match-card-head">' +
-                '<span class="pill">#' + escapeHtml(position) + '</span>' +
-                '<span class="match-score">相似度 ' + score + '</span>' +
-                '</div>' +
-                image +
-                '<div class="match-source">' + source + '</div>' +
-                '<div class="tip">' + link + '</div>' +
-                '</article>';
-        }).join("");
+    matchesCard.innerHTML = [
+      buildLabeledHeader("Image Match", "Image Matches", "Serper"),
+      '<p class="meta-text">Click image to open the mapped article.</p>',
+      '<div class="match-list">' + html + "</div>"
+    ].join("");
+  }
 
-        matchesCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">辅助比对</span>' +
-            '<h2>图片匹配</h2>' +
-            '</div>' +
-            '<span class="pill">独立板块</span>' +
-            '</div>' +
-            '<p class="meta-text">以下结果用于辅助比对，不替代上方的人物简介结论。</p>' +
-            '<div class="match-list">' + html + '</div>';
+  function renderSocialAccounts(accounts) {
+    if (!accounts.length) {
+      socialCard.innerHTML = renderSocialCard('<p class="empty">No accounts.</p>');
+      return;
     }
 
-    function renderSocialAccounts(accounts) {
-        if (!accounts.length) {
-            socialCard.innerHTML = renderSocialCard('<p class="empty">暂未补充到有效的社交账号结果。</p>');
-            return;
-        }
+    const html = accounts.map(function mapAccount(account) {
+      return [
+        '<article class="item">',
+        '<div class="pill">' + escapeHtml(account.platform || "unknown") + "</div>",
+        '<a href="' + escapeHtml(account.url || "#") + '" target="_blank" rel="noreferrer">',
+        escapeHtml(account.username || account.url || "Open"),
+        "</a>",
+        "<p>" + escapeHtml(account.url || "-") + "</p>",
+        "</article>"
+      ].join("");
+    }).join("");
 
-        const html = accounts.map(function (account) {
-            return '<article class="item">' +
-                '<div class="pill">' + escapeHtml(account.platform || "unknown") + '</div>' +
-                '<a href="' + escapeHtml(account.url || "#") + '" target="_blank" rel="noreferrer">' +
-                escapeHtml(account.username || account.url || "打开账号") +
-                '</a>' +
-                '<p>' + escapeHtml(account.url || "-") + '</p>' +
-                '</article>';
-        }).join("");
+    socialCard.innerHTML = renderSocialCard('<div class="list">' + html + "</div>");
+  }
 
-        socialCard.innerHTML = renderSocialCard('<div class="list">' + html + '</div>');
+  function renderArticleGroups(newsList) {
+    const newsHtml = renderNewsArticles(newsList);
+    if (!newsHtml) {
+      newsCard.innerHTML = renderNewsCard('<p class="empty">No related articles.</p>');
+      return;
     }
 
-    function renderArticleGroups(imageMatches, newsList) {
-        const sourceMatchesHtml = renderImageMatchArticles(imageMatches);
-        const newsHtml = renderNewsArticles(newsList);
+    newsCard.innerHTML = renderNewsCard(
+      renderArticleSection("Related News", newsHtml)
+    );
+  }
 
-        if (!sourceMatchesHtml && !newsHtml) {
-            newsCard.innerHTML = renderNewsCard('<p class="empty">暂未补充到相关文章或网站来源链接。</p>');
-            return;
-        }
-
-        let contentHtml = "";
-        if (sourceMatchesHtml) {
-            contentHtml += renderArticleSection("相关网站来源", sourceMatchesHtml);
-        }
-        if (newsHtml) {
-            contentHtml += renderArticleSection("相关新闻", newsHtml);
-        }
-
-        newsCard.innerHTML = renderNewsCard(contentHtml);
+  function renderNewsArticles(newsList) {
+    if (!newsList.length) {
+      return "";
     }
 
-    function renderImageMatchArticles(imageMatches) {
-        if (!imageMatches.length) {
-            return "";
-        }
+    return '<div class="list">' + newsList.slice(0, 20).map(function mapNewsItem(item) {
+      const sourceLink = item.url
+        ? '<p class="news-source-link"><a href="' + escapeHtml(item.url) + '" target="_blank" rel="noreferrer">Open source</a></p>'
+        : '<p class="news-source-link">No source link</p>';
 
-        return '<div class="list">' + imageMatches.slice(0, 20).map(function (item) {
-            const sourceLink = item.link
-                ? '<p class="news-source-link"><a href="' + escapeHtml(item.link) + '" target="_blank" rel="noreferrer">打开原文</a></p>'
-                : '<p class="news-source-link">暂无原文链接</p>';
-            return '<article class="item">' +
-                '<div class="pill">#' + escapeHtml(item.position || "-") + '</div>' +
-                '<a href="' + escapeHtml(item.link || "#") + '" target="_blank" rel="noreferrer">' +
-                escapeHtml(item.title || "未命名来源") +
-                '</a>' +
-                '<p>' + escapeHtml(item.source || "未知来源") + '</p>' +
-                sourceLink +
-                '</article>';
-        }).join("") + '</div>';
+      return [
+        '<article class="item">',
+        '<a href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">',
+        escapeHtml(item.title || "Untitled"),
+        "</a>",
+        "<p>" + escapeHtml(item.source || "Unknown") + " | " + escapeHtml(item.published_at || "-") + "</p>",
+        "<p>" + escapeHtml(item.summary || "No summary.") + "</p>",
+        sourceLink,
+        "</article>"
+      ].join("");
+    }).join("") + "</div>";
+  }
+
+  function renderArticleSection(title, contentHtml) {
+    return [
+      '<section class="article-group">',
+      '<div class="section-header compact">',
+      '<div class="section-title"><h2>' + escapeHtml(title) + "</h2></div>",
+      "</div>",
+      contentHtml,
+      "</section>"
+    ].join("");
+  }
+
+  function renderError(error) {
+    const message = error.error || "Request failed.";
+
+    personCard.innerHTML = [
+      buildSectionHeader("Person", "Failed"),
+      '<p class="description">' + escapeHtml(message) + "</p>"
+    ].join("");
+
+    matchesCard.innerHTML = [
+      buildLabeledHeader("Image Match", "Image Matches", "Serper"),
+      '<p class="empty">No new image matches after failure.</p>'
+    ].join("");
+
+    socialCard.innerHTML = renderSocialCard('<p class="empty">No accounts after failure.</p>');
+    newsCard.innerHTML = renderNewsCard('<p class="empty">No articles after failure.</p>');
+  }
+
+  function renderNewsCard(contentHtml) {
+    return [
+      '<summary>',
+      '<div class="section-header compact">',
+      '<div class="section-title">',
+      '<span class="eyebrow">Public</span>',
+      "<h2>Articles</h2>",
+      "</div>",
+      '<span class="pill news-toggle">Collapsed</span>',
+      "</div>",
+      "</summary>",
+      '<div class="news-card-body">' + contentHtml + "</div>"
+    ].join("");
+  }
+
+  function renderSocialCard(contentHtml) {
+    return [
+      '<summary>',
+      '<div class="section-header compact">',
+      '<div class="section-title">',
+      '<span class="eyebrow">Public</span>',
+      "<h2>Accounts</h2>",
+      "</div>",
+      '<span class="pill news-toggle">Collapsed</span>',
+      "</div>",
+      "</summary>",
+      '<div class="social-card-body">' + contentHtml + "</div>"
+    ].join("");
+  }
+
+  function buildSectionHeader(label, title, pillText) {
+    const pillHtml = pillText
+      ? '<span class="pill">' + escapeHtml(pillText) + "</span>"
+      : "";
+
+    return [
+      '<div class="section-header">',
+      '<div class="section-title">',
+      '<span class="eyebrow">' + escapeHtml(label) + "</span>",
+      '<h2 class="hero-name">' + escapeHtml(title) + "</h2>",
+      "</div>",
+      pillHtml,
+      "</div>"
+    ].join("");
+  }
+
+  function buildLabeledHeader(label, title, pillText) {
+    return [
+      '<div class="section-header compact">',
+      '<div class="section-title">',
+      '<span class="eyebrow">' + escapeHtml(label) + "</span>",
+      "<h2>" + escapeHtml(title) + "</h2>",
+      "</div>",
+      '<span class="pill">' + escapeHtml(pillText) + "</span>",
+      "</div>"
+    ].join("");
+  }
+
+  function setStatus(kind, text, note) {
+    statusBox.className = "status";
+
+    if (kind === "success") {
+      statusBox.classList.add("status-success");
+    } else if (kind === "partial") {
+      statusBox.classList.add("status-partial");
+    } else if (kind === "failed") {
+      statusBox.classList.add("status-failed");
     }
 
-    function renderNewsArticles(newsList) {
-        if (!newsList.length) {
-            return "";
-        }
+    statusText.textContent = text;
+    statusNote.textContent = note;
+  }
 
-        return '<div class="list">' + newsList.slice(0, 20).map(function (item) {
-            const sourceLink = item.url
-                ? '<p class="news-source-link"><a href="' + escapeHtml(item.url) + '" target="_blank" rel="noreferrer">打开原文</a></p>'
-                : '<p class="news-source-link">暂无原文链接</p>';
-            return '<article class="item">' +
-                '<a href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
-                escapeHtml(item.title || "未命名新闻") +
-                '</a>' +
-                '<p>' + escapeHtml(item.source || "未知来源") + ' | ' + escapeHtml(item.published_at || "-") + '</p>' +
-                '<p>' + escapeHtml(item.summary || "暂无摘要。") + '</p>' +
-                sourceLink +
-                '</article>';
-        }).join("") + '</div>';
-    }
-
-    function renderArticleSection(title, contentHtml) {
-        return '<section class="article-group">' +
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<h2>' + escapeHtml(title) + '</h2>' +
-            '</div>' +
-            '</div>' +
-            contentHtml +
-            '</section>';
-    }
-
-    function renderError(error) {
-        const message = error.error || "请求失败。";
-
-        personCard.innerHTML =
-            '<div class="section-header">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">人物简介</span>' +
-            '<h2 class="hero-name">请求失败</h2>' +
-            '</div>' +
-            '</div>' +
-            '<p class="description">' + escapeHtml(message) + '</p>';
-
-        matchesCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">辅助比对</span>' +
-            '<h2>图片匹配</h2>' +
-            '</div>' +
-            '<span class="pill">独立板块</span>' +
-            '</div>' +
-            '<p class="empty">请求失败后未生成新的图片匹配结果。</p>';
-
-        socialCard.innerHTML = renderSocialCard('<p class="empty">请求失败后未生成账号结果。</p>');
-
-        newsCard.innerHTML = renderNewsCard('<p class="empty">请求失败后未生成相关文章结果。</p>');
-    }
-
-    function renderNewsCard(contentHtml) {
-        return '<summary>' +
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">公开信息</span>' +
-            '<h2>相关文章</h2>' +
-            '</div>' +
-            '<span class="pill news-toggle">默认折叠</span>' +
-            '</div>' +
-            '</summary>' +
-            '<div class="news-card-body">' + contentHtml + '</div>';
-    }
-
-    function renderSocialCard(contentHtml) {
-        return '<summary>' +
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">公开信息</span>' +
-            '<h2>社交账号</h2>' +
-            '</div>' +
-            '<span class="pill news-toggle">默认折叠</span>' +
-            '</div>' +
-            '</summary>' +
-            '<div class="social-card-body">' + contentHtml + '</div>';
-    }
-
-    function setStatus(kind, text, note) {
-        statusBox.className = "status";
-        if (kind === "success") {
-            statusBox.classList.add("status-success");
-        } else if (kind === "partial") {
-            statusBox.classList.add("status-partial");
-        } else if (kind === "failed") {
-            statusBox.classList.add("status-failed");
-        }
-
-        statusText.textContent = text;
-        statusNote.textContent = note;
-    }
-
-    function escapeHtml(value) {
-        return String(value)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-    }
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 </script>
 </body>
 </html>
