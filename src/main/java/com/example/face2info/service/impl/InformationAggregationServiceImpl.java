@@ -19,6 +19,7 @@ import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.service.InformationAggregationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final ThreadPoolTaskExecutor executor;
     private final ApiProperties properties;
 
+    @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
                                              SerpApiClient serpApiClient,
                                              NewsApiClient newsApiClient,
