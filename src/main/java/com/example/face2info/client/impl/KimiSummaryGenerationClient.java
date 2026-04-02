@@ -4,6 +4,7 @@ import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.KimiApiProperties;
 import com.example.face2info.entity.internal.PageContent;
+import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.util.LogSanitizer;
@@ -44,6 +45,15 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
+    public PageSummary summarizePage(String fallbackName, PageContent page) {
+        throw new ApiCallException("NOT_IMPLEMENTED: page summary is not implemented yet");
+    }
+
+    @Override
+    public ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries) {
+        throw new ApiCallException("NOT_IMPLEMENTED: person summary from page summaries is not implemented yet");
+    }
+
     public ResolvedPersonProfile summarizePerson(String fallbackName, List<PageContent> pages) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         int pageCount = pages == null ? 0 : pages.size();

@@ -9,6 +9,7 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.NewsApiResponse;
 import com.example.face2info.entity.internal.PageContent;
+import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
@@ -175,30 +176,90 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     .setEvidenceUrls(urls);
         }
 
-        try {
-            ResolvedPersonProfile profile = summaryGenerationClient.summarizePerson(fallbackName, pages);
-            if (profile == null) {
-                log.warn("Kimi 总结返回空结果 fallbackName={} pageCount={}", fallbackName, pages.size());
-                return new ResolvedPersonProfile().setResolvedName(fallbackName).setEvidenceUrls(urls);
-            }
-            if (profile.getEvidenceUrls() == null || profile.getEvidenceUrls().isEmpty()) {
-                profile.setEvidenceUrls(urls);
-            }
-            log.info("Kimi 总结成功 fallbackName={} resolvedName={} summaryLength={} tagCount={}",
-                    fallbackName,
-                    profile.getResolvedName(),
-                    profile.getSummary() == null ? 0 : profile.getSummary().length(),
-                    profile.getTags() == null ? 0 : profile.getTags().size());
-            return profile;
-        } catch (RuntimeException ex) {
-            String category = classifySummaryFailure(ex);
-            log.error("Kimi 总结失败 fallbackName={} urlCount={} category={} error={}",
-                    fallbackName, urls.size(), category, ex.getMessage(), ex);
+        List<PageSummary> pageSummaries = collectPageSummaries(fallbackName, pages);
+        if (pageSummaries.isEmpty()) {
+            log.warn("正文逐篇总结后无可用结果 fallbackName={} pageCount={}", fallbackName, pages.size());
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
                     .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
         }
+
+        try {
+            ResolvedPersonProfile profile = summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+            if (profile == null) {
+                log.warn("Kimi 最终总汇总返回空结果 fallbackName={} pageSummaryCount={}", fallbackName, pageSummaries.size());
+                warnings.add(SUMMARY_WARNING);
+                return new ResolvedPersonProfile().setResolvedName(fallbackName).setEvidenceUrls(urls);
+            }
+            if (profile.getEvidenceUrls() == null || profile.getEvidenceUrls().isEmpty()) {
+                profile.setEvidenceUrls(pageSummaries.stream()
+                        .map(PageSummary::getSourceUrl)
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .toList());
+            }
+            log.info("Kimi 最终总汇总成功 fallbackName={} resolvedName={} summaryLength={} tagCount={} pageSummaryCount={}",
+                    fallbackName,
+                    profile.getResolvedName(),
+                    profile.getSummary() == null ? 0 : profile.getSummary().length(),
+                    profile.getTags() == null ? 0 : profile.getTags().size(),
+                    pageSummaries.size());
+            return profile;
+        } catch (RuntimeException ex) {
+            String category = classifySummaryFailure(ex);
+            log.error("Kimi 最终总汇总失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    fallbackName, pageSummaries.size(), category, ex.getMessage(), ex);
+            warnings.add(SUMMARY_WARNING);
+            return new ResolvedPersonProfile()
+                    .setResolvedName(fallbackName)
+                    .setEvidenceUrls(urls);
+        }
+    }
+
+    private List<PageSummary> collectPageSummaries(String fallbackName, List<PageContent> pages) {
+        if (pages == null || pages.isEmpty()) {
+            return List.of();
+        }
+
+        List<PageSummary> pageSummaries = new ArrayList<>();
+        for (PageContent page : pages) {
+            if (page == null || !StringUtils.hasText(page.getContent())) {
+                continue;
+            }
+            try {
+                PageSummary pageSummary = summaryGenerationClient.summarizePage(fallbackName, page);
+                if (pageSummary == null || !StringUtils.hasText(pageSummary.getSummary())) {
+                    log.warn("篇级总结结果无效 fallbackName={} url={}", fallbackName, page.getUrl());
+                    continue;
+                }
+                if (!StringUtils.hasText(pageSummary.getSourceUrl())) {
+                    pageSummary.setSourceUrl(page.getUrl());
+                }
+                if (!StringUtils.hasText(pageSummary.getTitle())) {
+                    pageSummary.setTitle(page.getTitle());
+                }
+                pageSummaries.add(pageSummary);
+                log.info("篇级总结成功 fallbackName={} url={} tagCount={} factCount={}",
+                        fallbackName,
+                        pageSummary.getSourceUrl(),
+                        pageSummary.getTags() == null ? 0 : pageSummary.getTags().size(),
+                        pageSummary.getKeyFacts() == null ? 0 : pageSummary.getKeyFacts().size());
+            } catch (RuntimeException ex) {
+                log.warn("篇级总结失败 fallbackName={} url={} category={} error={}",
+                        fallbackName,
+                        page.getUrl(),
+                        classifySummaryFailure(ex),
+                        ex.getMessage(),
+                        ex);
+            }
+        }
+        log.info("篇级总结阶段完成 fallbackName={} inputPageCount={} successCount={} failureCount={}",
+                fallbackName,
+                pages.size(),
+                pageSummaries.size(),
+                Math.max(0, pages.size() - pageSummaries.size()));
+        return pageSummaries;
     }
 
     private String classifySummaryFailure(RuntimeException ex) {
