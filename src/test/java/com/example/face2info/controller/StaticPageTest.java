@@ -28,7 +28,7 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("renderFacecheckMatches")))
                 .andExpect(content().string(containsString("source_url")))
                 .andExpect(content().string(containsString("similarity_score")))
-                .andExpect(content().string(containsString("id=\"rawCard\"")))
+                .andExpect(content().string(containsString("id=\"debugPanel\"")))
                 .andExpect(content().string(containsString("<details")));
     }
 
@@ -40,8 +40,23 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("news-card")))
                 .andExpect(content().string(not(containsString("id=\"newsCard\" open"))))
                 .andExpect(content().string(containsString("renderNewsCard")))
+                .andExpect(content().string(containsString("renderArticleGroups")))
+                .andExpect(content().string(containsString("image_matches")))
+                .andExpect(content().string(containsString("item.link")))
                 .andExpect(content().string(containsString("news-toggle")))
                 .andExpect(content().string(containsString("news-source-link")))
                 .andExpect(content().string(containsString("item.url")));
+    }
+
+    @Test
+    void shouldRenderIndependentUploadPanelAndCollapsedInfoPanels() throws Exception {
+        mockMvc.perform(get("/index.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("id=\"uploadPanel\"")))
+                .andExpect(content().string(containsString("main-layout")))
+                .andExpect(content().string(containsString("id=\"socialCard\"")))
+                .andExpect(content().string(containsString("id=\"debugPanel\"")))
+                .andExpect(content().string(not(containsString("id=\"socialCard\" open"))))
+                .andExpect(content().string(not(containsString("id=\"debugPanel\" open"))));
     }
 }

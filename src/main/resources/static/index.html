@@ -78,9 +78,7 @@
         .hero-grid {
             position: relative;
             display: grid;
-            grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
             gap: 24px;
-            align-items: stretch;
         }
 
         .eyebrow {
@@ -292,10 +290,17 @@
         .status-partial .status-text { color: var(--warn); }
         .status-failed .status-text { color: var(--danger); }
 
+        .main-layout {
+            display: grid;
+            grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+            gap: 18px;
+            align-items: start;
+            margin-top: 20px;
+        }
+
         .results {
             display: grid;
             gap: 18px;
-            margin-top: 20px;
         }
 
         .card {
@@ -445,7 +450,7 @@
             line-height: 1.7;
         }
 
-        .debug-card details {
+        .debug-panel-body pre {
             border: 1px solid var(--line);
             border-radius: 18px;
             background: rgba(255, 255, 255, 0.72);
@@ -457,22 +462,40 @@
             overflow: hidden;
         }
 
-        .news-card > summary {
+        .social-card {
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .debug-panel {
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .news-card > summary,
+        .social-card > summary,
+        .debug-panel > summary {
             display: block;
             list-style: none;
             cursor: pointer;
             padding: 24px;
         }
 
-        .news-card > summary::-webkit-details-marker {
+        .news-card > summary::-webkit-details-marker,
+        .social-card > summary::-webkit-details-marker,
+        .debug-panel > summary::-webkit-details-marker {
             display: none;
         }
 
-        .news-card-body {
+        .news-card-body,
+        .social-card-body,
+        .debug-panel-body {
             padding: 0 24px 24px;
         }
 
-        .news-card .section-header.compact {
+        .news-card .section-header.compact,
+        .social-card .section-header.compact,
+        .debug-panel .section-header.compact {
             margin-bottom: 0;
         }
 
@@ -505,7 +528,15 @@
             margin-top: 10px;
         }
 
-        .debug-card details[open] {
+        .article-group + .article-group {
+            margin-top: 18px;
+        }
+
+        .article-group .section-title h2 {
+            font-size: 18px;
+        }
+
+        .debug-panel[open] {
             background: rgba(255, 255, 255, 0.9);
         }
 
@@ -522,7 +553,7 @@
         }
 
         @media (max-width: 1024px) {
-            .hero-grid,
+            .main-layout,
             .secondary-grid {
                 grid-template-columns: 1fr;
             }
@@ -596,7 +627,12 @@
                 </div>
             </div>
 
-            <form class="upload-card" id="faceForm">
+        </div>
+    </section>
+
+    <div class="main-layout">
+        <aside class="upload-card upload-panel" id="uploadPanel">
+            <form id="faceForm">
                 <div class="section-title">
                     <span class="eyebrow">上传分析</span>
                     <h2>选择图片并开始聚合</h2>
@@ -622,10 +658,9 @@
                     <div class="status-note" id="statusNote">上传后将返回人物简介、图片匹配、社交账号和新闻结果。</div>
                 </section>
             </form>
-        </div>
-    </section>
+        </aside>
 
-    <main class="results">
+        <main class="results">
         <section class="card primary-card" id="personCard">
             <div class="section-header">
                 <div class="section-title">
@@ -653,15 +688,20 @@
         </section>
 
         <section class="secondary-grid">
-            <section class="card" id="socialCard">
-                <div class="section-header compact">
-                    <div class="section-title">
-                        <span class="eyebrow">公开信息</span>
-                        <h2>社交账号</h2>
+            <details class="card social-card" id="socialCard">
+                <summary>
+                    <div class="section-header compact">
+                        <div class="section-title">
+                            <span class="eyebrow">公开信息</span>
+                            <h2>社交账号</h2>
+                        </div>
+                        <span class="pill news-toggle">默认折叠</span>
                     </div>
+                </summary>
+                <div class="social-card-body">
+                    <p class="empty">暂无社交账号结果。</p>
                 </div>
-                <p class="empty">暂无社交账号结果。</p>
-            </section>
+            </details>
 
             <details class="card news-card" id="newsCard">
                 <summary>
@@ -679,19 +719,22 @@
             </details>
         </section>
 
-        <section class="card debug-card" id="rawCard">
-            <div class="section-header compact">
-                <div class="section-title">
-                    <span class="eyebrow">调试</span>
-                    <h2>原始 JSON</h2>
+        <details class="card debug-panel" id="debugPanel">
+            <summary>
+                <div class="section-header compact">
+                    <div class="section-title">
+                        <span class="eyebrow">调试</span>
+                        <h2>原始 JSON</h2>
+                    </div>
+                    <span class="pill news-toggle">默认折叠</span>
                 </div>
-            </div>
-            <details>
-                <summary>展开查看完整响应</summary>
+            </summary>
+            <div class="debug-panel-body">
                 <pre id="rawResponse">{}</pre>
-            </details>
-        </section>
-    </main>
+            </div>
+        </details>
+        </main>
+    </div>
 </div>
 
 <script>
@@ -760,7 +803,7 @@
             renderPerson(data.person, data.status, data.error);
             renderFacecheckMatches(data.facecheck_matches || [], data.status, data.error);
             renderSocialAccounts(data.person && data.person.social_accounts ? data.person.social_accounts : []);
-            renderNews(data.news || []);
+            renderArticleGroups(data.image_matches || [], data.news || []);
 
             if (data.status === "partial") {
                 setStatus("partial", "部分完成", data.error || "已返回当前可用的聚合结果。");
@@ -795,16 +838,9 @@
             '</div>' +
             '<p class="empty">正在等待图片匹配结果。</p>';
 
-        socialCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">公开信息</span>' +
-            '<h2>社交账号</h2>' +
-            '</div>' +
-            '</div>' +
-            '<p class="empty">正在整理社交账号结果。</p>';
+        socialCard.innerHTML = renderSocialCard('<p class="empty">正在整理社交账号结果。</p>');
 
-        newsCard.innerHTML = renderNewsCard('<p class="empty">正在整理相关新闻结果。</p>');
+        newsCard.innerHTML = renderNewsCard('<p class="empty">正在整理相关文章结果。</p>');
 
         rawResponseEl.textContent = "{}";
     }
@@ -914,14 +950,7 @@
 
     function renderSocialAccounts(accounts) {
         if (!accounts.length) {
-            socialCard.innerHTML =
-                '<div class="section-header compact">' +
-                '<div class="section-title">' +
-                '<span class="eyebrow">公开信息</span>' +
-                '<h2>社交账号</h2>' +
-                '</div>' +
-                '</div>' +
-                '<p class="empty">暂未补充到有效的社交账号结果。</p>';
+            socialCard.innerHTML = renderSocialCard('<p class="empty">暂未补充到有效的社交账号结果。</p>');
             return;
         }
 
@@ -935,23 +964,55 @@
                 '</article>';
         }).join("");
 
-        socialCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">公开信息</span>' +
-            '<h2>社交账号</h2>' +
-            '</div>' +
-            '</div>' +
-            '<div class="list">' + html + '</div>';
+        socialCard.innerHTML = renderSocialCard('<div class="list">' + html + '</div>');
     }
 
-    function renderNews(newsList) {
-        if (!newsList.length) {
-            newsCard.innerHTML = renderNewsCard('<p class="empty">暂未补充到相关新闻，或新闻接口返回为空。</p>');
+    function renderArticleGroups(imageMatches, newsList) {
+        const sourceMatchesHtml = renderImageMatchArticles(imageMatches);
+        const newsHtml = renderNewsArticles(newsList);
+
+        if (!sourceMatchesHtml && !newsHtml) {
+            newsCard.innerHTML = renderNewsCard('<p class="empty">暂未补充到相关文章或网站来源链接。</p>');
             return;
         }
 
-        const html = newsList.slice(0, 20).map(function (item) {
+        let contentHtml = "";
+        if (sourceMatchesHtml) {
+            contentHtml += renderArticleSection("相关网站来源", sourceMatchesHtml);
+        }
+        if (newsHtml) {
+            contentHtml += renderArticleSection("相关新闻", newsHtml);
+        }
+
+        newsCard.innerHTML = renderNewsCard(contentHtml);
+    }
+
+    function renderImageMatchArticles(imageMatches) {
+        if (!imageMatches.length) {
+            return "";
+        }
+
+        return '<div class="list">' + imageMatches.slice(0, 20).map(function (item) {
+            const sourceLink = item.link
+                ? '<p class="news-source-link"><a href="' + escapeHtml(item.link) + '" target="_blank" rel="noreferrer">打开原文</a></p>'
+                : '<p class="news-source-link">暂无原文链接</p>';
+            return '<article class="item">' +
+                '<div class="pill">#' + escapeHtml(item.position || "-") + '</div>' +
+                '<a href="' + escapeHtml(item.link || "#") + '" target="_blank" rel="noreferrer">' +
+                escapeHtml(item.title || "未命名来源") +
+                '</a>' +
+                '<p>' + escapeHtml(item.source || "未知来源") + '</p>' +
+                sourceLink +
+                '</article>';
+        }).join("") + '</div>';
+    }
+
+    function renderNewsArticles(newsList) {
+        if (!newsList.length) {
+            return "";
+        }
+
+        return '<div class="list">' + newsList.slice(0, 20).map(function (item) {
             const sourceLink = item.url
                 ? '<p class="news-source-link"><a href="' + escapeHtml(item.url) + '" target="_blank" rel="noreferrer">打开原文</a></p>'
                 : '<p class="news-source-link">暂无原文链接</p>';
@@ -963,9 +1024,18 @@
                 '<p>' + escapeHtml(item.summary || "暂无摘要。") + '</p>' +
                 sourceLink +
                 '</article>';
-        }).join("");
+        }).join("") + '</div>';
+    }
 
-        newsCard.innerHTML = renderNewsCard('<div class="list">' + html + '</div>');
+    function renderArticleSection(title, contentHtml) {
+        return '<section class="article-group">' +
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<h2>' + escapeHtml(title) + '</h2>' +
+            '</div>' +
+            '</div>' +
+            contentHtml +
+            '</section>';
     }
 
     function renderError(error) {
@@ -990,16 +1060,9 @@
             '</div>' +
             '<p class="empty">请求失败后未生成新的图片匹配结果。</p>';
 
-        socialCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">公开信息</span>' +
-            '<h2>社交账号</h2>' +
-            '</div>' +
-            '</div>' +
-            '<p class="empty">请求失败后未生成账号结果。</p>';
+        socialCard.innerHTML = renderSocialCard('<p class="empty">请求失败后未生成账号结果。</p>');
 
-        newsCard.innerHTML = renderNewsCard('<p class="empty">请求失败后未生成新闻结果。</p>');
+        newsCard.innerHTML = renderNewsCard('<p class="empty">请求失败后未生成相关文章结果。</p>');
     }
 
     function renderNewsCard(contentHtml) {
@@ -1013,6 +1076,19 @@
             '</div>' +
             '</summary>' +
             '<div class="news-card-body">' + contentHtml + '</div>';
+    }
+
+    function renderSocialCard(contentHtml) {
+        return '<summary>' +
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">公开信息</span>' +
+            '<h2>社交账号</h2>' +
+            '</div>' +
+            '<span class="pill news-toggle">默认折叠</span>' +
+            '</div>' +
+            '</summary>' +
+            '<div class="social-card-body">' + contentHtml + '</div>';
     }
 
     function setStatus(kind, text, note) {

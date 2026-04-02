@@ -1,0 +1,72 @@
+<h2>上传区独立布局</h2>
+<p class="subtitle">两种方案都把顶部标题从上传区里拆出去。区别在于上传区的存在感和结果区的阅读优先级。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 左侧独立上传卡片，右侧结果主区</div>
+        <div class="mockup-body">
+          <div class="placeholder" style="height:72px;margin-bottom:14px;">顶部标题区 / Hero</div>
+          <div style="display:grid;grid-template-columns:320px 1fr;gap:16px;">
+            <div class="mockup" style="margin:0;">
+              <div class="mockup-header">上传文件区</div>
+              <div class="mockup-body">
+                <div class="mock-input">文件选择</div>
+                <div class="placeholder" style="height:88px;margin-top:10px;">图片预览</div>
+                <div class="mock-button" style="margin-top:10px;">开始分析</div>
+                <div class="placeholder" style="height:72px;margin-top:10px;">状态提示</div>
+              </div>
+            </div>
+            <div style="display:grid;gap:12px;">
+              <div class="placeholder" style="height:120px;">人物简介</div>
+              <div class="placeholder" style="height:96px;">图片匹配</div>
+              <div class="placeholder" style="height:180px;">相关文章 / 社交账号 / 调试信息</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 A</h3>
+      <p>上传区固定而清晰，结果区保持主阅读位，页面最稳。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 左侧宽上传工作台，右侧窄结果流</div>
+        <div class="mockup-body">
+          <div class="placeholder" style="height:72px;margin-bottom:14px;">顶部标题区 / Hero</div>
+          <div style="display:grid;grid-template-columns:420px 1fr;gap:16px;">
+            <div class="mockup" style="margin:0;">
+              <div class="mockup-header">上传工作台</div>
+              <div class="mockup-body">
+                <div class="placeholder" style="height:120px;">拖拽上传主区域</div>
+                <div class="placeholder" style="height:120px;margin-top:10px;">大图预览</div>
+                <div class="mock-button" style="margin-top:10px;">开始分析</div>
+                <div class="placeholder" style="height:72px;margin-top:10px;">说明 / 状态</div>
+              </div>
+            </div>
+            <div style="display:grid;gap:12px;">
+              <div class="placeholder" style="height:96px;">人物简介</div>
+              <div class="placeholder" style="height:96px;">图片匹配</div>
+              <div class="placeholder" style="height:96px;">社交账号</div>
+              <div class="placeholder" style="height:140px;">相关文章</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 B</h3>
+      <p>上传区更强势，适合把“上传分析”做成页面主动作，但结果区会更窄。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <p class="label">建议</p>
+  <p>推荐先选 A。它更符合“单独上传文件区”的要求，同时不会挤压右侧结果阅读宽度。</p>
+</div>
