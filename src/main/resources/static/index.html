@@ -452,6 +452,59 @@
             padding: 12px 14px 4px;
         }
 
+        .news-card {
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .news-card > summary {
+            display: block;
+            list-style: none;
+            cursor: pointer;
+            padding: 24px;
+        }
+
+        .news-card > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .news-card-body {
+            padding: 0 24px 24px;
+        }
+
+        .news-card .section-header.compact {
+            margin-bottom: 0;
+        }
+
+        .news-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .news-toggle::before {
+            content: "展开";
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 46px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(171, 81, 49, 0.1);
+            color: var(--accent-deep);
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .news-card[open] .news-toggle::before {
+            content: "收起";
+        }
+
+        .news-source-link {
+            margin-top: 10px;
+        }
+
         .debug-card details[open] {
             background: rgba(255, 255, 255, 0.9);
         }
@@ -610,15 +663,20 @@
                 <p class="empty">暂无社交账号结果。</p>
             </section>
 
-            <section class="card" id="newsCard">
-                <div class="section-header compact">
-                    <div class="section-title">
-                        <span class="eyebrow">公开信息</span>
-                        <h2>近期新闻</h2>
+            <details class="card news-card" id="newsCard">
+                <summary>
+                    <div class="section-header compact">
+                        <div class="section-title">
+                            <span class="eyebrow">公开信息</span>
+                            <h2>相关文章</h2>
+                        </div>
+                        <span class="pill news-toggle">默认折叠</span>
                     </div>
+                </summary>
+                <div class="news-card-body">
+                    <p class="empty">暂无新闻结果。</p>
                 </div>
-                <p class="empty">暂无新闻结果。</p>
-            </section>
+            </details>
         </section>
 
         <section class="card debug-card" id="rawCard">
@@ -746,14 +804,7 @@
             '</div>' +
             '<p class="empty">正在整理社交账号结果。</p>';
 
-        newsCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">公开信息</span>' +
-            '<h2>近期新闻</h2>' +
-            '</div>' +
-            '</div>' +
-            '<p class="empty">正在整理相关新闻结果。</p>';
+        newsCard.innerHTML = renderNewsCard('<p class="empty">正在整理相关新闻结果。</p>');
 
         rawResponseEl.textContent = "{}";
     }
@@ -896,35 +947,25 @@
 
     function renderNews(newsList) {
         if (!newsList.length) {
-            newsCard.innerHTML =
-                '<div class="section-header compact">' +
-                '<div class="section-title">' +
-                '<span class="eyebrow">公开信息</span>' +
-                '<h2>近期新闻</h2>' +
-                '</div>' +
-                '</div>' +
-                '<p class="empty">暂未补充到相关新闻，或新闻接口返回为空。</p>';
+            newsCard.innerHTML = renderNewsCard('<p class="empty">暂未补充到相关新闻，或新闻接口返回为空。</p>');
             return;
         }
 
         const html = newsList.slice(0, 20).map(function (item) {
+            const sourceLink = item.url
+                ? '<p class="news-source-link"><a href="' + escapeHtml(item.url) + '" target="_blank" rel="noreferrer">打开原文</a></p>'
+                : '<p class="news-source-link">暂无原文链接</p>';
             return '<article class="item">' +
                 '<a href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
                 escapeHtml(item.title || "未命名新闻") +
                 '</a>' +
                 '<p>' + escapeHtml(item.source || "未知来源") + ' | ' + escapeHtml(item.published_at || "-") + '</p>' +
                 '<p>' + escapeHtml(item.summary || "暂无摘要。") + '</p>' +
+                sourceLink +
                 '</article>';
         }).join("");
 
-        newsCard.innerHTML =
-            '<div class="section-header compact">' +
-            '<div class="section-title">' +
-            '<span class="eyebrow">公开信息</span>' +
-            '<h2>近期新闻</h2>' +
-            '</div>' +
-            '</div>' +
-            '<div class="list">' + html + '</div>';
+        newsCard.innerHTML = renderNewsCard('<div class="list">' + html + '</div>');
     }
 
     function renderError(error) {
@@ -958,14 +999,20 @@
             '</div>' +
             '<p class="empty">请求失败后未生成账号结果。</p>';
 
-        newsCard.innerHTML =
+        newsCard.innerHTML = renderNewsCard('<p class="empty">请求失败后未生成新闻结果。</p>');
+    }
+
+    function renderNewsCard(contentHtml) {
+        return '<summary>' +
             '<div class="section-header compact">' +
             '<div class="section-title">' +
             '<span class="eyebrow">公开信息</span>' +
-            '<h2>近期新闻</h2>' +
+            '<h2>相关文章</h2>' +
             '</div>' +
+            '<span class="pill news-toggle">默认折叠</span>' +
             '</div>' +
-            '<p class="empty">请求失败后未生成新闻结果。</p>';
+            '</summary>' +
+            '<div class="news-card-body">' + contentHtml + '</div>';
     }
 
     function setStatus(kind, text, note) {
