@@ -1,16 +1,20 @@
 package com.example.face2info.entity.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "社交账号信息")
 /**
  * 社交账号 DTO。
  */
+@Schema(description = "社交账号信息")
 public class SocialAccount {
 
+    @Schema(description = "社交平台名称", example = "Instagram")
     private String platform;
+
+    @Schema(description = "社交账号主页链接", example = "https://instagram.com/example")
     private String url;
+
+    @Schema(description = "社交平台上的用户名或账号标识", example = "jaychou")
     private String username;
 
     public String getPlatform() {

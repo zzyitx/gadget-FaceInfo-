@@ -12,17 +12,27 @@ import java.util.List;
 @Schema(description = "人脸信息聚合响应")
 public class FaceInfoResponse {
 
+    @Schema(description = "聚合后的人物主体信息")
     private PersonInfo person;
+
+    @Schema(description = "候选人物相关的新闻列表")
     private List<NewsItem> news = new ArrayList<>();
 
     @JsonProperty("image_matches")
+    @Schema(description = "来自搜图引擎的相似图片匹配结果")
     private List<ImageMatch> imageMatches = new ArrayList<>();
 
     @JsonProperty("facecheck_matches")
+    @Schema(description = "来自 FaceCheck 的图片匹配结果")
     private List<FaceCheckMatch> facecheckMatches = new ArrayList<>();
 
+    @Schema(description = "聚合过程中产生的非阻塞告警信息")
     private List<String> warnings = new ArrayList<>();
+
+    @Schema(description = "接口处理状态，常见取值为 success、partial、failed", example = "success")
     private String status;
+
+    @Schema(description = "请求失败时返回的错误说明，成功时通常为空", example = "外部服务暂时不可用")
     private String error;
 
     public PersonInfo getPerson() {

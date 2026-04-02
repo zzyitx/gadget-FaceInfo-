@@ -8,13 +8,14 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Swagger/OpenAPI 文档配置。
  */
+@Configuration
 public class OpenApiConfig {
 
     @Bean
     public OpenAPI face2InfoOpenApi() {
         return new OpenAPI().info(new Info()
                 .title("Face2Info API")
-                .description("上传人脸照片后聚合人物实体信息、社交账号和新闻")
+                .description("上传人脸照片后聚合人物公开资料、社交账号与相关新闻")
                 .version("1.0.0"));
     }
 }

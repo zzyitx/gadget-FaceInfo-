@@ -1,18 +1,32 @@
 package com.example.face2info.entity.internal;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 单篇正文的结构化摘要结果。
  */
+@Schema(description = "单篇正文摘要结果")
 public class PageSummary {
 
+    @Schema(description = "正文来源链接")
     private String sourceUrl;
+
+    @Schema(description = "正文标题")
     private String title;
+
+    @Schema(description = "从正文中解析出的候选人物名称")
     private String resolvedNameCandidate;
+
+    @Schema(description = "正文摘要")
     private String summary;
+
+    @Schema(description = "正文中提取出的关键事实")
     private List<String> keyFacts = new ArrayList<>();
+
+    @Schema(description = "正文中提取出的标签")
     private List<String> tags = new ArrayList<>();
 
     public String getSourceUrl() {

@@ -1,13 +1,29 @@
 package com.example.face2info.entity.internal;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "FaceCheck 原始候选匹配结果")
 public class FaceCheckMatchCandidate {
 
+    @Schema(description = "匹配图片的数据地址")
     private String imageDataUrl;
+
+    @Schema(description = "匹配相似度分数")
     private double similarityScore;
+
+    @Schema(description = "来源站点域名")
     private String sourceHost;
+
+    @Schema(description = "来源页面链接")
     private String sourceUrl;
+
+    @Schema(description = "原始分组编号")
     private int group;
+
+    @Schema(description = "结果被观察到的次数")
     private int seen;
+
+    @Schema(description = "结果序号")
     private int index;
 
     public String getImageDataUrl() {
