@@ -12,6 +12,7 @@ target/
 
 ### Local Tools ###
 .ai/
+.superpowers/
 .env
 .env.*
 !.env.example
