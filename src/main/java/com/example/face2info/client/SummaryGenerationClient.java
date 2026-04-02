@@ -1,21 +1,23 @@
 package com.example.face2info.client;
 
 import com.example.face2info.entity.internal.PageContent;
+import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 
 import java.util.List;
 
 /**
- * 摘要生成客户端抽象。
+ * 正文摘要生成客户端抽象。
  */
 public interface SummaryGenerationClient {
 
     /**
-     * 基于页面正文生成最终人物摘要。
-     *
-     * @param fallbackName 降级使用的人名
-     * @param pages 页面正文结果
-     * @return 摘要结果对象
+     * 基于单篇正文生成结构化篇级摘要。
      */
-    ResolvedPersonProfile summarizePerson(String fallbackName, List<PageContent> pages);
+    PageSummary summarizePage(String fallbackName, PageContent page);
+
+    /**
+     * 基于篇级摘要集合生成最终人物总结。
+     */
+    ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries);
 }

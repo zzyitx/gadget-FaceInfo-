@@ -3,13 +3,13 @@ package com.example.face2info.client.impl;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.PageContent;
+import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 摘要生成客户端默认占位实现。
@@ -25,15 +25,32 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
-    public ResolvedPersonProfile summarizePerson(String fallbackName, List<PageContent> pages) {
+    public PageSummary summarizePage(String fallbackName, PageContent page) {
+        if (page == null) {
+            return null;
+        }
+        return new PageSummary()
+                .setSourceUrl(page.getUrl())
+                .setTitle(page.getTitle());
+    }
+
+    @Override
+    public ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries) {
         ResolvedPersonProfile profile = new ResolvedPersonProfile()
                 .setResolvedName(fallbackName);
 
-        if (pages != null && !pages.isEmpty()) {
-            profile.setEvidenceUrls(pages.stream()
-                    .map(PageContent::getUrl)
-                    .filter(url -> url != null && !url.isBlank())
-                    .collect(Collectors.toList()));
+        if (pageSummaries != null && !pageSummaries.isEmpty()) {
+            List<String> evidenceUrls = new ArrayList<>();
+            for (PageSummary pageSummary : pageSummaries) {
+                if (pageSummary == null) {
+                    continue;
+                }
+                String url = pageSummary.getSourceUrl();
+                if (url != null && !url.isBlank()) {
+                    evidenceUrls.add(url);
+                }
+            }
+            profile.setEvidenceUrls(evidenceUrls);
         } else {
             profile.setEvidenceUrls(new ArrayList<>());
         }
