@@ -5,9 +5,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 内部使用的人物聚合结果。
- */
 @Schema(description = "内部人物聚合结果")
 public class PersonAggregate {
 
@@ -31,6 +28,9 @@ public class PersonAggregate {
 
     @Schema(description = "支撑当前结论的证据链接")
     private List<String> evidenceUrls = new ArrayList<>();
+
+    @Schema(description = "人物基础信息")
+    private PersonBasicInfo basicInfo = new PersonBasicInfo();
 
     public String getName() {
         return name;
@@ -92,6 +92,15 @@ public class PersonAggregate {
 
     public PersonAggregate setEvidenceUrls(List<String> evidenceUrls) {
         this.evidenceUrls = evidenceUrls;
+        return this;
+    }
+
+    public PersonBasicInfo getBasicInfo() {
+        return basicInfo;
+    }
+
+    public PersonAggregate setBasicInfo(PersonBasicInfo basicInfo) {
+        this.basicInfo = basicInfo;
         return this;
     }
 }

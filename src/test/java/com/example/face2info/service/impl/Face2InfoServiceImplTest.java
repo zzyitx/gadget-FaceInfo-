@@ -1,6 +1,7 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.response.FaceInfoResponse;
@@ -72,6 +73,38 @@ class Face2InfoServiceImplTest {
         assertThat(response.getPerson().getSummary()).isEqualTo("Jay Chou is a major Mandopop artist.");
         assertThat(response.getPerson().getTags()).containsExactly("Singer", "Producer");
         assertThat(response.getWarnings()).containsExactly("Summary provider unavailable");
+    }
+
+    @Test
+    void shouldMapBasicInfoIntoResponse() {
+        ImageUtils imageUtils = mock(ImageUtils.class);
+        FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
+        InformationAggregationService aggregationService = mock(InformationAggregationService.class);
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        RecognitionEvidence evidence = new RecognitionEvidence();
+
+        doNothing().when(imageUtils).validateImage(image);
+        when(recognitionService.recognize(image)).thenReturn(evidence);
+        when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate()
+                        .setName("Jay Chou")
+                        .setDescription("Short description")
+                        .setSummary("Long summary")
+                        .setWikipedia("https://example.com/wiki")
+                        .setOfficialWebsite("https://example.com")
+                        .setBasicInfo(new PersonBasicInfo()
+                                .setBirthDate("1979-01-18")
+                                .setEducation(java.util.List.of("Tamkang Senior High School"))
+                                .setOccupations(java.util.List.of("Singer", "Producer"))
+                                .setBiographies(java.util.List.of("Taiwanese Mandopop artist")))));
+
+        FaceInfoResponse response = new Face2InfoServiceImpl(
+                imageUtils, recognitionService, aggregationService).process(image);
+
+        assertThat(response.getPerson().getBasicInfo().getBirthDate()).isEqualTo("1979-01-18");
+        assertThat(response.getPerson().getBasicInfo().getEducation()).containsExactly("Tamkang Senior High School");
+        assertThat(response.getPerson().getBasicInfo().getOccupations()).containsExactly("Singer", "Producer");
+        assertThat(response.getPerson().getBasicInfo().getBiographies()).containsExactly("Taiwanese Mandopop artist");
     }
 
     @Test

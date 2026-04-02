@@ -72,7 +72,6 @@ public class SerpApiClientImpl implements SerpApiClient {
     }
 
     private SerpApiResponse execute(String name, String url) {
-//        ApiProperties.Api api = properties.getApi();
         ApiProperties.Api api = properties.getApi();
         return RetryUtils.execute(name, api.getSerp().getMaxRetries(), api.getSerp().getBackoffInitialMs(), () -> {
             log.info("{} 请求地址={}", name, LogSanitizer.maskUrl(url));

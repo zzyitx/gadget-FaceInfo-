@@ -5,14 +5,14 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 大模型解析后的人物信息。
- */
 @Schema(description = "大模型解析后的人物画像")
 public class ResolvedPersonProfile {
 
     @Schema(description = "解析后确认的人物名称")
     private String resolvedName;
+
+    @Schema(description = "解析后的人物简介")
+    private String description;
 
     @Schema(description = "解析后的人物摘要")
     private String summary;
@@ -26,12 +26,30 @@ public class ResolvedPersonProfile {
     @Schema(description = "支撑当前画像的证据链接")
     private List<String> evidenceUrls = new ArrayList<>();
 
+    @Schema(description = "百科链接")
+    private String wikipedia;
+
+    @Schema(description = "官方网站链接")
+    private String officialWebsite;
+
+    @Schema(description = "人物基础信息")
+    private PersonBasicInfo basicInfo = new PersonBasicInfo();
+
     public String getResolvedName() {
         return resolvedName;
     }
 
     public ResolvedPersonProfile setResolvedName(String resolvedName) {
         this.resolvedName = resolvedName;
+        return this;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public ResolvedPersonProfile setDescription(String description) {
+        this.description = description;
         return this;
     }
 
@@ -68,6 +86,33 @@ public class ResolvedPersonProfile {
 
     public ResolvedPersonProfile setEvidenceUrls(List<String> evidenceUrls) {
         this.evidenceUrls = evidenceUrls;
+        return this;
+    }
+
+    public String getWikipedia() {
+        return wikipedia;
+    }
+
+    public ResolvedPersonProfile setWikipedia(String wikipedia) {
+        this.wikipedia = wikipedia;
+        return this;
+    }
+
+    public String getOfficialWebsite() {
+        return officialWebsite;
+    }
+
+    public ResolvedPersonProfile setOfficialWebsite(String officialWebsite) {
+        this.officialWebsite = officialWebsite;
+        return this;
+    }
+
+    public PersonBasicInfo getBasicInfo() {
+        return basicInfo;
+    }
+
+    public ResolvedPersonProfile setBasicInfo(PersonBasicInfo basicInfo) {
+        this.basicInfo = basicInfo;
         return this;
     }
 }

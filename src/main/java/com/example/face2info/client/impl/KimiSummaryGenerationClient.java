@@ -5,6 +5,7 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.KimiApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.util.LogSanitizer;
@@ -48,7 +49,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     public PageSummary summarizePage(String fallbackName, PageContent page) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
-        log.info("Kimi 篇级总结开始 fallbackName={} url={} title={}",
+        log.info("Kimi page summary start fallbackName={} url={} title={}",
                 fallbackName,
                 page == null ? null : page.getUrl(),
                 page == null ? null : page.getTitle());
@@ -56,7 +57,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         return RetryUtils.execute("Kimi summarize page", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildPagePrompt(fallbackName, page));
             PageSummary summary = parsePageSummary(page, body);
-            log.info("Kimi 篇级总结成功 url={} summaryLength={} tagCount={} factCount={}",
+            log.info("Kimi page summary success url={} summaryLength={} tagCount={} factCount={}",
                     summary.getSourceUrl(),
                     summary.getSummary() == null ? 0 : summary.getSummary().length(),
                     summary.getTags() == null ? 0 : summary.getTags().size(),
@@ -70,12 +71,12 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
         int pageSummaryCount = pageSummaries == null ? 0 : pageSummaries.size();
-        log.info("Kimi 最终汇总开始 fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
+        log.info("Kimi final profile summary start fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
 
-        return RetryUtils.execute("Kimi 总结人物", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Kimi summarize person", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildPersonPrompt(fallbackName, pageSummaries));
             ResolvedPersonProfile profile = parseProfileFromPageSummaries(fallbackName, pageSummaries, body);
-            log.info("Kimi 最终汇总成功 resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
+            log.info("Kimi final profile summary success resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
                     profile.getResolvedName(),
                     profile.getSummary() == null ? 0 : profile.getSummary().length(),
                     profile.getTags() == null ? 0 : profile.getTags().size(),
@@ -88,7 +89,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         if (!StringUtils.hasText(kimi.getApiKey())
                 || !StringUtils.hasText(kimi.getBaseUrl())
                 || !StringUtils.hasText(kimi.getModel())) {
-            log.error("Kimi 配置缺失 baseUrlConfigured={} modelConfigured={} apiKeyConfigured={}",
+            log.error("Kimi config missing baseUrlConfigured={} modelConfigured={} apiKeyConfigured={}",
                     StringUtils.hasText(kimi.getBaseUrl()),
                     StringUtils.hasText(kimi.getModel()),
                     StringUtils.hasText(kimi.getApiKey()));
@@ -109,7 +110,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 )
         );
 
-        log.info("Kimi 请求已发送 model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
+        log.info("Kimi request sent model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
         ResponseEntity<JsonNode> response = restTemplate.exchange(
                 kimi.getBaseUrl(),
                 HttpMethod.POST,
@@ -121,7 +122,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private String buildPagePrompt(String fallbackName, PageContent page) {
         return """
-                请基于以下单篇正文抽取人物信息，只能输出 JSON，且返回内容语言必须为中文。
+                请基于以下单篇正文提取人物信息，只能输出 JSON，且返回内容语言必须为中文。
                 JSON 字段固定为 resolvedNameCandidate、summary、keyFacts、tags、sourceUrl。
                 fallbackName: %s
                 title: %s
@@ -156,8 +157,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于以下篇级摘要集合生成最终人物总结，只能输出 JSON，且返回内容语言必须为中文。
-                JSON 字段固定为 resolvedName、summary、keyFacts、tags、evidenceUrls。
+                请基于以下篇级摘要集合生成人物最终画像，只能输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 篇级摘要如下：
                 %s
@@ -181,7 +183,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(readStringList(json.path("tags")));
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi 篇级总结解析失败 error={}", ex.getMessage(), ex);
+            log.warn("Kimi page summary parse failed error={}", ex.getMessage(), ex);
             throw new ApiCallException("INVALID_RESPONSE: kimi page summary is not valid json", ex);
         }
     }
@@ -203,12 +205,16 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
             return new ResolvedPersonProfile()
                     .setResolvedName(firstNonBlank(json.path("resolvedName").asText(null), fallbackName))
-                    .setSummary(json.path("summary").asText(null))
+                    .setDescription(trimToNull(json.path("description").asText(null)))
+                    .setSummary(trimToNull(json.path("summary").asText(null)))
                     .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(readStringList(json.path("tags")))
+                    .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
+                    .setOfficialWebsite(trimToNull(json.path("officialWebsite").asText(null)))
+                    .setBasicInfo(readBasicInfo(json.path("basicInfo")))
                     .setEvidenceUrls(evidenceUrls);
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi 最终汇总解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
+            log.warn("Kimi final profile parse failed fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
             throw new ApiCallException("INVALID_RESPONSE: kimi content is not valid json", ex);
         }
     }
@@ -234,8 +240,23 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         return List.copyOf(values);
     }
 
+    private PersonBasicInfo readBasicInfo(JsonNode basicInfoNode) {
+        if (basicInfoNode == null || basicInfoNode.isMissingNode() || basicInfoNode.isNull()) {
+            return new PersonBasicInfo();
+        }
+        return new PersonBasicInfo()
+                .setBirthDate(trimToNull(basicInfoNode.path("birthDate").asText(null)))
+                .setEducation(readStringList(basicInfoNode.path("education")))
+                .setOccupations(readStringList(basicInfoNode.path("occupations")))
+                .setBiographies(readStringList(basicInfoNode.path("biographies")));
+    }
+
     private String firstNonBlank(String primary, String fallback) {
         return StringUtils.hasText(primary) ? primary : fallback;
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private String normalizeJsonContent(String content) {

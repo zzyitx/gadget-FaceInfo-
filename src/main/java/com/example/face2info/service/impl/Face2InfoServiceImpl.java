@@ -1,8 +1,10 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.response.FaceInfoResponse;
+import com.example.face2info.entity.response.PersonBasicInfoResponse;
 import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.service.Face2InfoService;
 import com.example.face2info.service.FaceRecognitionService;
@@ -38,19 +40,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         imageUtils.validateImage(image);
 
         RecognitionEvidence evidence = faceRecognitionService.recognize(image);
-        log.info("识别阶段完成 imageMatchCount={} seedQueryCount={} webEvidenceCount={} errorCount={}",
-                evidence.getImageMatches().size(),
-                evidence.getSeedQueries().size(),
-                evidence.getWebEvidences().size(),
-                evidence.getErrors().size());
-
         AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
-        log.info("聚合阶段完成 warningCount={} errorCount={} socialCount={} newsCount={} resolvedName={}",
-                aggregationResult.getWarnings().size(),
-                aggregationResult.getErrors().size(),
-                aggregationResult.getSocialAccounts().size(),
-                aggregationResult.getNews().size(),
-                aggregationResult.getPerson() == null ? null : aggregationResult.getPerson().getName());
 
         List<String> combinedErrors = new ArrayList<>(aggregationResult.getErrors());
         List<String> warnings = new ArrayList<>(aggregationResult.getWarnings());
@@ -58,7 +48,6 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         if (aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
             List<String> errors = new ArrayList<>(evidence.getErrors());
             errors.addAll(combinedErrors);
-            log.warn("总流程失败 errorCount={} errors={}", errors.size(), errors);
             return new FaceInfoResponse()
                     .setPerson(null)
                     .setNews(aggregationResult.getNews())
@@ -75,11 +64,10 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setTags(aggregationResult.getPerson().getTags())
                 .setWikipedia(aggregationResult.getPerson().getWikipedia())
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
+                .setBasicInfo(toResponseBasicInfo(aggregationResult.getPerson().getBasicInfo()))
                 .setSocialAccounts(aggregationResult.getSocialAccounts());
 
         String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
-        log.info("总流程结束 status={} personName={} warningCount={} errorCount={}",
-                status, person.getName(), warnings.size(), combinedErrors.size());
         return new FaceInfoResponse()
                 .setPerson(person)
                 .setNews(aggregationResult.getNews())
@@ -87,5 +75,16 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setImageMatches(evidence.getImageMatches())
                 .setStatus(status)
                 .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
+    }
+
+    private PersonBasicInfoResponse toResponseBasicInfo(PersonBasicInfo basicInfo) {
+        if (basicInfo == null) {
+            return new PersonBasicInfoResponse();
+        }
+        return new PersonBasicInfoResponse()
+                .setBirthDate(basicInfo.getBirthDate())
+                .setEducation(basicInfo.getEducation())
+                .setOccupations(basicInfo.getOccupations())
+                .setBiographies(basicInfo.getBiographies());
     }
 }

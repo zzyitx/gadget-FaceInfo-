@@ -7,18 +7,14 @@ import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
-import com.example.face2info.entity.internal.NewsApiResponse;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
-import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
-import com.example.face2info.entity.response.NewsItem;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.service.InformationAggregationService;
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,13 +38,15 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private static final String SUMMARY_WARNING = "正文智能处理暂时不可用";
     private static final String KIMI_SUFFIX = " (由 Kimi 总结)";
-    private static final String SERP_API_SUFFIX = " (由 SerpAPI 聚合)";
     private static final String SOCIAL_PLACEHOLDER_PLATFORM = "pending";
     private static final String SOCIAL_PLACEHOLDER_URL = "#";
     private static final String SOCIAL_PLACEHOLDER_USERNAME = "功能正在开发中";
 
+    @SuppressWarnings("unused")
     private final GoogleSearchClient googleSearchClient;
+    @SuppressWarnings("unused")
     private final SerpApiClient serpApiClient;
+    @SuppressWarnings("unused")
     private final NewsApiClient newsApiClient;
     private final JinaReaderClient jinaReaderClient;
     private final SummaryGenerationClient summaryGenerationClient;
@@ -78,15 +76,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       JinaReaderClient jinaReaderClient,
                                       SummaryGenerationClient summaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
-        this(
-                googleSearchClient,
-                serpApiClient,
-                newsApiClient,
-                jinaReaderClient,
-                summaryGenerationClient,
-                executor,
-                new ApiProperties()
-        );
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor, new ApiProperties());
     }
 
     @Override
@@ -98,25 +88,20 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
 
         result.getErrors().addAll(evidence.getErrors());
-        log.info("信息聚合开始 seedQueryCount={} webEvidenceCount={} upstreamErrorCount={}",
-                evidence.getSeedQueries().size(), evidence.getWebEvidences().size(), evidence.getErrors().size());
-
         ResolvedPersonProfile profile = resolveProfileFromEvidence(
                 evidence.getWebEvidences(),
                 firstSeedQuery(evidence),
                 result.getWarnings()
         );
         String resolvedName = resolveNameOrFallback(profile, evidence);
-        log.info("正文总结阶段完成 resolvedName={} summaryAvailable={} tagCount={} evidenceUrlCount={} warningCount={}",
-                resolvedName,
-                StringUtils.hasText(profile.getSummary()),
-                profile.getTags() == null ? 0 : profile.getTags().size(),
-                profile.getEvidenceUrls() == null ? 0 : profile.getEvidenceUrls().size(),
-                result.getWarnings().size());
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
-            result.setPerson(new PersonAggregate().setDescription(appendSuffix(cleanDescription(profile.getSummary()), KIMI_SUFFIX)));
-            log.warn("信息聚合失败：无法解析人物名称 errorCount={}", result.getErrors().size());
+            result.setPerson(new PersonAggregate()
+                    .setDescription(appendSuffix(cleanText(profile.getDescription()), KIMI_SUFFIX))
+                    .setSummary(appendSuffix(cleanText(profile.getSummary()), KIMI_SUFFIX))
+                    .setBasicInfo(profile.getBasicInfo())
+                    .setOfficialWebsite(profile.getOfficialWebsite())
+                    .setWikipedia(profile.getWikipedia()));
             return result;
         }
 
@@ -124,25 +109,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .supplyAsync(() -> collectSocialAccounts(resolvedName), executor)
                 .orTimeout(10, TimeUnit.SECONDS);
 
-        CompletableFuture<PersonAggregate> personFuture = CompletableFuture
-                .supplyAsync(() -> collectPersonInfo(resolvedName), executor)
-                .orTimeout(10, TimeUnit.SECONDS);
-
-        PersonAggregate person = joinTask("人物详情", personFuture, new PersonAggregate().setName(resolvedName), result.getErrors());
-        person.setName(resolvedName);
-        String summarizedDescription = cleanDescription(profile.getSummary());
-        String fallbackDescription = cleanDescription(person.getDescription());
-        person.setDescription(formatDescription(summarizedDescription, fallbackDescription));
-        person.setSummary(appendSuffix(summarizedDescription, KIMI_SUFFIX));
-        person.setTags(profile.getTags() == null ? List.of() : profile.getTags());
-        person.setEvidenceUrls(profile.getEvidenceUrls());
-
-        result.setPerson(person);
+        result.setPerson(buildPersonFromProfile(profile, resolvedName));
         result.setSocialAccounts(deduplicateSocialAccounts(joinTask("社交账号", socialFuture, List.of(), result.getErrors())));
         result.setNews(List.of());
-        log.info("信息聚合完成 personName={} socialCount={} newsCount={} warningCount={} errorCount={}",
-                person.getName(), result.getSocialAccounts().size(), result.getNews().size(),
-                result.getWarnings().size(), result.getErrors().size());
         return result;
     }
 
@@ -152,25 +121,20 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName, List<String> warnings) {
         List<String> urls = selectTopUrls(evidences);
-        log.info("正文总结准备完成 fallbackName={} selectedUrlCount={}", fallbackName, urls.size());
         if (urls.isEmpty()) {
-            log.info("正文总结跳过：没有可用网页证据 fallbackName={}", fallbackName);
             return new ResolvedPersonProfile().setResolvedName(fallbackName);
         }
 
         List<PageContent> pages = List.of();
         try {
             pages = jinaReaderClient.readPages(urls);
-            log.info("Jina 正文提取完成 fallbackName={} pageCount={}", fallbackName, pages == null ? 0 : pages.size());
         } catch (RuntimeException ex) {
             log.warn("Jina 正文提取失败 fallbackName={} urlCount={} error={}", fallbackName, urls.size(), ex.getMessage(), ex);
         }
         if (pages == null || pages.isEmpty()) {
             pages = buildFallbackPages(evidences, urls);
-            log.info("正文总结兜底页面构建完成 fallbackName={} pageCount={}", fallbackName, pages.size());
         }
         if (pages.isEmpty()) {
-            log.info("正文总结跳过：既无可用 Jina 正文也无可用网页证据 fallbackName={}", fallbackName);
             return new ResolvedPersonProfile()
                     .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
@@ -178,7 +142,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         List<PageSummary> pageSummaries = collectPageSummaries(fallbackName, pages);
         if (pageSummaries.isEmpty()) {
-            log.warn("正文逐篇总结后无可用结果 fallbackName={} pageCount={}", fallbackName, pages.size());
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
                     .setResolvedName(fallbackName)
@@ -188,7 +151,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         try {
             ResolvedPersonProfile profile = summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
             if (profile == null) {
-                log.warn("Kimi 最终总汇总返回空结果 fallbackName={} pageSummaryCount={}", fallbackName, pageSummaries.size());
                 warnings.add(SUMMARY_WARNING);
                 return new ResolvedPersonProfile().setResolvedName(fallbackName).setEvidenceUrls(urls);
             }
@@ -199,22 +161,29 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         .distinct()
                         .toList());
             }
-            log.info("Kimi 最终总汇总成功 fallbackName={} resolvedName={} summaryLength={} tagCount={} pageSummaryCount={}",
-                    fallbackName,
-                    profile.getResolvedName(),
-                    profile.getSummary() == null ? 0 : profile.getSummary().length(),
-                    profile.getTags() == null ? 0 : profile.getTags().size(),
-                    pageSummaries.size());
             return profile;
         } catch (RuntimeException ex) {
-            String category = classifySummaryFailure(ex);
-            log.error("Kimi 最终总汇总失败 fallbackName={} pageSummaryCount={} category={} error={}",
-                    fallbackName, pageSummaries.size(), category, ex.getMessage(), ex);
+            log.error("Kimi 最终总结失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    fallbackName, pageSummaries.size(), classifySummaryFailure(ex), ex.getMessage(), ex);
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
                     .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
         }
+    }
+
+    private PersonAggregate buildPersonFromProfile(ResolvedPersonProfile profile, String resolvedName) {
+        String shortDescription = cleanText(profile.getDescription());
+        String longSummary = cleanText(profile.getSummary());
+        return new PersonAggregate()
+                .setName(resolvedName)
+                .setDescription(appendSuffix(StringUtils.hasText(shortDescription) ? shortDescription : longSummary, KIMI_SUFFIX))
+                .setSummary(appendSuffix(longSummary, KIMI_SUFFIX))
+                .setWikipedia(cleanText(profile.getWikipedia()))
+                .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
+                .setTags(profile.getTags() == null ? List.of() : profile.getTags())
+                .setBasicInfo(profile.getBasicInfo())
+                .setEvidenceUrls(profile.getEvidenceUrls());
     }
 
     private List<PageSummary> collectPageSummaries(String fallbackName, List<PageContent> pages) {
@@ -230,7 +199,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             try {
                 PageSummary pageSummary = summaryGenerationClient.summarizePage(fallbackName, page);
                 if (pageSummary == null || !StringUtils.hasText(pageSummary.getSummary())) {
-                    log.warn("篇级总结结果无效 fallbackName={} url={}", fallbackName, page.getUrl());
                     continue;
                 }
                 if (!StringUtils.hasText(pageSummary.getSourceUrl())) {
@@ -240,25 +208,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     pageSummary.setTitle(page.getTitle());
                 }
                 pageSummaries.add(pageSummary);
-                log.info("篇级总结成功 fallbackName={} url={} tagCount={} factCount={}",
-                        fallbackName,
-                        pageSummary.getSourceUrl(),
-                        pageSummary.getTags() == null ? 0 : pageSummary.getTags().size(),
-                        pageSummary.getKeyFacts() == null ? 0 : pageSummary.getKeyFacts().size());
             } catch (RuntimeException ex) {
                 log.warn("篇级总结失败 fallbackName={} url={} category={} error={}",
-                        fallbackName,
-                        page.getUrl(),
-                        classifySummaryFailure(ex),
-                        ex.getMessage(),
-                        ex);
+                        fallbackName, page.getUrl(), classifySummaryFailure(ex), ex.getMessage(), ex);
             }
         }
-        log.info("篇级总结阶段完成 fallbackName={} inputPageCount={} successCount={} failureCount={}",
-                fallbackName,
-                pages.size(),
-                pageSummaries.size(),
-                Math.max(0, pages.size() - pageSummaries.size()));
         return pageSummaries;
     }
 
@@ -354,121 +308,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setUsername(SOCIAL_PLACEHOLDER_USERNAME));
     }
 
-    private PersonAggregate collectPersonInfo(String name) {
-        String normalizedName = normalizeName(name);
-        log.info("人物详情聚合开始 resolvedName={} normalizedName={}", name, normalizedName);
-        SerpApiResponse response = googleSearchClient.googleSearch(normalizedName);
-        if (response == null || response.getRoot() == null) {
-            log.warn("人物详情聚合返回空结果 resolvedName={}", name);
-            return new PersonAggregate().setName(name);
-        }
-        JsonNode root = response.getRoot();
-        JsonNode knowledgeGraph = firstPresent(root, "knowledgeGraph", "knowledge_graph");
-        PersonAggregate aggregate = new PersonAggregate().setName(name);
-        if (knowledgeGraph != null && !knowledgeGraph.isMissingNode() && !knowledgeGraph.isNull()) {
-            aggregate.setDescription(knowledgeGraph.path("description").asText(null));
-            aggregate.setOfficialWebsite(firstText(knowledgeGraph, "website", "official_website"));
-            aggregate.setWikipedia(firstText(knowledgeGraph, "wikipedia", "wikipedia_url"));
-        }
-        if (!StringUtils.hasText(aggregate.getDescription())) {
-            JsonNode organicResults = root.path("organic");
-            if (organicResults.isArray()) {
-                for (JsonNode item : organicResults) {
-                    String snippet = item.path("snippet").asText(null);
-                    if (StringUtils.hasText(snippet)) {
-                        aggregate.setDescription(snippet);
-                        break;
-                    }
-                }
-            }
-        }
-        log.info("人物详情聚合完成 resolvedName={} descriptionAvailable={} websiteAvailable={} wikipediaAvailable={}",
-                name,
-                StringUtils.hasText(aggregate.getDescription()),
-                StringUtils.hasText(aggregate.getOfficialWebsite()),
-                StringUtils.hasText(aggregate.getWikipedia()));
-        return aggregate;
-    }
-
-    private List<NewsItem> collectNews(String name) {
-        log.info("新闻聚合开始 resolvedName={}", name);
-        NewsApiResponse response = newsApiClient.searchNews(name);
-        List<NewsItem> items = new ArrayList<>();
-        JsonNode articles = response.getRoot().path("articles");
-        if (articles.isArray()) {
-            for (JsonNode article : articles) {
-                items.add(new NewsItem()
-                        .setTitle(article.path("title").asText(null))
-                        .setSummary(article.path("description").asText(null))
-                        .setPublishedAt(article.path("publishedAt").asText(null))
-                        .setUrl(article.path("url").asText(null))
-                        .setSource(article.path("source").path("name").asText(null)));
-            }
-        }
-        log.info("新闻聚合完成 resolvedName={} newsCount={}", name, items.size());
-        return items;
-    }
-
-    private List<SocialAccount> parseSocialResults(String platform, SerpApiResponse response) {
-        List<SocialAccount> accounts = new ArrayList<>();
-        if (response == null || response.getRoot() == null) {
-            return accounts;
-        }
-        JsonNode organicResults = response.getRoot().path("organic");
-        if (!organicResults.isArray()) {
-            return accounts;
-        }
-        for (JsonNode item : organicResults) {
-            String link = item.path("link").asText("");
-            if (!isPlatformLink(platform, link)) {
-                continue;
-            }
-            String title = item.path("title").asText(null);
-            accounts.add(new SocialAccount()
-                    .setPlatform(platform)
-                    .setUrl(link)
-                    .setUsername(extractUsername(title)));
-        }
-        return accounts;
-    }
-
-    private boolean isPlatformLink(String platform, String link) {
-        return switch (platform) {
-            case "douyin" -> link.contains("douyin.com");
-            case "weibo" -> link.contains("weibo.com");
-            default -> false;
-        };
-    }
-
-    private String extractUsername(String title) {
-        if (!StringUtils.hasText(title)) {
+    private String cleanText(String value) {
+        if (!StringUtils.hasText(value)) {
             return null;
         }
-        return title.replace(" - 抖音", "")
-                .replace(" - 微博", "")
-                .replace("_微博", "")
-                .trim();
-    }
-
-    private String cleanDescription(String description) {
-        if (!StringUtils.hasText(description)) {
-            return null;
-        }
-        return description.replaceAll("\\s+", " ").trim();
-    }
-
-    private String normalizeName(String name) {
-        if (!StringUtils.hasText(name)) {
-            return null;
-        }
-        return name.replaceAll("\\s+", "");
-    }
-
-    private String formatDescription(String summarizedDescription, String fallbackDescription) {
-        if (StringUtils.hasText(summarizedDescription)) {
-            return appendSuffix(summarizedDescription, KIMI_SUFFIX);
-        }
-        return appendSuffix(fallbackDescription, SERP_API_SUFFIX);
+        return value.replaceAll("\\s+", " ").trim();
     }
 
     private String appendSuffix(String content, String suffix) {
@@ -492,52 +336,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return new ArrayList<>(deduplicated.values());
     }
 
-    private List<NewsItem> deduplicateNews(String name, List<NewsItem> items) {
-        Set<String> seen = new LinkedHashSet<>();
-        List<NewsItem> filtered = new ArrayList<>();
-        for (NewsItem item : items) {
-            String title = item.getTitle();
-            String source = item.getSource();
-            if (!StringUtils.hasText(title) || !title.contains(name)) {
-                continue;
-            }
-            String key = title + "|" + source;
-            if (seen.add(key)) {
-                filtered.add(item);
-            }
-        }
-        return filtered;
-    }
-
-    private String firstText(JsonNode node, String... fields) {
-        for (String field : fields) {
-            String value = node.path(field).asText(null);
-            if (StringUtils.hasText(value)) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    private JsonNode firstPresent(JsonNode root, String... fields) {
-        for (String field : fields) {
-            JsonNode value = root.path(field);
-            if (!value.isMissingNode() && !value.isNull()) {
-                return value;
-            }
-        }
-        return null;
-    }
-
     private <T> T joinTask(String label, CompletableFuture<T> future, T fallback, List<String> errors) {
         try {
-            T result = future.join();
-            if (result instanceof List<?> list) {
-                log.info("{}任务完成 itemCount={}", label, list.size());
-            } else {
-                log.info("{}任务完成", label);
-            }
-            return result;
+            return future.join();
         } catch (CompletionException ex) {
             Throwable cause = ex.getCause() == null ? ex : ex.getCause();
             log.error("{}任务失败 error={}", label, cause.getMessage(), cause);

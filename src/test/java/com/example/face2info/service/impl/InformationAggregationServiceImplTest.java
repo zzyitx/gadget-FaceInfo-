@@ -9,11 +9,10 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
-import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -35,7 +34,6 @@ import static org.mockito.Mockito.when;
 
 class InformationAggregationServiceImplTest {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final ThreadPoolTaskExecutor executor = executor();
 
     @AfterEach
@@ -63,9 +61,6 @@ class InformationAggregationServiceImplTest {
 
     @Test
     void shouldSummarizePagesOneByOneBeforeFinalProfileAggregation() {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
-        SerpApiClient serpApiClient = mock(SerpApiClient.class);
-        NewsApiClient newsApiClient = mock(NewsApiClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -84,7 +79,8 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/a", "https://example.com/b")));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
         );
 
         ResolvedPersonProfile profile = service.resolveProfileFromEvidence(List.of(
@@ -102,9 +98,6 @@ class InformationAggregationServiceImplTest {
 
     @Test
     void shouldSkipFailedPageSummariesAndStillBuildFinalProfileWhenAtLeastOnePageSucceeds() {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
-        SerpApiClient serpApiClient = mock(SerpApiClient.class);
-        NewsApiClient newsApiClient = mock(NewsApiClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -113,10 +106,8 @@ class InformationAggregationServiceImplTest {
         PageSummary summaryB = new PageSummary().setSourceUrl("https://example.com/b").setTitle("B").setSummary("Summary B");
         when(jinaReaderClient.readPages(List.of("https://example.com/a", "https://example.com/b")))
                 .thenReturn(List.of(pageA, pageB));
-        when(summaryGenerationClient.summarizePage("unknown", pageA))
-                .thenThrow(new RuntimeException("INVALID_RESPONSE"));
-        when(summaryGenerationClient.summarizePage("unknown", pageB))
-                .thenReturn(summaryB);
+        when(summaryGenerationClient.summarizePage("unknown", pageA)).thenThrow(new RuntimeException("INVALID_RESPONSE"));
+        when(summaryGenerationClient.summarizePage("unknown", pageB)).thenReturn(summaryB);
         when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", List.of(summaryB)))
                 .thenReturn(new ResolvedPersonProfile()
                         .setResolvedName("Jay Chou")
@@ -124,7 +115,8 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/b")));
 
         ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
-                googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
         ).resolveProfileFromEvidence(List.of(
                 new WebEvidence().setUrl("https://example.com/a"),
                 new WebEvidence().setUrl("https://example.com/b")
@@ -136,10 +128,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldReturnFallbackProfileAndWarningWhenNoPageSummarySucceeds() throws Exception {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
-        SerpApiClient serpApiClient = mock(SerpApiClient.class);
-        NewsApiClient newsApiClient = mock(NewsApiClient.class);
+    void shouldReturnFallbackProfileAndWarningWhenNoPageSummarySucceeds() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -147,15 +136,12 @@ class InformationAggregationServiceImplTest {
         PageContent pageB = new PageContent().setUrl("https://example.com/b").setTitle("B").setContent("Page B");
         when(jinaReaderClient.readPages(List.of("https://example.com/a", "https://example.com/b")))
                 .thenReturn(List.of(pageA, pageB));
-        when(summaryGenerationClient.summarizePage("unknown", pageA))
-                .thenThrow(new RuntimeException("INVALID_RESPONSE"));
-        when(summaryGenerationClient.summarizePage("unknown", pageB))
-                .thenThrow(new RuntimeException("TIMEOUT"));
-        when(googleSearchClient.googleSearch("unknown")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
+        when(summaryGenerationClient.summarizePage("unknown", pageA)).thenThrow(new RuntimeException("INVALID_RESPONSE"));
+        when(summaryGenerationClient.summarizePage("unknown", pageB)).thenThrow(new RuntimeException("TIMEOUT"));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("unknown"))
                 .setWebEvidences(List.of(
@@ -163,16 +149,16 @@ class InformationAggregationServiceImplTest {
                         new WebEvidence().setUrl("https://example.com/b")
                 )));
 
+        assertThat(result.getPerson().getName()).isEqualTo("unknown");
         assertThat(result.getPerson().getSummary()).isNull();
-        assertThat(result.getPerson().getDescription()).isEqualTo("Fallback description (由 SerpAPI 聚合)");
-        assertThat(result.getWarnings()).hasSize(1);
+        assertThat(result.getPerson().getDescription()).isNull();
+        assertThat(result.getWarnings()).containsExactly("正文智能处理暂时不可用");
         verify(summaryGenerationClient, never()).summarizePersonFromPageSummaries(anyString(), anyList());
     }
 
     @Test
     void shouldOnlyReadTopFiveUrlsByDefault() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
-
         List<String> expectedUrls = List.of(
                 "https://example.com/1",
                 "https://example.com/2",
@@ -183,13 +169,8 @@ class InformationAggregationServiceImplTest {
         when(jinaReaderClient.readPages(expectedUrls)).thenReturn(List.of());
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class),
-                mock(SerpApiClient.class),
-                mock(NewsApiClient.class),
-                jinaReaderClient,
-                mock(SummaryGenerationClient.class),
-                executor,
-                createApiProperties(null)
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, mock(SummaryGenerationClient.class), executor, createApiProperties(null)
         );
 
         service.resolveProfileFromEvidence(List.of(
@@ -216,13 +197,8 @@ class InformationAggregationServiceImplTest {
         when(jinaReaderClient.readPages(expectedUrls)).thenReturn(List.of());
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class),
-                mock(SerpApiClient.class),
-                mock(NewsApiClient.class),
-                jinaReaderClient,
-                mock(SummaryGenerationClient.class),
-                executor,
-                createApiProperties(3)
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, mock(SummaryGenerationClient.class), executor, createApiProperties(3)
         );
 
         service.resolveProfileFromEvidence(List.of(
@@ -237,8 +213,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldMapSummaryAndTagsIntoAggregationResult() throws Exception {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+    void shouldMapSummaryAndTagsIntoAggregationResult() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -249,11 +224,10 @@ class InformationAggregationServiceImplTest {
                 .setTags(List.of("歌手", "音乐制作人"))
                 .setEvidenceUrls(List.of("https://example.com/a")));
         when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
-        when(googleSearchClient.googleSearch("周杰伦")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"后备简介\"}}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("周杰伦"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
@@ -265,8 +239,47 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldFallbackToWebEvidenceAndStillCallKimiWhenJinaFails() throws Exception {
+    void shouldPopulateStructuredProfileFieldsFromFinalSummaryWithoutGoogleDetailAggregation() {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("page summary");
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(summaryGenerationClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setDescription("Short description")
+                        .setSummary("Long summary")
+                        .setWikipedia("https://example.com/wiki")
+                        .setOfficialWebsite("https://example.com")
+                        .setBasicInfo(new PersonBasicInfo()
+                                .setBirthDate("1979-01-18")
+                                .setEducation(List.of("Tamkang Senior High School"))
+                                .setOccupations(List.of("Singer", "Producer"))
+                                .setBiographies(List.of("Taiwanese Mandopop artist")))
+                        .setEvidenceUrls(List.of("https://example.com/a")));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
+        );
+
+        AggregationResult result = service.aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getDescription()).isEqualTo("Short description (由 Kimi 总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("Long summary (由 Kimi 总结)");
+        assertThat(result.getPerson().getWikipedia()).isEqualTo("https://example.com/wiki");
+        assertThat(result.getPerson().getOfficialWebsite()).isEqualTo("https://example.com");
+        assertThat(result.getPerson().getBasicInfo().getBirthDate()).isEqualTo("1979-01-18");
+        verifyNoInteractions(googleSearchClient);
+    }
+
+    @Test
+    void shouldFallbackToWebEvidenceAndStillCallKimiWhenJinaFails() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -287,11 +300,10 @@ class InformationAggregationServiceImplTest {
                         .setResolvedName("Jay Chou")
                         .setSummary("Jay Chou is a singer.")
                         .setEvidenceUrls(List.of("https://example.com/a")));
-        when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback description\"}}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
                 .setWebEvidences(List.of(new WebEvidence()
@@ -306,35 +318,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldUseResolvedNameForGoogleAggregation() throws Exception {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
-        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
-        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
-
-        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("Jay Chou is a singer"));
-        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
-        mockSummaryPipeline(summaryGenerationClient, "unknown", pages, new ResolvedPersonProfile()
-                .setResolvedName("Jay Chou")
-                .setSummary("Jay Chou is a Mandopop singer.")
-                .setEvidenceUrls(List.of("https://example.com/a")));
-        when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback\",\"website\":\"https://jay.example.com\"}}")));
-
-        InformationAggregationServiceImpl service =
-                new InformationAggregationServiceImpl(googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor);
-
-        AggregationResult result = service.aggregate(new RecognitionEvidence()
-                .setSeedQueries(List.of("unknown"))
-                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
-
-        assertThat(result.getPerson().getName()).isEqualTo("Jay Chou");
-        verify(googleSearchClient).googleSearch("JayChou");
-        verify(googleSearchClient, never()).googleSearch("Jay Chou");
-    }
-
-    @Test
-    void shouldReturnPlaceholderSocialAccountWithoutCallingNewsApi() throws Exception {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+    void shouldReturnPlaceholderSocialAccountWithoutCallingNewsApi() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -343,11 +327,10 @@ class InformationAggregationServiceImplTest {
         mockSummaryPipeline(summaryGenerationClient, "Jay Chou", pages, new ResolvedPersonProfile()
                 .setResolvedName("Jay Chou")
                 .setSummary("Jay Chou is a singer."));
-        when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledge_graph\":{\"description\":\"Fallback description\"}}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
@@ -358,58 +341,28 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldAppendSerpApiSuffixWhenSummaryUnavailable() throws Exception {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+    void shouldKeepAggregationFastWithoutStandaloneDetailAggregation() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
-        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setContent("body"));
-        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
-        mockPageSummaryFailure(summaryGenerationClient, "Jay Chou", pages, new RuntimeException("INVALID_RESPONSE"));
-        when(googleSearchClient.googleSearch("JayChou")).thenReturn(new SerpApiResponse()
-                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"description\":\"Fallback description\"}}")));
-
-        AggregationResult result = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
-        ).aggregate(new RecognitionEvidence()
-                .setSeedQueries(List.of("Jay Chou"))
-                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
-
-        assertThat(result.getPerson().getSummary()).isNull();
-        assertThat(result.getPerson().getDescription()).isEqualTo("Fallback description (由 SerpAPI 聚合)");
-    }
-
-    @Test
-    void shouldAggregateInParallelAndDeduplicate() throws Exception {
-        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
-        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
-        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
-
-        List<PageContent> pages = List.of(
-                new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("Jay Chou is a singer")
-        );
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("Jay Chou is a singer"));
         when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenAnswer(invocation -> {
             Thread.sleep(250);
             return pages;
         });
-        mockSummaryPipeline(summaryGenerationClient, "Jay Chou", pages,
-                new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("华语歌手"));
-
+        List<PageSummary> pageSummaries = List.of(new PageSummary()
+                .setSourceUrl("https://example.com/a")
+                .setTitle("A")
+                .setSummary("Jay Chou is a singer"));
+        when(summaryGenerationClient.summarizePage("Jay Chou", pages.get(0))).thenReturn(pageSummaries.get(0));
         doAnswer(invocation -> {
             Thread.sleep(250);
-            return new SerpApiResponse().setRoot(objectMapper.readTree("""
-                    {
-                      "knowledgeGraph": {
-                        "description": "华语歌手",
-                        "website": "https://jay.example.com",
-                        "wikipedia": "https://zh.wikipedia.org/wiki/Jay_Chou"
-                      }
-                    }
-                    """));
-        }).when(googleSearchClient).googleSearch(anyString());
+            return new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("华语歌手");
+        }).when(summaryGenerationClient).summarizePersonFromPageSummaries("Jay Chou", pageSummaries);
 
-        InformationAggregationServiceImpl service =
-                new InformationAggregationServiceImpl(googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor);
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor);
 
         Instant start = Instant.now();
         AggregationResult result = service.aggregate(new RecognitionEvidence()
@@ -420,9 +373,7 @@ class InformationAggregationServiceImplTest {
         assertThat(elapsed).isLessThan(1000);
         assertThat(result.getSocialAccounts()).hasSize(1);
         assertThat(result.getNews()).isEmpty();
-        assertThat(result.getPerson().getDescription()).isEqualTo("华语歌手 (由 Kimi 总结)");
         assertThat(result.getErrors()).isEmpty();
-        verifyNoInteractions(mock(NewsApiClient.class));
     }
 
     private void mockSummaryPipeline(SummaryGenerationClient summaryGenerationClient,
@@ -439,15 +390,6 @@ class InformationAggregationServiceImplTest {
             when(summaryGenerationClient.summarizePage(fallbackName, page)).thenReturn(pageSummary);
         }
         when(summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries)).thenReturn(profile);
-    }
-
-    private void mockPageSummaryFailure(SummaryGenerationClient summaryGenerationClient,
-                                        String fallbackName,
-                                        List<PageContent> pages,
-                                        RuntimeException exception) {
-        for (PageContent page : pages) {
-            when(summaryGenerationClient.summarizePage(fallbackName, page)).thenThrow(exception);
-        }
     }
 
     private ApiProperties createApiProperties(Integer maxPageReads) {

@@ -111,6 +111,40 @@ class KimiSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldParseStructuredBasicInfoFromFinalProfile() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "{\\"resolvedName\\":\\"Jay Chou\\",\\"description\\":\\"Short description\\",\\"summary\\":\\"Long summary\\",\\"wikipedia\\":\\"https://example.com/wiki\\",\\"officialWebsite\\":\\"https://example.com\\",\\"basicInfo\\":{\\"birthDate\\":\\"1979-01-18\\",\\"education\\":[\\"Tamkang Senior High School\\"],\\"occupations\\":[\\"Singer\\"],\\"biographies\\":[\\"Taiwanese Mandopop artist\\"]}}"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getDescription()).isEqualTo("Short description");
+        assertThat(profile.getWikipedia()).isEqualTo("https://example.com/wiki");
+        assertThat(profile.getOfficialWebsite()).isEqualTo("https://example.com");
+        assertThat(profile.getBasicInfo().getBirthDate()).isEqualTo("1979-01-18");
+        assertThat(profile.getBasicInfo().getEducation()).containsExactly("Tamkang Senior High School");
+        assertThat(profile.getBasicInfo().getOccupations()).containsExactly("Singer");
+        assertThat(profile.getBasicInfo().getBiographies()).containsExactly("Taiwanese Mandopop artist");
+    }
+
+    @Test
     void shouldThrowControlledExceptionWhenFinalSummaryReturnsInvalidJson() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();

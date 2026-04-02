@@ -6,16 +6,13 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 人物信息 DTO。
- */
 @Schema(description = "人物信息")
 public class PersonInfo {
 
     @Schema(description = "识别或聚合后得到的人物姓名", example = "周杰伦")
     private String name;
 
-    @Schema(description = "人物的简要介绍，通常来自百科或公开资料", example = "华语流行音乐男歌手、音乐人、导演。")
+    @Schema(description = "人物的简要介绍，通常来自公开资料", example = "华语流行音乐男歌手、音乐人、导演。")
     private String description;
 
     @Schema(description = "聚合后的结构化人物摘要", example = "周杰伦是华语流行音乐代表人物之一。")
@@ -34,6 +31,10 @@ public class PersonInfo {
 
     @Schema(description = "从正文或资料中提炼的人物标签")
     private List<String> tags = new ArrayList<>();
+
+    @JsonProperty("basic_info")
+    @Schema(description = "人物基础信息")
+    private PersonBasicInfoResponse basicInfo = new PersonBasicInfoResponse();
 
     public String getName() {
         return name;
@@ -95,6 +96,15 @@ public class PersonInfo {
 
     public PersonInfo setTags(List<String> tags) {
         this.tags = tags;
+        return this;
+    }
+
+    public PersonBasicInfoResponse getBasicInfo() {
+        return basicInfo;
+    }
+
+    public PersonInfo setBasicInfo(PersonBasicInfoResponse basicInfo) {
+        this.basicInfo = basicInfo;
         return this;
     }
 }
