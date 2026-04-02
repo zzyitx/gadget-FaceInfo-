@@ -1,7 +1,7 @@
 package com.example.face2info.controller;
 
 import com.example.face2info.entity.response.FaceInfoResponse;
-import com.example.face2info.entity.response.FaceCheckMatch;
+import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.exception.GlobalExceptionHandler;
 import com.example.face2info.service.Face2InfoService;
@@ -44,26 +44,24 @@ class FaceInfoControllerTest {
     }
 
     @Test
-    void shouldExposeFaceCheckMatchesInResponseJson() throws Exception {
+    void shouldExposeImageMatchesInResponseJson() throws Exception {
         when(face2InfoService.process(any())).thenReturn(new FaceInfoResponse()
                 .setStatus("success")
-                .setFacecheckMatches(java.util.List.of(
-                        new FaceCheckMatch()
-                                .setImageDataUrl("data:image/jpeg;base64,AAA")
+                .setImageMatches(java.util.List.of(
+                        new ImageMatch()
+                                .setTitle("Lei Jun official profile")
+                                .setLink("https://example.com/article")
+                                .setSource("Wikipedia")
+                                .setThumbnailUrl("https://thumb.example.com/1.jpg")
                                 .setSimilarityScore(97.2)
-                                .setSourceHost("instagram.com")
-                                .setSourceUrl("https://instagram.com/p/demo")
-                                .setGroup(1)
-                                .setSeen(3)
-                                .setIndex(0)
                 )));
 
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         mockMvc.perform(multipart("/api/face2info").file(image))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.facecheck_matches[0].image_data_url").value("data:image/jpeg;base64,AAA"))
-                .andExpect(jsonPath("$.facecheck_matches[0].similarity_score").value(97.2))
-                .andExpect(jsonPath("$.facecheck_matches[0].source_host").value("instagram.com"));
+                .andExpect(jsonPath("$.image_matches[0].thumbnail_url").value("https://thumb.example.com/1.jpg"))
+                .andExpect(jsonPath("$.image_matches[0].similarity_score").value(97.2))
+                .andExpect(jsonPath("$.image_matches[0].source").value("Wikipedia"));
     }
 
     @Test

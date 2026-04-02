@@ -41,8 +41,8 @@ public class GoogleSearchClientImpl implements GoogleSearchClient {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("url", imageUrl);
         payload.put("hl", google().getHl());
-        log.info("Google Lens 识图开始 imageUrl={}", imageUrl);
-        return execute("Google Lens 识图", google().getLensUrl(), payload);
+        log.info("Serper Google Lens 识图开始 imageUrl={}", imageUrl);
+        return execute("Serper Google Lens 识图", google().getLensUrl(), payload);
     }
 
     @Override
@@ -50,8 +50,8 @@ public class GoogleSearchClientImpl implements GoogleSearchClient {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("q", normalizeQuery(query));
         payload.put("hl", google().getHl());
-        log.info("Google 搜索开始 query={}", query);
-        return execute("Google 搜索", google().getSearchUrl(), payload);
+        log.info("Serper Google 搜索开始 query={}", query);
+        return execute("Serper Google 搜索", google().getSearchUrl(), payload);
     }
 
     private SerpApiResponse execute(String name, String url, Map<String, Object> payload) {
@@ -72,7 +72,7 @@ public class GoogleSearchClientImpl implements GoogleSearchClient {
 
     private String apiKey() {
         if (!StringUtils.hasText(google().getApiKey())) {
-            throw new ApiCallException("Google search api key not configured.");
+            throw new ApiCallException("Serper API key not configured.");
         }
         return google().getApiKey();
     }

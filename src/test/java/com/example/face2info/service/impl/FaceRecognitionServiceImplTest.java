@@ -67,6 +67,7 @@ class FaceRecognitionServiceImplTest {
         RecognitionEvidence result = service.recognize(image);
 
         assertThat(result.getImageMatches()).hasSize(1);
+        assertThat(result.getImageMatches().get(0).getThumbnailUrl()).isNull();
         assertThat(result.getSeedQueries()).contains("Jay Chou");
         assertThat(result.getWebEvidences()).extracting(WebEvidence::getUrl)
                 .contains("https://example.com/a", "https://example.com/b", "https://example.com/c", "https://example.com/d");
@@ -103,7 +104,7 @@ class FaceRecognitionServiceImplTest {
     }
 
     @Test
-    void shouldLimitVisualMatchesToTwenty() throws Exception {
+    void shouldLimitVisualMatchesToTenAndSortBySimilarityScore() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
@@ -117,7 +118,56 @@ class FaceRecognitionServiceImplTest {
 
         FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
 
-        assertThat(service.recognize(image).getImageMatches()).hasSize(20);
+        RecognitionEvidence evidence = service.recognize(image);
+
+        assertThat(evidence.getImageMatches()).hasSize(10);
+        assertThat(evidence.getImageMatches())
+                .extracting(match -> match.getSimilarityScore())
+                .isSortedAccordingTo(java.util.Comparator.reverseOrder());
+        assertThat(evidence.getImageMatches().get(0).getThumbnailUrl()).isEqualTo("https://thumb.example.com/1.jpg");
+        assertThat(evidence.getImageMatches().get(0).getSimilarityScore()).isGreaterThan(evidence.getImageMatches().get(9).getSimilarityScore());
+    }
+
+    @Test
+    void shouldUseSerperThumbnailAndHeuristicScoreForImageMatches() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "knowledgeGraph": { "title": "Lei Jun" },
+                          "organic": [
+                            {
+                              "title": "Lei Jun official profile",
+                              "link": "https://example.com/official",
+                              "source": "Wikipedia",
+                              "thumbnailUrl": "https://thumb.example.com/official.jpg"
+                            },
+                            {
+                              "title": "Technology leader article",
+                              "link": "https://example.com/article",
+                              "source": "Tech Blog",
+                              "thumbnailUrl": "https://thumb.example.com/article.jpg"
+                            }
+                          ]
+                        }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+
+        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient);
+
+        RecognitionEvidence evidence = service.recognize(image);
+
+        assertThat(evidence.getImageMatches()).hasSize(2);
+        assertThat(evidence.getImageMatches().get(0).getThumbnailUrl()).isEqualTo("https://thumb.example.com/official.jpg");
+        assertThat(evidence.getImageMatches().get(0).getLink()).isEqualTo("https://example.com/official");
+        assertThat(evidence.getImageMatches().get(0).getSimilarityScore()).isGreaterThan(90.0);
+        assertThat(evidence.getImageMatches().get(1).getSimilarityScore()).isLessThan(evidence.getImageMatches().get(0).getSimilarityScore());
     }
 
     @Test
@@ -225,7 +275,8 @@ class FaceRecognitionServiceImplTest {
             builder.append("{")
                     .append("\"title\":\"Match ").append(i).append("\",")
                     .append("\"link\":\"https://example.com/").append(i).append("\",")
-                    .append("\"source\":\"Example\"")
+                    .append("\"source\":\"Example\",")
+                    .append("\"thumbnailUrl\":\"https://thumb.example.com/").append(i).append(".jpg\"")
                     .append("}");
         }
         builder.append("]}");

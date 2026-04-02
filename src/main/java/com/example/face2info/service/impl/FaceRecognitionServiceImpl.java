@@ -15,17 +15,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Slf4j
 @Service
 public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
-    private static final int MAX_IMAGE_MATCHES = 20;
+    private static final int MAX_IMAGE_MATCHES = 10;
     private static final int MAX_SEED_QUERIES = 3;
+    private static final double MIN_SIMILARITY_SCORE = 65.0;
+    private static final double MAX_SIMILARITY_SCORE = 99.0;
 
     private final GoogleSearchClient googleSearchClient;
     private final SerpApiClient serpApiClient;
@@ -61,12 +66,12 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         RecognitionEvidence evidence = new RecognitionEvidence();
         List<WebEvidence> webEvidences = new ArrayList<>();
 
-        SerpApiResponse lensResponse = safeSearch("google_lens", imageUrl, evidence,
+        SerpApiResponse lensResponse = safeSearch("serper_google_lens", imageUrl, evidence,
                 () -> googleSearchClient.reverseImageSearchByUrl(imageUrl));
         if (lensResponse != null && lensResponse.getRoot() != null) {
             evidence.setImageMatches(extractImageMatches(lensResponse.getRoot()));
-            webEvidences.addAll(extractWebEvidence(lensResponse.getRoot(), "google_lens"));
-            log.info("识别来源完成 source=google_lens imageMatchCount={} webEvidenceCount={}",
+            webEvidences.addAll(extractWebEvidence(lensResponse.getRoot(), "serper_google_lens"));
+            log.info("识别来源完成 source=serper_google_lens imageMatchCount={} webEvidenceCount={}",
                     evidence.getImageMatches().size(), webEvidences.size());
         }
 
@@ -151,7 +156,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
     private List<WebEvidence> extractWebEvidence(JsonNode root, String sourceEngine) {
         List<WebEvidence> evidences = new ArrayList<>();
-        if ("google_lens".equals(sourceEngine)) {
+        if ("serper_google_lens".equals(sourceEngine)) {
             collectWebEvidence(evidences, root.path("organic"), sourceEngine);
             return evidences;
         }
@@ -219,6 +224,8 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             return matches;
         }
 
+        List<String> seedHints = extractSeedHints(root, visualMatches);
+        int rawIndex = 0;
         for (JsonNode node : visualMatches) {
             if (matches.size() >= MAX_IMAGE_MATCHES) {
                 break;
@@ -227,18 +234,103 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             String title = node.path("title").asText(null);
             String link = node.path("link").asText(null);
             String source = node.path("source").asText(null);
-            if (!StringUtils.hasText(title) && !StringUtils.hasText(link)) {
+            String thumbnailUrl = firstNonBlank(node, "thumbnailUrl", "thumbnail", "imageUrl");
+            if (!StringUtils.hasText(title) && !StringUtils.hasText(link) && !StringUtils.hasText(thumbnailUrl)) {
+                rawIndex++;
                 continue;
             }
 
             matches.add(new ImageMatch()
-                    .setPosition(node.path("position").asInt(matches.size() + 1))
+                    .setPosition(node.path("position").asInt(rawIndex + 1))
                     .setTitle(title)
                     .setLink(link)
-                    .setSource(source));
+                    .setSource(source)
+                    .setThumbnailUrl(thumbnailUrl)
+                    .setSimilarityScore(calculateSimilarityScore(rawIndex, title, source, link, thumbnailUrl, seedHints)));
+            rawIndex++;
         }
 
+        matches.sort(Comparator.comparingDouble(ImageMatch::getSimilarityScore).reversed());
         return matches;
+    }
+
+    private List<String> extractSeedHints(JsonNode root, JsonNode visualMatches) {
+        Set<String> hints = new LinkedHashSet<>();
+        collectSeedHint(hints, firstNonBlank(root, "knowledgeGraph.title", "knowledge_graph.title"));
+        if (visualMatches.isArray()) {
+            for (JsonNode node : visualMatches) {
+                collectSeedHint(hints, node.path("title").asText(null));
+                if (hints.size() >= MAX_SEED_QUERIES) {
+                    break;
+                }
+            }
+        }
+        return new ArrayList<>(hints);
+    }
+
+    private void collectSeedHint(Set<String> hints, String rawValue) {
+        String cleaned = nameExtractor.cleanCandidateName(rawValue);
+        if (StringUtils.hasText(cleaned)) {
+            hints.add(cleaned.toLowerCase(Locale.ROOT));
+        }
+    }
+
+    private double calculateSimilarityScore(int index,
+                                            String title,
+                                            String source,
+                                            String link,
+                                            String thumbnailUrl,
+                                            List<String> seedHints) {
+        double score = 92.0 - (index * 1.45) - (index * index * 0.08);
+
+        String normalizedTitle = normalize(title);
+        if (StringUtils.hasText(normalizedTitle) && seedHints.stream().anyMatch(normalizedTitle::contains)) {
+            score += 5.5;
+        }
+        if (StringUtils.hasText(thumbnailUrl)) {
+            score += 2.0;
+        }
+        if (hasTrustedSource(source, link)) {
+            score += 2.5;
+        }
+        if (StringUtils.hasText(extractHost(link))) {
+            score += 1.0;
+        }
+
+        return roundScore(Math.max(MIN_SIMILARITY_SCORE, Math.min(MAX_SIMILARITY_SCORE, score)));
+    }
+
+    private boolean hasTrustedSource(String source, String link) {
+        String normalized = normalize(source) + " " + normalize(extractHost(link));
+        return normalized.contains("wikipedia")
+                || normalized.contains("official")
+                || normalized.contains("linkedin")
+                || normalized.contains("facebook")
+                || normalized.contains("instagram")
+                || normalized.contains("tiktok")
+                || normalized.contains("medium")
+                || normalized.contains("pandaily")
+                || normalized.contains("xiaomi");
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
+    }
+
+    private String extractHost(String link) {
+        if (!StringUtils.hasText(link)) {
+            return null;
+        }
+        try {
+            String host = URI.create(link).getHost();
+            return host == null ? null : host.toLowerCase(Locale.ROOT);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private double roundScore(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     @FunctionalInterface

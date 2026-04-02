@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
@@ -35,7 +36,7 @@ class FaceCheckClientImplTest {
     @Test
     void shouldUploadThenPollSearchUntilItemsAppear() {
         RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).ignoreExpectOrder(true).build();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://facecheck.id/api/upload_pic"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
@@ -85,7 +86,7 @@ class FaceCheckClientImplTest {
     @Test
     void shouldSupportGetResultsContractWithOutputArray() {
         RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).ignoreExpectOrder(true).build();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://facecheck.id/api/upload_pic"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
@@ -167,7 +168,7 @@ class FaceCheckClientImplTest {
     @Test
     void shouldReturnTimedOutResponseWhenSearchDoesNotFinishInTime() {
         RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).ignoreExpectOrder(true).build();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://facecheck.id/api/upload_pic"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
@@ -175,7 +176,7 @@ class FaceCheckClientImplTest {
                           "id_search":"req-timeout"
                         }
                         """, MediaType.APPLICATION_JSON));
-        server.expect(requestTo("https://facecheck.id/api/get_results"))
+        server.expect(ExpectedCount.manyTimes(), requestTo("https://facecheck.id/api/get_results"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {

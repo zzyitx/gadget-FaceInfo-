@@ -20,14 +20,16 @@ class StaticPageTest {
     private MockMvc mockMvc;
 
     @Test
-    void shouldRenderFacecheckMatchSectionOnIndexPage() throws Exception {
+    void shouldRenderSerperImageMatchSectionOnIndexPage() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("id=\"matchesCard\"")))
-                .andExpect(content().string(containsString("facecheck_matches")))
-                .andExpect(content().string(containsString("renderFacecheckMatches")))
-                .andExpect(content().string(containsString("source_url")))
+                .andExpect(content().string(not(containsString("facecheck_matches"))))
+                .andExpect(content().string(containsString("renderImageMatches")))
+                .andExpect(content().string(containsString("thumbnail_url")))
                 .andExpect(content().string(containsString("similarity_score")))
+                .andExpect(content().string(containsString("image-item")))
+                .andExpect(content().string(containsString("window.open")))
                 .andExpect(content().string(containsString("id=\"debugPanel\"")))
                 .andExpect(content().string(containsString("<details")));
     }
