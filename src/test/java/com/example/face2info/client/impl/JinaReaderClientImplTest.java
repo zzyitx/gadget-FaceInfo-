@@ -28,7 +28,10 @@ class JinaReaderClientImplTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://r.jina.ai/https://baike.baidu.com/item/Jay_Chou"))
                 .andExpect(method(HttpMethod.GET))
+                .andExpect(header("Accept", "application/json"))
                 .andExpect(header("Authorization", "Bearer test-key"))
+                .andExpect(header("X-Keep-Img-Data-Url", "true"))
+                .andExpect(header("X-Return-Format", "text"))
                 .andRespond(withSuccess("Jay Chou profile", MediaType.TEXT_PLAIN));
 
         JinaReaderClientImpl client = new JinaReaderClientImpl(restTemplate,

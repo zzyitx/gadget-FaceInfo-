@@ -23,6 +23,10 @@ import java.util.List;
 @Component
 public class JinaReaderClientImpl implements JinaReaderClient {
 
+    private static final String DEFAULT_ACCEPT = "application/json";
+    private static final String DEFAULT_KEEP_IMG_DATA_URL = "true";
+    private static final String DEFAULT_RETURN_FORMAT = "text";
+
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
 
@@ -66,9 +70,12 @@ public class JinaReaderClientImpl implements JinaReaderClient {
         String requestUrl = buildRequestUrl(api.getJina().getBaseUrl(), normalizedUrl);
         return RetryUtils.execute("Jina read page", api.getJina().getMaxRetries(), api.getJina().getBackoffInitialMs(), () -> {
             HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.ACCEPT, DEFAULT_ACCEPT);
             if (StringUtils.hasText(api.getJina().getApiKey())) {
                 headers.setBearerAuth(api.getJina().getApiKey());
             }
+            headers.set("X-Keep-Img-Data-Url", DEFAULT_KEEP_IMG_DATA_URL);
+            headers.set("X-Return-Format", DEFAULT_RETURN_FORMAT);
             log.info("Jina 正在读取页面 sourceUrl={} requestUrl={}",
                     normalizedUrl, LogSanitizer.maskUrl(requestUrl));
             ResponseEntity<String> response = restTemplate.exchange(
