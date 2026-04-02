@@ -98,7 +98,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
         return """
                 请基于以下正文抽取人物信息，只能输出 JSON，且返回内容语言必须为中文，不要输出额外解释。
-                JSON 字段固定为 resolvedName、summary、tags、evidenceUrls。
+                JSON 字段固定为 resolvedName、summary、keyFacts、tags、evidenceUrls。
                 fallbackName: %s
                 正文如下：
                 %s
@@ -127,6 +127,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             ResolvedPersonProfile profile = new ResolvedPersonProfile()
                     .setResolvedName(firstNonBlank(json.path("resolvedName").asText(null), fallbackName))
                     .setSummary(json.path("summary").asText(null))
+                    .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(List.copyOf(deduplicatedTags));
 
             JsonNode evidenceUrls = json.path("evidenceUrls");
