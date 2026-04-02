@@ -46,19 +46,45 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     @Override
     public PageSummary summarizePage(String fallbackName, PageContent page) {
-        throw new ApiCallException("NOT_IMPLEMENTED: page summary is not implemented yet");
+        KimiApiProperties kimi = properties.getApi().getKimi();
+        validateConfig(kimi);
+        log.info("Kimi 篇级总结开始 fallbackName={} url={} title={}",
+                fallbackName,
+                page == null ? null : page.getUrl(),
+                page == null ? null : page.getTitle());
+
+        return RetryUtils.execute("Kimi summarize page", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+            JsonNode body = callKimi(kimi, buildPagePrompt(fallbackName, page));
+            PageSummary summary = parsePageSummary(page, body);
+            log.info("Kimi 篇级总结成功 url={} summaryLength={} tagCount={} factCount={}",
+                    summary.getSourceUrl(),
+                    summary.getSummary() == null ? 0 : summary.getSummary().length(),
+                    summary.getTags() == null ? 0 : summary.getTags().size(),
+                    summary.getKeyFacts() == null ? 0 : summary.getKeyFacts().size());
+            return summary;
+        });
     }
 
     @Override
     public ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries) {
-        throw new ApiCallException("NOT_IMPLEMENTED: person summary from page summaries is not implemented yet");
+        KimiApiProperties kimi = properties.getApi().getKimi();
+        validateConfig(kimi);
+        int pageSummaryCount = pageSummaries == null ? 0 : pageSummaries.size();
+        log.info("Kimi 最终汇总开始 fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
+
+        return RetryUtils.execute("Kimi summarize person", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+            JsonNode body = callKimi(kimi, buildPersonPrompt(fallbackName, pageSummaries));
+            ResolvedPersonProfile profile = parseProfileFromPageSummaries(fallbackName, pageSummaries, body);
+            log.info("Kimi 最终汇总成功 resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
+                    profile.getResolvedName(),
+                    profile.getSummary() == null ? 0 : profile.getSummary().length(),
+                    profile.getTags() == null ? 0 : profile.getTags().size(),
+                    profile.getEvidenceUrls() == null ? 0 : profile.getEvidenceUrls().size());
+            return profile;
+        });
     }
 
-    public ResolvedPersonProfile summarizePerson(String fallbackName, List<PageContent> pages) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        int pageCount = pages == null ? 0 : pages.size();
-        log.info("Kimi 模块开始处理 fallbackName={} pageCount={} provider={}",
-                fallbackName, pageCount, properties.getApi().getSummary().getProvider());
+    private void validateConfig(KimiApiProperties kimi) {
         if (!StringUtils.hasText(kimi.getApiKey())
                 || !StringUtils.hasText(kimi.getBaseUrl())
                 || !StringUtils.hasText(kimi.getModel())) {
@@ -68,100 +94,141 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     StringUtils.hasText(kimi.getApiKey()));
             throw new ApiCallException("CONFIG_MISSING: kimi config is incomplete");
         }
-
-        log.info("Kimi 配置检查通过 model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
-        return RetryUtils.execute("Kimi summarize", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setBearerAuth(kimi.getApiKey());
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            Map<String, Object> requestBody = Map.of(
-                    "model", kimi.getModel(),
-                    "messages", List.of(
-                            Map.of("role", "system", "content", kimi.getSystemPrompt()),
-                            Map.of("role", "user", "content", buildUserPrompt(fallbackName, pages))
-                    )
-            );
-
-            log.info("Kimi 请求已发送 model={} pageCount={} url={}",
-                    kimi.getModel(), pageCount, LogSanitizer.maskUrl(kimi.getBaseUrl()));
-            ResponseEntity<JsonNode> response = restTemplate.exchange(
-                    kimi.getBaseUrl(),
-                    HttpMethod.POST,
-                    new HttpEntity<>(requestBody, headers),
-                    JsonNode.class
-            );
-
-            ResolvedPersonProfile profile = parseProfile(fallbackName, pages, response.getBody());
-            log.info("Kimi 返回解析成功 resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
-                    profile.getResolvedName(),
-                    profile.getSummary() == null ? 0 : profile.getSummary().length(),
-                    profile.getTags() == null ? 0 : profile.getTags().size(),
-                    profile.getEvidenceUrls() == null ? 0 : profile.getEvidenceUrls().size());
-            return profile;
-        });
     }
 
-    private String buildUserPrompt(String fallbackName, List<PageContent> pages) {
-        String pageContent = pages == null ? "" : pages.stream()
-                .map(page -> "URL: " + page.getUrl() + "\n正文: " + page.getContent())
-                .collect(Collectors.joining("\n---\n"));
+    private JsonNode callKimi(KimiApiProperties kimi, String userPrompt) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(kimi.getApiKey());
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> requestBody = Map.of(
+                "model", kimi.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "user", "content", userPrompt)
+                )
+        );
+
+        log.info("Kimi 请求已发送 model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
+        ResponseEntity<JsonNode> response = restTemplate.exchange(
+                kimi.getBaseUrl(),
+                HttpMethod.POST,
+                new HttpEntity<>(requestBody, headers),
+                JsonNode.class
+        );
+        return response.getBody();
+    }
+
+    private String buildPagePrompt(String fallbackName, PageContent page) {
         return """
-                请基于以下正文抽取人物信息，只能输出 JSON，且返回内容语言必须为中文，不要输出额外解释。
-                JSON 字段固定为 resolvedName、summary、keyFacts、tags、evidenceUrls。
+                请基于以下单篇正文抽取人物信息，只能输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 resolvedNameCandidate、summary、keyFacts、tags、sourceUrl。
                 fallbackName: %s
+                title: %s
+                url: %s
                 正文如下：
                 %s
-                """.formatted(fallbackName, pageContent);
+                """.formatted(
+                fallbackName,
+                page == null ? null : page.getTitle(),
+                page == null ? null : page.getUrl(),
+                page == null ? null : page.getContent()
+        );
     }
 
-    private ResolvedPersonProfile parseProfile(String fallbackName, List<PageContent> pages, JsonNode body) {
-        String content = body == null ? null : body.path("choices").path(0).path("message").path("content").asText(null);
-        if (!StringUtils.hasText(content)) {
-            throw new ApiCallException("EMPTY_RESPONSE: kimi content is empty");
-        }
+    private String buildPersonPrompt(String fallbackName, List<PageSummary> pageSummaries) {
+        String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
+                .map(summary -> """
+                        sourceUrl: %s
+                        title: %s
+                        resolvedNameCandidate: %s
+                        summary: %s
+                        keyFacts: %s
+                        tags: %s
+                        """.formatted(
+                        summary.getSourceUrl(),
+                        summary.getTitle(),
+                        summary.getResolvedNameCandidate(),
+                        summary.getSummary(),
+                        summary.getKeyFacts(),
+                        summary.getTags()
+                ))
+                .collect(Collectors.joining("\n---\n"));
 
+        return """
+                请基于以下篇级摘要集合生成最终人物总结，只能输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 resolvedName、summary、keyFacts、tags、evidenceUrls。
+                fallbackName: %s
+                篇级摘要如下：
+                %s
+                """.formatted(fallbackName, pageSummaryContent);
+    }
+
+    private PageSummary parsePageSummary(PageContent page, JsonNode body) {
+        String content = extractContent(body);
         try {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
-            Set<String> deduplicatedTags = new LinkedHashSet<>();
-            JsonNode tagsNode = json.path("tags");
-            if (tagsNode.isArray()) {
-                for (JsonNode tag : tagsNode) {
-                    String value = tag.asText(null);
-                    if (StringUtils.hasText(value)) {
-                        deduplicatedTags.add(value.trim());
-                    }
-                }
+            String summary = json.path("summary").asText(null);
+            if (!StringUtils.hasText(summary)) {
+                throw new ApiCallException("EMPTY_RESPONSE: kimi page summary is empty");
             }
 
-            ResolvedPersonProfile profile = new ResolvedPersonProfile()
+            return new PageSummary()
+                    .setSourceUrl(firstNonBlank(json.path("sourceUrl").asText(null), page == null ? null : page.getUrl()))
+                    .setTitle(firstNonBlank(json.path("title").asText(null), page == null ? null : page.getTitle()))
+                    .setResolvedNameCandidate(json.path("resolvedNameCandidate").asText(null))
+                    .setSummary(summary.trim())
+                    .setKeyFacts(readStringList(json.path("keyFacts")))
+                    .setTags(readStringList(json.path("tags")));
+        } catch (JsonProcessingException ex) {
+            log.warn("Kimi 篇级总结解析失败 error={}", ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: kimi page summary is not valid json", ex);
+        }
+    }
+
+    private ResolvedPersonProfile parseProfileFromPageSummaries(String fallbackName,
+                                                                List<PageSummary> pageSummaries,
+                                                                JsonNode body) {
+        String content = extractContent(body);
+        try {
+            JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
+            List<String> evidenceUrls = readStringList(json.path("evidenceUrls"));
+            if (evidenceUrls.isEmpty() && pageSummaries != null) {
+                evidenceUrls = pageSummaries.stream()
+                        .map(PageSummary::getSourceUrl)
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .toList();
+            }
+
+            return new ResolvedPersonProfile()
                     .setResolvedName(firstNonBlank(json.path("resolvedName").asText(null), fallbackName))
                     .setSummary(json.path("summary").asText(null))
                     .setKeyFacts(readStringList(json.path("keyFacts")))
-                    .setTags(List.copyOf(deduplicatedTags));
-
-            JsonNode evidenceUrls = json.path("evidenceUrls");
-            if (evidenceUrls.isArray()) {
-                profile.setEvidenceUrls(readStringList(evidenceUrls));
-            } else if (pages != null) {
-                profile.setEvidenceUrls(pages.stream()
-                        .map(PageContent::getUrl)
-                        .filter(StringUtils::hasText)
-                        .toList());
-            }
-            return profile;
+                    .setTags(readStringList(json.path("tags")))
+                    .setEvidenceUrls(evidenceUrls);
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi 返回解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
+            log.warn("Kimi 最终汇总解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
             throw new ApiCallException("INVALID_RESPONSE: kimi content is not valid json", ex);
         }
     }
 
+    private String extractContent(JsonNode body) {
+        String content = body == null ? null : body.path("choices").path(0).path("message").path("content").asText(null);
+        if (!StringUtils.hasText(content)) {
+            throw new ApiCallException("EMPTY_RESPONSE: kimi content is empty");
+        }
+        return content;
+    }
+
     private List<String> readStringList(JsonNode arrayNode) {
         Set<String> values = new LinkedHashSet<>();
-        for (JsonNode item : arrayNode) {
-            String value = item.asText(null);
-            if (StringUtils.hasText(value)) {
-                values.add(value.trim());
+        if (arrayNode != null && arrayNode.isArray()) {
+            for (JsonNode item : arrayNode) {
+                String value = item.asText(null);
+                if (StringUtils.hasText(value)) {
+                    values.add(value.trim());
+                }
             }
         }
         return List.copyOf(values);
