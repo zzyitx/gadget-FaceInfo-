@@ -72,7 +72,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         int pageSummaryCount = pageSummaries == null ? 0 : pageSummaries.size();
         log.info("Kimi 最终汇总开始 fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
 
-        return RetryUtils.execute("Kimi summarize person", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Kimi 总结人物", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildPersonPrompt(fallbackName, pageSummaries));
             ResolvedPersonProfile profile = parseProfileFromPageSummaries(fallbackName, pageSummaries, body);
             log.info("Kimi 最终汇总成功 resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
