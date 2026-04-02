@@ -7,325 +7,453 @@
     <title>Face2Info 人脸信息聚合</title>
     <style>
         :root {
-            --bg-top: #efe4d1;
-            --bg-bottom: #f7f3ed;
-            --panel: rgba(255, 252, 247, 0.92);
-            --card: rgba(255, 255, 255, 0.8);
-            --card-strong: rgba(255, 248, 241, 0.92);
-            --ink: #1e1914;
-            --muted: #6f655b;
-            --line: rgba(30, 25, 20, 0.1);
-            --accent: #b24a2b;
-            --accent-deep: #7f2f18;
-            --accent-soft: #f7e2d8;
-            --ok: #2f6f44;
-            --warn: #9f6b18;
-            --danger: #9e3a2a;
-            --shadow: 0 24px 60px rgba(82, 53, 27, 0.14);
+            --bg: #f5eee6;
+            --bg-soft: #fbf7f2;
+            --surface: rgba(255, 251, 247, 0.94);
+            --surface-strong: rgba(255, 247, 240, 0.98);
+            --surface-muted: rgba(255, 255, 255, 0.74);
+            --ink: #201714;
+            --ink-soft: #64574f;
+            --line: rgba(32, 23, 20, 0.1);
+            --accent: #ab5131;
+            --accent-deep: #73311d;
+            --ok: #2f6c47;
+            --warn: #98651a;
+            --danger: #9a3b2d;
+            --shadow-lg: 0 32px 80px rgba(72, 44, 28, 0.14);
+            --shadow-md: 0 18px 44px rgba(72, 44, 28, 0.1);
+            --radius-xl: 32px;
+            --radius-lg: 24px;
+            --radius-md: 18px;
+            --max-width: 1240px;
         }
 
         * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
 
         body {
             margin: 0;
+            min-height: 100vh;
             color: var(--ink);
             font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
             background:
-                radial-gradient(circle at top left, rgba(178, 74, 43, 0.14), transparent 30%),
-                radial-gradient(circle at 85% 10%, rgba(127, 47, 24, 0.08), transparent 20%),
-                linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
-            min-height: 100vh;
+                radial-gradient(circle at top left, rgba(171, 81, 49, 0.16), transparent 28%),
+                radial-gradient(circle at 82% 12%, rgba(115, 49, 29, 0.12), transparent 20%),
+                linear-gradient(180deg, #f0e3d4 0%, var(--bg) 32%, #f8f4ef 100%);
         }
 
         a { color: var(--accent-deep); }
-        code { font-family: "Consolas", "SFMono-Regular", monospace; }
+        code, pre { font-family: "Consolas", "SFMono-Regular", monospace; }
 
-        .page { width: min(1220px, calc(100% - 32px)); margin: 28px auto 40px; }
+        .page {
+            width: min(var(--max-width), calc(100% - 32px));
+            margin: 24px auto 40px;
+        }
 
         .hero,
-        .panel,
-        .card {
+        .card,
+        .upload-card {
             border: 1px solid var(--line);
-            border-radius: 28px;
-            background: var(--panel);
-            box-shadow: var(--shadow);
+            border-radius: var(--radius-xl);
+            background: var(--surface);
+            box-shadow: var(--shadow-lg);
         }
 
         .hero {
-            display: grid;
-            grid-template-columns: 1.25fr 0.75fr;
-            gap: 18px;
-            padding: 28px;
-            overflow: hidden;
             position: relative;
+            overflow: hidden;
+            padding: 30px;
         }
 
-        .hero::after {
+        .hero::before {
             content: "";
             position: absolute;
-            right: -60px;
-            top: -80px;
-            width: 240px;
-            height: 240px;
-            background: radial-gradient(circle, rgba(178, 74, 43, 0.18), transparent 65%);
+            inset: 0;
+            background:
+                linear-gradient(140deg, rgba(255, 255, 255, 0.36), transparent 45%),
+                radial-gradient(circle at right top, rgba(171, 81, 49, 0.14), transparent 28%);
+            pointer-events: none;
+        }
+
+        .hero-grid {
+            position: relative;
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+            gap: 24px;
+            align-items: stretch;
         }
 
         .eyebrow {
-            display: inline-block;
-            margin-bottom: 10px;
-            padding: 6px 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
             border-radius: 999px;
-            background: rgba(178, 74, 43, 0.1);
+            background: rgba(171, 81, 49, 0.1);
             color: var(--accent-deep);
             font-size: 12px;
+            font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
         }
 
-        h1 { margin: 0 0 14px; font-size: clamp(34px, 5vw, 56px); line-height: 1; }
-        h2 { margin: 0; }
+        .hero-copy {
+            display: grid;
+            gap: 20px;
+            align-content: space-between;
+            min-height: 100%;
+        }
 
-        .hero p,
+        .hero-copy h1 {
+            margin: 0;
+            max-width: 10ch;
+            font-family: "Georgia", "Times New Roman", serif;
+            font-size: clamp(40px, 6vw, 72px);
+            line-height: 0.96;
+            letter-spacing: -0.03em;
+        }
+
+        .hero-copy p,
+        .card p,
         .meta-text,
-        .tip,
         .empty,
         .status-note,
-        .summary-list li,
         .item p,
-        .data-block p,
-        summary {
-            color: var(--muted);
+        summary,
+        .tip {
+            margin: 0;
+            color: var(--ink-soft);
             line-height: 1.75;
         }
 
-        .hero-meta {
-            display: grid;
-            gap: 12px;
-            align-content: end;
+        .hero-copy p {
+            max-width: 62ch;
+            font-size: 16px;
+            line-height: 1.8;
         }
 
-        .meta-chip,
-        .signal-chip {
-            padding: 14px 16px;
-            border-radius: 20px;
-            background: rgba(255, 255, 255, 0.66);
-            border: 1px solid rgba(30, 25, 20, 0.08);
+        .hero-tags,
+        .hero-metrics,
+        .tags,
+        .list,
+        .match-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
         }
 
-        .meta-chip strong,
-        .data-block strong {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+        .hero-tag,
+        .chip,
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 12px;
+            line-height: 1;
         }
 
-        .layout {
-            display: grid;
-            grid-template-columns: 380px 1fr;
-            gap: 20px;
-            margin-top: 20px;
+        .hero-tag {
+            border: 1px solid rgba(115, 49, 29, 0.18);
+            background: rgba(255, 255, 255, 0.62);
+            color: var(--accent-deep);
         }
 
-        .panel {
-            padding: 24px;
-            height: fit-content;
-            position: sticky;
-            top: 20px;
-        }
-
-        .panel h2,
-        .card h2 {
-            margin-bottom: 14px;
-            font-size: 22px;
-        }
-
-        label { display: block; margin: 16px 0 8px; font-weight: 700; }
-
-        .dropzone {
-            border: 1px dashed rgba(127, 47, 24, 0.3);
-            background: rgba(255, 255, 255, 0.66);
-            border-radius: 22px;
-            padding: 18px;
-        }
-
-        input[type="file"] { width: 100%; font: inherit; color: var(--muted); }
-
-        .preview {
-            margin-top: 14px;
-            display: none;
-            overflow: hidden;
+        .hero-metric {
+            min-width: 148px;
+            padding: 16px 18px;
             border-radius: 20px;
             border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.6);
+            box-shadow: var(--shadow-md);
+        }
+
+        .hero-metric strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--ink-soft);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .hero-metric span {
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .upload-card {
+            display: grid;
+            gap: 18px;
+            padding: 24px;
+            background: linear-gradient(180deg, rgba(255, 249, 244, 0.98), rgba(255, 253, 250, 0.92));
+        }
+
+        .upload-card h2,
+        .card h2 {
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.2;
+        }
+
+        .section-title {
+            display: grid;
+            gap: 8px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .dropzone {
+            padding: 18px;
+            border: 1px dashed rgba(115, 49, 29, 0.32);
+            border-radius: 22px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 238, 229, 0.7));
+        }
+
+        input[type="file"] {
+            width: 100%;
+            color: var(--ink-soft);
+            font: inherit;
+        }
+
+        .preview {
+            display: none;
+            margin-top: 14px;
+            overflow: hidden;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.7);
         }
 
         .preview img {
-            width: 100%;
             display: block;
-            max-height: 260px;
+            width: 100%;
+            max-height: 290px;
             object-fit: cover;
         }
 
         button {
             width: 100%;
-            margin-top: 18px;
             border: 0;
             border-radius: 999px;
-            padding: 15px 18px;
+            padding: 16px 18px;
             color: #fff;
             font: inherit;
             font-weight: 700;
             cursor: pointer;
             background: linear-gradient(135deg, var(--accent-deep), var(--accent));
-            transition: transform 0.18s ease, box-shadow 0.18s ease;
-            box-shadow: 0 14px 28px rgba(127, 47, 24, 0.22);
+            box-shadow: 0 18px 30px rgba(115, 49, 29, 0.24);
+            transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
         }
 
-        button:hover:not(:disabled) { transform: translateY(-1px); }
-        button:disabled { opacity: 0.66; cursor: wait; transform: none; }
+        button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 22px 34px rgba(115, 49, 29, 0.26);
+        }
+
+        button:disabled {
+            opacity: 0.72;
+            cursor: wait;
+            transform: none;
+        }
 
         .status {
-            margin-top: 16px;
-            padding: 14px 16px;
-            min-height: 78px;
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.74);
-            border: 1px solid rgba(30, 25, 20, 0.08);
+            padding: 16px 18px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.78);
         }
 
         .status-label {
+            color: var(--ink-soft);
             font-size: 12px;
-            text-transform: uppercase;
+            font-weight: 700;
             letter-spacing: 0.08em;
-            color: var(--muted);
+            text-transform: uppercase;
         }
 
         .status-text {
-            margin-top: 6px;
-            font-size: 16px;
+            margin-top: 8px;
+            font-size: 18px;
             font-weight: 700;
-            color: var(--ink);
+        }
+
+        .status-note {
+            margin-top: 6px;
+            font-size: 14px;
         }
 
         .status-success .status-text { color: var(--ok); }
         .status-partial .status-text { color: var(--warn); }
         .status-failed .status-text { color: var(--danger); }
 
-        .cards { display: grid; gap: 16px; }
-
-        .card {
-            padding: 22px;
-            background: var(--card);
+        .results {
+            display: grid;
+            gap: 18px;
+            margin-top: 20px;
         }
 
-        .primary-card {
-            background: linear-gradient(180deg, var(--card-strong), rgba(255, 255, 255, 0.78));
+        .card {
+            padding: 24px;
+            background: var(--surface-muted);
+        }
+
+        .card.primary-card {
+            padding: 28px;
+            background: linear-gradient(180deg, var(--surface-strong), rgba(255, 255, 255, 0.88));
+        }
+
+        .section-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .section-header.compact {
+            margin-bottom: 12px;
         }
 
         .hero-name {
-            margin: 6px 0 10px;
-            font-size: 32px;
-            line-height: 1.2;
+            margin: 0;
+            font-family: "Georgia", "Times New Roman", serif;
+            font-size: clamp(34px, 4vw, 48px);
+            line-height: 1.04;
+            letter-spacing: -0.03em;
         }
 
         .pill {
-            display: inline-flex;
-            align-items: center;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: rgba(30, 25, 20, 0.06);
-            font-size: 12px;
-            margin-bottom: 10px;
+            background: rgba(32, 23, 20, 0.06);
+            color: var(--ink);
         }
 
-        .grid-two {
+        .chip {
+            border: 1px solid rgba(115, 49, 29, 0.12);
+            background: rgba(171, 81, 49, 0.08);
+            color: var(--accent-deep);
+        }
+
+        .description {
+            max-width: 74ch;
+            color: var(--ink);
+            font-size: 16px;
+            line-height: 1.9;
+        }
+
+        .summary-list {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
-            margin-top: 18px;
-        }
-
-        .data-block {
-            padding: 16px;
-            border-radius: 20px;
-            background: rgba(255, 255, 255, 0.72);
-            border: 1px solid rgba(30, 25, 20, 0.08);
-        }
-
-        .summary-list,
-        .list {
-            display: grid;
-            gap: 12px;
-            margin-top: 14px;
+            gap: 10px;
+            margin: 16px 0 0;
             padding: 0;
             list-style: none;
         }
 
-        .signal-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            margin-top: 12px;
+        .summary-list li {
+            padding-left: 18px;
+            position: relative;
+            color: var(--ink-soft);
+            line-height: 1.7;
         }
 
-        .item,
-        .serp-entry {
-            padding: 14px 16px;
-            border-radius: 18px;
-            border: 1px solid rgba(30, 25, 20, 0.08);
+        .summary-list li::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 11px;
+            width: 7px;
+            height: 7px;
+            border-radius: 999px;
+            background: var(--accent);
+        }
+
+        .secondary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+        }
+
+        .match-list,
+        .list {
+            display: grid;
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .match-entry,
+        .item {
+            padding: 16px;
+            border-radius: 20px;
+            border: 1px solid var(--line);
+        }
+
+        .match-entry {
+            background: rgba(255, 255, 255, 0.82);
         }
 
         .item {
-            background: var(--accent-soft);
+            background: rgba(240, 217, 202, 0.46);
         }
 
-        .serp-entry {
-            background: rgba(255, 255, 255, 0.72);
-        }
-
-        .item a,
-        .serp-entry a {
+        .match-entry a,
+        .item a {
             color: var(--ink);
             text-decoration: none;
             font-weight: 700;
         }
 
-        .serp-entry strong {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 15px;
-            line-height: 1.6;
+        .match-entry a:hover,
+        .item a:hover {
+            text-decoration: underline;
         }
 
-        .serp-meta {
-            color: var(--muted);
+        .match-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .match-score {
+            color: var(--ink-soft);
             font-size: 13px;
         }
 
-        .serp-link {
-            margin-top: 8px;
-            word-break: break-all;
+        .match-preview {
+            overflow: hidden;
+            margin-bottom: 12px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
         }
 
-        .hidden { display: none; }
+        .match-preview img {
+            display: block;
+            width: 100%;
+            max-height: 220px;
+            object-fit: cover;
+        }
 
-        details {
-            margin-top: 6px;
-            padding: 12px 14px 4px;
+        .match-source {
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .debug-card details {
+            border: 1px solid var(--line);
             border-radius: 18px;
             background: rgba(255, 255, 255, 0.72);
-            border: 1px solid rgba(30, 25, 20, 0.08);
+            padding: 12px 14px 4px;
         }
 
-        details[open] {
-            background: rgba(255, 255, 255, 0.86);
-        }
-
-        summary {
-            cursor: pointer;
-            font-weight: 700;
+        .debug-card details[open] {
+            background: rgba(255, 255, 255, 0.9);
         }
 
         pre {
@@ -336,124 +464,176 @@
             line-height: 1.7;
         }
 
-        @media (max-width: 980px) {
-            .hero,
-            .layout,
-            .grid-two,
-            .signal-grid {
+        .empty {
+            font-size: 15px;
+        }
+
+        @media (max-width: 1024px) {
+            .hero-grid,
+            .secondary-grid {
                 grid-template-columns: 1fr;
             }
 
-            .panel { position: static; }
+            .hero-copy h1 {
+                max-width: none;
+            }
         }
 
-        @media (max-width: 640px) {
-            .page { width: min(100% - 20px, 1220px); }
-            .hero, .panel, .card { border-radius: 22px; padding: 18px; }
+        @media (max-width: 720px) {
+            .page {
+                width: min(100% - 20px, var(--max-width));
+            }
+
+            .hero,
+            .card,
+            .upload-card {
+                border-radius: 24px;
+            }
+
+            .hero,
+            .upload-card,
+            .card {
+                padding: 18px;
+            }
+
+            .hero-copy h1 {
+                font-size: clamp(34px, 12vw, 52px);
+            }
+
+            .section-header {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
 <body>
 <div class="page">
     <section class="hero">
-        <div>
-            <div class="eyebrow">Face2Info</div>
-            <h1>上传人脸照片，查看多信源识别与聚合结果</h1>
-            <p>
-                页面现在围绕后端的新主流程展示结果：先通过多信源识别拿到图片与网页线索，再用 Jina 抓取正文并聚合出人物简介，
-                最后补充百科、社交账号和相关新闻。图片匹配只作为线索，不再代表最终结论。
-            </p>
-        </div>
-        <div class="hero-meta">
-            <div class="meta-chip">
-                <strong>聚合顺序</strong>
-                多信源识别 → Jina 正文聚合 → 人物简介 → 新闻与社交补全
+        <div class="hero-grid">
+            <div class="hero-copy">
+                <div>
+                    <div class="eyebrow">Face2Info</div>
+                    <h1>上传一张脸，先看结论，再看比对。</h1>
+                </div>
+
+                <p>
+                    这是一个面向公开信息聚合的检索页。上传人脸照片后，页面会优先给出人物简介，再补充图片匹配、公开社交账号和近期新闻，
+                    让结果从“是否像”回到“这个人是谁”。
+                </p>
+
+                <div class="hero-tags">
+                    <span class="hero-tag">人物简介优先</span>
+                    <span class="hero-tag">图片匹配辅助比对</span>
+                    <span class="hero-tag">公开信息聚合</span>
+                </div>
+
+                <div class="hero-metrics">
+                    <div class="hero-metric">
+                        <strong>接口地址</strong>
+                        <span><code>POST /api/face2info</code></span>
+                    </div>
+                    <div class="hero-metric">
+                        <strong>结果状态</strong>
+                        <span>success / partial / failed</span>
+                    </div>
+                    <div class="hero-metric">
+                        <strong>展示顺序</strong>
+                        <span>简介 → 比对 → 公开信息</span>
+                    </div>
+                </div>
             </div>
-            <div class="meta-chip">
-                <strong>接口地址</strong>
-                <code>POST /api/face2info</code>
-            </div>
-            <div class="meta-chip">
-                <strong>结果状态</strong>
-                success / partial / failed
-            </div>
+
+            <form class="upload-card" id="faceForm">
+                <div class="section-title">
+                    <span class="eyebrow">上传分析</span>
+                    <h2>选择图片并开始聚合</h2>
+                    <p class="meta-text">建议使用清晰、正面、主体单一的人脸照片，以提高识别稳定性。</p>
+                </div>
+
+                <div>
+                    <label for="image">选择图片</label>
+                    <div class="dropzone">
+                        <input id="image" name="image" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required>
+                        <div class="tip">支持 jpg、jpeg、png。页面仅展示本次结果，不做持久化缓存。</div>
+                        <div class="preview" id="preview">
+                            <img id="previewImage" alt="图片预览">
+                        </div>
+                    </div>
+                </div>
+
+                <button id="submitButton" type="submit">开始分析</button>
+
+                <section class="status" id="statusBox" aria-live="polite">
+                    <div class="status-label">当前状态</div>
+                    <div class="status-text" id="statusText">等待上传</div>
+                    <div class="status-note" id="statusNote">上传后将返回人物简介、图片匹配、社交账号和新闻结果。</div>
+                </section>
+            </form>
         </div>
     </section>
 
-    <section class="layout">
-        <form class="panel" id="faceForm">
-            <h2>上传图片</h2>
-            <p>建议使用清晰、正面、主体单一的人脸照片，以提高识别和正文聚合的稳定性。</p>
-
-            <label for="image">选择图片</label>
-            <div class="dropzone">
-                <input id="image" name="image" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required>
-                <div class="tip">支持 jpg、jpeg、png。单张图片，页面仅用于本次请求展示，不做持久化缓存。</div>
-                <div class="preview" id="preview">
-                    <img id="previewImage" alt="图片预览">
+    <main class="results">
+        <section class="card primary-card" id="personCard">
+            <div class="section-header">
+                <div class="section-title">
+                    <span class="eyebrow">人物简介</span>
+                    <h2 class="hero-name">尚未识别</h2>
                 </div>
             </div>
+            <p class="description">上传图片后，这里会优先显示聚合后的人物名称、简介和状态说明。</p>
+            <ul class="summary-list">
+                <li>人物简介是页面的主结论。</li>
+                <li>图片匹配会独立展示，但只作为辅助比对。</li>
+                <li>部分来源失败时，页面仍会尽量保留可用结果。</li>
+            </ul>
+        </section>
 
-            <button id="submitButton" type="submit">开始聚合</button>
+        <section class="card" id="matchesCard">
+            <div class="section-header compact">
+                <div class="section-title">
+                    <span class="eyebrow">辅助比对</span>
+                    <h2>图片匹配</h2>
+                </div>
+                <span class="pill">独立板块</span>
+            </div>
+            <p class="empty">暂无图片匹配结果。</p>
+        </section>
 
-            <section class="status" id="statusBox">
-                <div class="status-label">当前状态</div>
-                <div class="status-text" id="statusText">等待上传。</div>
-                <div class="status-note" id="statusNote">上传后将返回人物简介、图片匹配、社交账号和新闻结果。</div>
-            </section>
-        </form>
-
-        <div class="cards">
-            <section class="card primary-card" id="personCard">
-                <div class="eyebrow">人物简介</div>
-                <h2 class="hero-name">尚未识别</h2>
-                <div class="meta-text">上传图片后，这里会优先显示聚合后的人物名称、简介、百科和官网信息。</div>
-                <ul class="summary-list">
-                    <li>人物简介是当前页面的主结论。</li>
-                    <li>图片匹配结果会降级为辅助线索展示。</li>
-                    <li>部分失败时仍会尽量返回可用内容。</li>
-                </ul>
-            </section>
-
-            <section class="card" id="signalsCard">
-                <div class="eyebrow">识别线索</div>
-                <div class="meta-text">这里会展示这次识别流程的线索摘要。如果当前对外响应未暴露正文证据链接，页面会给出说明。</div>
-                <div class="signal-grid" id="signalsGrid">
-                    <div class="signal-chip">
-                        <strong>正文证据</strong>
-                        <div class="empty">当前响应未返回正文证据链接。</div>
-                    </div>
-                    <div class="signal-chip">
-                        <strong>图片匹配</strong>
-                        <div class="empty">上传图片后会统计当前请求拿到的匹配条数。</div>
+        <section class="secondary-grid">
+            <section class="card" id="socialCard">
+                <div class="section-header compact">
+                    <div class="section-title">
+                        <span class="eyebrow">公开信息</span>
+                        <h2>社交账号</h2>
                     </div>
                 </div>
-            </section>
-
-            <section class="card" id="matchesCard">
-                <div class="eyebrow">图片匹配</div>
-                <div class="empty">暂无图片匹配结果。</div>
-            </section>
-
-            <section class="card" id="socialCard">
-                <div class="eyebrow">社交账号</div>
-                <div class="empty">暂无社交账号结果。</div>
+                <p class="empty">暂无社交账号结果。</p>
             </section>
 
             <section class="card" id="newsCard">
-                <div class="eyebrow">近期新闻</div>
-                <div class="empty">暂无新闻结果。</div>
+                <div class="section-header compact">
+                    <div class="section-title">
+                        <span class="eyebrow">公开信息</span>
+                        <h2>近期新闻</h2>
+                    </div>
+                </div>
+                <p class="empty">暂无新闻结果。</p>
             </section>
+        </section>
 
-            <section class="card" id="rawCard">
-                <div class="eyebrow">调试 JSON</div>
-                <details>
-                    <summary>展开查看完整响应</summary>
-                    <pre id="rawResponse">{}</pre>
-                </details>
-            </section>
-        </div>
-    </section>
+        <section class="card debug-card" id="rawCard">
+            <div class="section-header compact">
+                <div class="section-title">
+                    <span class="eyebrow">调试</span>
+                    <h2>原始 JSON</h2>
+                </div>
+            </div>
+            <details>
+                <summary>展开查看完整响应</summary>
+                <pre id="rawResponse">{}</pre>
+            </details>
+        </section>
+    </main>
 </div>
 
 <script>
@@ -467,7 +647,6 @@
     const statusNote = document.getElementById("statusNote");
     const rawResponseEl = document.getElementById("rawResponse");
     const personCard = document.getElementById("personCard");
-    const signalsCard = document.getElementById("signalsCard");
     const matchesCard = document.getElementById("matchesCard");
     const socialCard = document.getElementById("socialCard");
     const newsCard = document.getElementById("newsCard");
@@ -493,7 +672,7 @@
 
         const file = imageInput.files[0];
         if (!file) {
-            setStatus("failed", "请先选择图片。", "需要先选择一张图片才能发起识别。");
+            setStatus("failed", "请求失败", "需要先选择一张图片才能开始分析。");
             return;
         }
 
@@ -503,7 +682,7 @@
         formData.append("image", file);
 
         submitButton.disabled = true;
-        setStatus("loading", "正在识别并聚合，请稍候...", "系统会先收集识别线索，再聚合人物简介。");
+        setStatus("loading", "分析中", "正在聚合人物简介和相关公开信息。");
 
         try {
             const response = await fetch("/api/face2info", {
@@ -516,24 +695,23 @@
 
             if (!response.ok || data.status === "failed") {
                 renderError(data);
-                setStatus("failed", data.error || "请求失败。", "这次请求没有拿到可用的人物聚合结果。");
+                setStatus("failed", "请求失败", data.error || "这次请求没有返回可用结果。");
                 return;
             }
 
             renderPerson(data.person, data.status, data.error);
-            renderSignals(data);
             renderFacecheckMatches(data.facecheck_matches || [], data.status, data.error);
             renderSocialAccounts(data.person && data.person.social_accounts ? data.person.social_accounts : []);
             renderNews(data.news || []);
 
             if (data.status === "partial") {
-                setStatus("partial", "已识别人物，但部分来源补全失败。", data.error || "当前已返回可用的部分结果。");
+                setStatus("partial", "部分完成", data.error || "已返回当前可用的聚合结果。");
             } else {
-                setStatus("success", "已完成识别与聚合。", "当前展示的是聚合后的主结论和补充信息。");
+                setStatus("success", "已完成", "已生成人物简介，并补充辅助比对与公开信息。");
             }
         } catch (error) {
             renderError({ error: error.message || "未知异常" });
-            setStatus("failed", "请求异常。", "请检查服务端日志或稍后重试。");
+            setStatus("failed", "请求失败", "请检查服务端日志或稍后重试。");
         } finally {
             submitButton.disabled = false;
         }
@@ -541,25 +719,41 @@
 
     function resetResultCards() {
         personCard.innerHTML =
-            '<div class="eyebrow">人物简介</div>' +
+            '<div class="section-header">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">人物简介</span>' +
             '<h2 class="hero-name">正在聚合</h2>' +
-            '<div class="meta-text">系统正在根据多信源线索生成简介，请稍候。</div>';
-
-        signalsCard.innerHTML =
-            '<div class="eyebrow">识别线索</div>' +
-            '<div class="meta-text">这次请求的线索摘要会在返回后刷新。</div>';
+            '</div>' +
+            '</div>' +
+            '<p class="description">系统正在生成本次请求的人物简介，请稍候。</p>';
 
         matchesCard.innerHTML =
-            '<div class="eyebrow">FaceCheck 匹配结果</div>' +
-            '<div class="empty">正在等待 FaceCheck 相似图片结果。</div>';
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">辅助比对</span>' +
+            '<h2>图片匹配</h2>' +
+            '</div>' +
+            '<span class="pill">独立板块</span>' +
+            '</div>' +
+            '<p class="empty">正在等待图片匹配结果。</p>';
 
         socialCard.innerHTML =
-            '<div class="eyebrow">社交账号</div>' +
-            '<div class="empty">正在等待新的社交账号结果。</div>';
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">公开信息</span>' +
+            '<h2>社交账号</h2>' +
+            '</div>' +
+            '</div>' +
+            '<p class="empty">正在整理社交账号结果。</p>';
 
         newsCard.innerHTML =
-            '<div class="eyebrow">近期新闻</div>' +
-            '<div class="empty">正在等待新的新闻结果。</div>';
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">公开信息</span>' +
+            '<h2>近期新闻</h2>' +
+            '</div>' +
+            '</div>' +
+            '<p class="empty">正在整理相关新闻结果。</p>';
 
         rawResponseEl.textContent = "{}";
     }
@@ -569,7 +763,6 @@
             status: data.status || null,
             error: data.error || null,
             person: data.person || null,
-            evidence_urls: data.person && data.person.evidence_urls ? data.person.evidence_urls : [],
             facecheck_matches: (data.facecheck_matches || []).slice(0, 20),
             image_matches: (data.image_matches || []).slice(0, 20).map(function (item) {
                 return {
@@ -586,163 +779,193 @@
     function renderPerson(person, status, error) {
         if (!person) {
             personCard.innerHTML =
-                '<div class="eyebrow">人物简介</div>' +
+                '<div class="section-header">' +
+                '<div class="section-title">' +
+                '<span class="eyebrow">人物简介</span>' +
                 '<h2 class="hero-name">识别失败</h2>' +
-                '<div class="meta-text">' + escapeHtml(error || "没有获得人物信息。") + '</div>';
+                '</div>' +
+                '</div>' +
+                '<p class="description">' + escapeHtml(error || "没有获得人物信息。") + '</p>';
             return;
         }
 
-        const statusText = status === "partial" ? "部分成功" : "识别成功";
-        const wikipedia = person.wikipedia
-            ? '<a href="' + escapeHtml(person.wikipedia) + '" target="_blank" rel="noreferrer">打开维基百科</a>'
-            : "暂无";
-        const website = person.official_website
-            ? '<a href="' + escapeHtml(person.official_website) + '" target="_blank" rel="noreferrer">打开官网</a>'
-            : "暂无";
+        const statusLabel = status === "partial" ? "部分完成" : "已完成";
+        const tags = Array.isArray(person.tags) ? person.tags.filter(Boolean) : [];
+        const tagsHtml = tags.length
+            ? '<div class="tags">' + tags.slice(0, 8).map(function (tag) {
+                return '<span class="chip">' + escapeHtml(tag) + '</span>';
+            }).join("") + '</div>'
+            : "";
 
         personCard.innerHTML =
-            '<div class="eyebrow">人物简介</div>' +
-            '<div class="pill">' + escapeHtml(statusText) + '</div>' +
+            '<div class="section-header">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">人物简介</span>' +
             '<h2 class="hero-name">' + escapeHtml(person.name || "未识别姓名") + '</h2>' +
-            '<div class="meta-text">' + escapeHtml(person.description || "暂无简介。") + '</div>' +
-            '<div class="grid-two">' +
-            '<div class="data-block"><strong>维基百科</strong><p>' + wikipedia + '</p></div>' +
-            '<div class="data-block"><strong>官方网站</strong><p>' + website + '</p></div>' +
-            '</div>';
-    }
-
-    function renderSignals(data) {
-        const evidenceUrls = data.person && Array.isArray(data.person.evidence_urls)
-            ? data.person.evidence_urls.filter(Boolean)
-            : [];
-        const imageMatches = Array.isArray(data.image_matches) ? data.image_matches : [];
-        const errorText = data.error || "当前请求没有额外错误信息。";
-
-        let evidenceBlock = '<div class="signal-chip"><strong>正文证据</strong><div class="empty">当前响应未返回正文证据链接。</div></div>';
-        if (evidenceUrls.length) {
-            const links = evidenceUrls.slice(0, 8).map(function (url) {
-                return '<div class="serp-link"><a href="' + escapeHtml(url) + '" target="_blank" rel="noreferrer">' +
-                    escapeHtml(url) +
-                    '</a></div>';
-            }).join("");
-            evidenceBlock = '<div class="signal-chip"><strong>正文证据</strong>' + links + '</div>';
-        }
-
-        const matchSummary = imageMatches.length
-            ? '当前请求共返回 ' + escapeHtml(imageMatches.length) + ' 条图片匹配线索。'
-            : '当前请求没有返回图片匹配线索。';
-
-        const statusSummary = data.status === "partial"
-            ? '本次状态为 partial，部分来源失败但已保留可用结果。'
-            : '本次状态为 ' + escapeHtml(data.status || "unknown") + '。';
-
-        signalsCard.innerHTML =
-            '<div class="eyebrow">识别线索</div>' +
-            '<div class="meta-text">主结论来自聚合后的人物简介，以下内容只作为辅助判断依据。</div>' +
-            '<div class="signal-grid">' +
-            evidenceBlock +
-            '<div class="signal-chip"><strong>流程摘要</strong><div class="status-note">' + matchSummary + '</div><div class="status-note">' + statusSummary + '</div><div class="status-note">' + escapeHtml(errorText) + '</div></div>' +
-            '</div>';
+            '</div>' +
+            '<span class="pill">' + escapeHtml(statusLabel) + '</span>' +
+            '</div>' +
+            '<p class="description">' + escapeHtml(person.description || "暂无简介。") + '</p>' +
+            tagsHtml;
     }
 
     function renderFacecheckMatches(matches, status, error) {
         if (!matches.length) {
             matchesCard.innerHTML =
-                '<div class="eyebrow">FaceCheck 匹配结果</div>' +
-                '<div class="empty">' + escapeHtml(
+                '<div class="section-header compact">' +
+                '<div class="section-title">' +
+                '<span class="eyebrow">辅助比对</span>' +
+                '<h2>图片匹配</h2>' +
+                '</div>' +
+                '<span class="pill">独立板块</span>' +
+                '</div>' +
+                '<p class="empty">' + escapeHtml(
                     status === "partial" && error
-                        ? "FaceCheck 调用失败，本次未返回相似图片。"
-                        : "暂无 FaceCheck 相似图片结果。"
-                ) + '</div>';
+                        ? "图片匹配未完整返回，本次仅展示其他可用结果。"
+                        : "暂无可展示的图片匹配结果。"
+                ) + '</p>';
             return;
         }
 
         const html = matches.slice(0, 20).map(function (item, index) {
             const position = item.index || (index + 1);
-            const source = escapeHtml(item.source_host || "未知来源");
             const score = escapeHtml(item.similarity_score || 0);
+            const source = escapeHtml(item.source_host || "未知来源");
             const image = item.image_data_url
-                ? '<div class="preview" style="display:block;margin-top:0;"><img src="' + escapeHtml(item.image_data_url) + '" alt="FaceCheck match preview"></div>'
-                : '';
+                ? '<div class="match-preview"><img src="' + escapeHtml(item.image_data_url) + '" alt="图片匹配预览"></div>'
+                : "";
             const link = item.source_url
-                ? '<div class="serp-link"><a href="' + escapeHtml(item.source_url) + '" target="_blank" rel="noreferrer">打开来源</a></div>'
-                : '<div class="serp-link">无链接</div>';
+                ? '<a href="' + escapeHtml(item.source_url) + '" target="_blank" rel="noreferrer">打开来源页面</a>'
+                : '<span class="match-score">无来源链接</span>';
 
-            return '<div class="serp-entry">' +
-                '<div class="pill">#' + escapeHtml(position) + '</div>' +
+            return '<article class="match-entry">' +
+                '<div class="match-card-head">' +
+                '<span class="pill">#' + escapeHtml(position) + '</span>' +
+                '<span class="match-score">相似度 ' + score + '</span>' +
+                '</div>' +
                 image +
-                '<strong>' + source + '</strong>' +
-                '<div class="serp-meta">相似度：' + score + '</div>' +
-                link +
-                '</div>';
+                '<div class="match-source">' + source + '</div>' +
+                '<div class="tip">' + link + '</div>' +
+                '</article>';
         }).join("");
 
         matchesCard.innerHTML =
-            '<div class="eyebrow">FaceCheck 匹配结果</div>' +
-            '<div class="meta-text">这里展示 FaceCheck 返回的相似图片、相似度和来源。</div>' +
-            '<div class="list">' + html + '</div>';
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">辅助比对</span>' +
+            '<h2>图片匹配</h2>' +
+            '</div>' +
+            '<span class="pill">独立板块</span>' +
+            '</div>' +
+            '<p class="meta-text">以下结果用于辅助比对，不替代上方的人物简介结论。</p>' +
+            '<div class="match-list">' + html + '</div>';
     }
 
     function renderSocialAccounts(accounts) {
         if (!accounts.length) {
             socialCard.innerHTML =
-                '<div class="eyebrow">社交账号</div>' +
-                '<div class="empty">暂未补充到有效的社交账号结果。</div>';
+                '<div class="section-header compact">' +
+                '<div class="section-title">' +
+                '<span class="eyebrow">公开信息</span>' +
+                '<h2>社交账号</h2>' +
+                '</div>' +
+                '</div>' +
+                '<p class="empty">暂未补充到有效的社交账号结果。</p>';
             return;
         }
 
         const html = accounts.map(function (account) {
-            return '<div class="item">' +
+            return '<article class="item">' +
                 '<div class="pill">' + escapeHtml(account.platform || "unknown") + '</div>' +
                 '<a href="' + escapeHtml(account.url || "#") + '" target="_blank" rel="noreferrer">' +
                 escapeHtml(account.username || account.url || "打开账号") +
                 '</a>' +
                 '<p>' + escapeHtml(account.url || "-") + '</p>' +
-                '</div>';
+                '</article>';
         }).join("");
 
-        socialCard.innerHTML = '<div class="eyebrow">社交账号</div><div class="list">' + html + '</div>';
+        socialCard.innerHTML =
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">公开信息</span>' +
+            '<h2>社交账号</h2>' +
+            '</div>' +
+            '</div>' +
+            '<div class="list">' + html + '</div>';
     }
 
     function renderNews(newsList) {
         if (!newsList.length) {
             newsCard.innerHTML =
-                '<div class="eyebrow">近期新闻</div>' +
-                '<div class="empty">暂未补充到相关新闻，或新闻接口返回为空。</div>';
+                '<div class="section-header compact">' +
+                '<div class="section-title">' +
+                '<span class="eyebrow">公开信息</span>' +
+                '<h2>近期新闻</h2>' +
+                '</div>' +
+                '</div>' +
+                '<p class="empty">暂未补充到相关新闻，或新闻接口返回为空。</p>';
             return;
         }
 
         const html = newsList.slice(0, 20).map(function (item) {
-            return '<div class="item">' +
+            return '<article class="item">' +
                 '<a href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
                 escapeHtml(item.title || "未命名新闻") +
                 '</a>' +
                 '<p>' + escapeHtml(item.source || "未知来源") + ' | ' + escapeHtml(item.published_at || "-") + '</p>' +
                 '<p>' + escapeHtml(item.summary || "暂无摘要。") + '</p>' +
-                '</div>';
+                '</article>';
         }).join("");
 
-        newsCard.innerHTML = '<div class="eyebrow">近期新闻</div><div class="list">' + html + '</div>';
+        newsCard.innerHTML =
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">公开信息</span>' +
+            '<h2>近期新闻</h2>' +
+            '</div>' +
+            '</div>' +
+            '<div class="list">' + html + '</div>';
     }
 
     function renderError(error) {
         const message = error.error || "请求失败。";
+
         personCard.innerHTML =
-            '<div class="eyebrow">人物简介</div>' +
+            '<div class="section-header">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">人物简介</span>' +
             '<h2 class="hero-name">请求失败</h2>' +
-            '<div class="meta-text">' + escapeHtml(message) + '</div>';
-        signalsCard.innerHTML =
-            '<div class="eyebrow">识别线索</div>' +
-            '<div class="empty">请求失败后未生成新的识别线索摘要。</div>';
+            '</div>' +
+            '</div>' +
+            '<p class="description">' + escapeHtml(message) + '</p>';
+
         matchesCard.innerHTML =
-            '<div class="eyebrow">FaceCheck 匹配结果</div>' +
-            '<div class="empty">请求失败后未生成 FaceCheck 匹配结果。</div>';
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">辅助比对</span>' +
+            '<h2>图片匹配</h2>' +
+            '</div>' +
+            '<span class="pill">独立板块</span>' +
+            '</div>' +
+            '<p class="empty">请求失败后未生成新的图片匹配结果。</p>';
+
         socialCard.innerHTML =
-            '<div class="eyebrow">社交账号</div>' +
-            '<div class="empty">请求失败后未生成账号结果。</div>';
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">公开信息</span>' +
+            '<h2>社交账号</h2>' +
+            '</div>' +
+            '</div>' +
+            '<p class="empty">请求失败后未生成账号结果。</p>';
+
         newsCard.innerHTML =
-            '<div class="eyebrow">近期新闻</div>' +
-            '<div class="empty">请求失败后未生成新闻结果。</div>';
+            '<div class="section-header compact">' +
+            '<div class="section-title">' +
+            '<span class="eyebrow">公开信息</span>' +
+            '<h2>近期新闻</h2>' +
+            '</div>' +
+            '</div>' +
+            '<p class="empty">请求失败后未生成新闻结果。</p>';
     }
 
     function setStatus(kind, text, note) {
@@ -754,6 +977,7 @@
         } else if (kind === "failed") {
             statusBox.classList.add("status-failed");
         }
+
         statusText.textContent = text;
         statusNote.textContent = note;
     }
