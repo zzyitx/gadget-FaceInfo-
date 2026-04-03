@@ -104,43 +104,6 @@
       line-height: 0.96;
     }
 
-    .status {
-      padding: 16px;
-      border: 1px solid rgba(32, 23, 20, 0.12);
-      border-radius: 18px;
-      background: #fff;
-    }
-
-    .status-success {
-      border-color: rgba(48, 127, 74, 0.24);
-      background: #f6fff8;
-    }
-
-    .status-partial {
-      border-color: rgba(171, 81, 49, 0.24);
-      background: #fff9f4;
-    }
-
-    .status-failed {
-      border-color: rgba(166, 58, 58, 0.24);
-      background: #fff7f7;
-    }
-
-    .status-label {
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #64574f;
-    }
-
-    .status-text {
-      margin-top: 8px;
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .status-note,
     .meta-text,
     .empty,
     .tip,
@@ -206,50 +169,73 @@
     }
 
     .image-item {
-      position: relative;
-      min-height: 270px;
+      display: grid;
+      grid-template-rows: minmax(240px, auto) auto;
+      align-content: start;
       overflow: hidden;
       cursor: pointer;
+      background: #fff;
+    }
+
+    .image-frame {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 240px;
+      max-height: 320px;
+      padding: 16px;
       background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(32, 23, 20, 0.72)),
-        #fff;
+        linear-gradient(180deg, rgba(255, 250, 246, 0.92), rgba(240, 217, 202, 0.78));
     }
 
     .image-item img {
-      position: absolute;
-      inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
+      object-position: center;
     }
 
     .image-info {
-      position: absolute;
-      right: 14px;
-      bottom: 14px;
-      left: 14px;
       display: grid;
       gap: 6px;
       padding: 14px 16px;
-      border-radius: 18px;
-      background: linear-gradient(180deg, rgba(32, 23, 20, 0.22), rgba(32, 23, 20, 0.78));
-      color: #fff;
+      background: rgba(255, 250, 246, 0.96);
+      border-top: 1px solid rgba(32, 23, 20, 0.08);
+      color: #201714;
     }
 
     .image-info .source {
       font-size: 13px;
       text-transform: uppercase;
-      opacity: 0.86;
-    }
-
-    .image-info .title {
-      font-size: 16px;
-      line-height: 1.45;
-      font-weight: 700;
+      opacity: 0.74;
     }
 
     .image-info .score {
       font-size: 14px;
+    }
+
+    .article-group {
+      padding: 16px;
+      border: 1px solid rgba(32, 23, 20, 0.12);
+      border-radius: 20px;
+      background: rgba(255, 250, 246, 0.9);
+    }
+
+    .article-group-header {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .match-group-title {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .match-group-source {
+      font-size: 13px;
+      color: #64574f;
     }
 
     .item {
@@ -371,13 +357,6 @@
 
         <button id="submitButton" type="submit">开始检索</button>
 
-        <section class="status" id="statusBox" aria-live="polite">
-          <div class="status-label">状态</div>
-          <div class="status-text" id="statusText">待开始</div>
-          <div class="status-note" id="statusNote">
-            检索结果会展示人物信息、图片匹配、公开账号和相关文章。
-          </div>
-        </section>
       </form>
     </aside>
 
@@ -459,9 +438,6 @@
   const preview = document.getElementById("preview");
   const previewImage = document.getElementById("previewImage");
   const submitButton = document.getElementById("submitButton");
-  const statusBox = document.getElementById("statusBox");
-  const statusText = document.getElementById("statusText");
-  const statusNote = document.getElementById("statusNote");
   const rawResponseEl = document.getElementById("rawResponse");
   const personCard = document.getElementById("personCard");
   const matchesCard = document.getElementById("matchesCard");
@@ -494,7 +470,7 @@
 
     const [file] = imageInput.files;
     if (!file) {
-      setStatus("failed", "请求失败", "请先选择一张图片。");
+      renderError({ error: "请先选择一张图片。" });
       return;
     }
 
@@ -504,7 +480,6 @@
     formData.append("image", file);
 
     submitButton.disabled = true;
-    setStatus("loading", "检索中", "正在聚合公开信息，请稍候。");
 
     try {
       const response = await fetch("/api/face2info", {
@@ -517,11 +492,6 @@
 
       if (!response.ok || data.status === "failed") {
         renderError(data);
-        setStatus(
-          "failed",
-          "请求失败",
-          data.error || "接口未返回可用结果。"
-        );
         return;
       }
 
@@ -530,20 +500,9 @@
       renderSocialAccounts(
         data.person && data.person.social_accounts ? data.person.social_accounts : []
       );
-      renderArticleGroups(data.news || []);
-
-      setStatus(
-        data.status === "partial" ? "partial" : "success",
-        data.status === "partial" ? "部分完成" : "已完成",
-        data.error || (
-          data.status === "partial"
-            ? "已返回当前可用的聚合结果。"
-            : "已生成人物概览和图片匹配结果。"
-        )
-      );
+      renderArticleGroups(data.image_matches || [], data.news || []);
     } catch (error) {
       renderError({ error: error.message || "未知错误" });
-      setStatus("failed", "请求失败", "请检查服务端日志后重试。");
     } finally {
       submitButton.disabled = false;
     }
@@ -640,10 +599,11 @@
 
       return [
         '<div class="image-item" data-link="' + safeTarget + '">',
+        '<div class="image-frame">',
         image,
+        "</div>",
         '<div class="image-info">',
         '<div class="source">#' + escapeHtml(item.position || index + 1) + " · " + source + "</div>",
-        '<div class="title">' + title + "</div>",
         '<div class="score">相似度 ' + escapeHtml(confidence) + "%</div>",
         "</div>",
         "</div>"
@@ -678,16 +638,22 @@
     socialCard.innerHTML = renderSocialCard('<div class="list">' + html + "</div>");
   }
 
-  function renderArticleGroups(newsList) {
-    const newsHtml = renderNewsArticles(newsList);
-    if (!newsHtml) {
+  function renderArticleGroups(imageMatches, newsList) {
+    if (!imageMatches.length) {
       newsCard.innerHTML = renderNewsCard('<p class="empty">暂无相关文章。</p>');
       return;
     }
 
-    newsCard.innerHTML = renderNewsCard(
-      renderArticleSection("相关新闻", newsHtml)
-    );
+    const newsHtml = renderNewsArticles(newsList);
+    const groupsHtml = imageMatches.slice(0, 20).map(function mapMatch(item) {
+      return renderArticleSection(
+        item.title || "未命名结果",
+        item.source || "未知来源",
+        newsHtml
+      );
+    }).join("");
+
+    newsCard.innerHTML = renderNewsCard(groupsHtml);
   }
 
   function renderNewsArticles(newsList) {
@@ -713,13 +679,14 @@
     }).join("") + "</div>";
   }
 
-  function renderArticleSection(title, contentHtml) {
+  function renderArticleSection(title, source, contentHtml) {
     return [
       '<section class="article-group">',
-      '<div class="section-header compact">',
-      '<div class="section-title"><h2>' + escapeHtml(title) + "</h2></div>",
+      '<div class="article-group-header">',
+      '<div class="match-group-title">' + escapeHtml(title) + "</div>",
+      '<div class="match-group-source">来源：' + escapeHtml(source) + "</div>",
       "</div>",
-      contentHtml,
+      contentHtml || '<p class="empty">该图片结果暂无相关文章。</p>',
       "</section>"
     ].join("");
   }
@@ -797,21 +764,6 @@
       '<span class="pill">' + escapeHtml(pillText) + "</span>",
       "</div>"
     ].join("");
-  }
-
-  function setStatus(kind, text, note) {
-    statusBox.className = "status";
-
-    if (kind === "success") {
-      statusBox.classList.add("status-success");
-    } else if (kind === "partial") {
-      statusBox.classList.add("status-partial");
-    } else if (kind === "failed") {
-      statusBox.classList.add("status-failed");
-    }
-
-    statusText.textContent = text;
-    statusNote.textContent = note;
   }
 
   function escapeHtml(value) {

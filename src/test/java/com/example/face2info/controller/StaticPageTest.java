@@ -61,4 +61,39 @@ class StaticPageTest {
                 .andExpect(content().string(not(containsString("id=\"socialCard\" open"))))
                 .andExpect(content().string(not(containsString("id=\"debugPanel\" open"))));
     }
+
+    @Test
+    void shouldRenderImageMatchesWithoutCroppingResultImages() throws Exception {
+        mockMvc.perform(get("/index.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(".image-frame")))
+                .andExpect(content().string(containsString("object-fit: contain")))
+                .andExpect(content().string(containsString("object-position: center")))
+                .andExpect(content().string(containsString("class=\"image-frame\"")))
+                .andExpect(content().string(not(containsString(".image-item img {\r\n      position: absolute;"))))
+                .andExpect(content().string(containsString(".preview img")))
+                .andExpect(content().string(containsString("object-fit: cover")));
+    }
+
+    @Test
+    void shouldHideVisibleStatusCardAndRenderImageDrivenArticleGroups() throws Exception {
+        mockMvc.perform(get("/index.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString("id=\"statusBox\""))))
+                .andExpect(content().string(not(containsString("class=\"status\""))))
+                .andExpect(content().string(containsString("renderArticleGroups(data.image_matches || [], data.news || [])")))
+                .andExpect(content().string(containsString("article-group")))
+                .andExpect(content().string(containsString("match-group-source")));
+    }
+
+    @Test
+    void shouldMoveMatchTitleFromImageCardToArticleGroupHeader() throws Exception {
+        mockMvc.perform(get("/index.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString("image-info .title"))))
+                .andExpect(content().string(not(containsString("class=\"title\""))))
+                .andExpect(content().string(containsString("match-group-title")))
+                .andExpect(content().string(containsString("item.title || \"")))
+                .andExpect(content().string(containsString("item.source || \"")));
+    }
 }
