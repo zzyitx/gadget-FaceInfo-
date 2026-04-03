@@ -25,6 +25,48 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class KimiSummaryGenerationClientTest {
 
     @Test
+    void shouldParseStructuredPageSummaryFromKimiToolCallArguments() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "tool_calls": [
+                                  {
+                                    "id": "call_page_summary",
+                                    "type": "function",
+                                    "function": {
+                                      "name": "submit_page_summary",
+                                      "arguments": "{\\"resolvedNameCandidate\\":\\"Jay Chou\\",\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\"}"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        PageSummary summary = client.summarizePage("Jay Chou", new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("Article A")
+                .setContent("Page content A"));
+
+        assertThat(summary.getResolvedNameCandidate()).isEqualTo("Jay Chou");
+        assertThat(summary.getSummary()).isEqualTo("Singer");
+        assertThat(summary.getKeyFacts()).containsExactly("Fact A");
+        assertThat(summary.getTags()).containsExactly("music");
+        assertThat(summary.getSourceUrl()).isEqualTo("https://example.com/a");
+    }
+
+    @Test
     void shouldParseStructuredPageSummaryFromKimiResponse() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
@@ -75,6 +117,48 @@ class KimiSummaryGenerationClientTest {
                 .setContent("Page content A")))
                 .isInstanceOf(ApiCallException.class)
                 .hasMessageContaining("EMPTY_RESPONSE");
+    }
+
+    @Test
+    void shouldParseFinalProfileFromKimiToolCallArguments() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "tool_calls": [
+                                  {
+                                    "id": "call_person_profile",
+                                    "type": "function",
+                                    "function": {
+                                      "name": "submit_person_profile",
+                                      "arguments": "{\\"resolvedName\\":\\"Jay Chou\\",\\"summary\\":\\"Jay Chou is a Mandopop singer-songwriter.\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"singer\\",\\"producer\\"],\\"evidenceUrls\\":[\\"https://example.com/a\\",\\"https://example.com/b\\"]}"
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A"),
+                new PageSummary().setSourceUrl("https://example.com/b").setSummary("Summary B")
+        ));
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        assertThat(profile.getSummary()).isEqualTo("Jay Chou is a Mandopop singer-songwriter.");
+        assertThat(profile.getKeyFacts()).containsExactly("Fact A");
+        assertThat(profile.getTags()).containsExactly("singer", "producer");
+        assertThat(profile.getEvidenceUrls()).containsExactly("https://example.com/a", "https://example.com/b");
     }
 
     @Test

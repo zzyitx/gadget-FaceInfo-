@@ -35,6 +35,9 @@ import java.util.stream.Collectors;
 @ConditionalOnProperty(prefix = "face2info.api.summary", name = "provider", havingValue = "kimi")
 public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
+    private static final String PAGE_SUMMARY_FUNCTION_NAME = "submit_page_summary";
+    private static final String PERSON_PROFILE_FUNCTION_NAME = "submit_person_profile";
+
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
     private final ObjectMapper objectMapper;
@@ -55,7 +58,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 page == null ? null : page.getTitle());
 
         return RetryUtils.execute("Kimi summarize page", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildPagePrompt(fallbackName, page));
+            JsonNode body = callKimi(kimi, buildPageRequest(kimi, fallbackName, page));
             PageSummary summary = parsePageSummary(page, body);
             log.info("Kimi page summary success url={} summaryLength={} tagCount={} factCount={}",
                     summary.getSourceUrl(),
@@ -74,7 +77,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         log.info("Kimi final profile summary start fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
 
         return RetryUtils.execute("Kimi summarize person", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildPersonPrompt(fallbackName, pageSummaries));
+            JsonNode body = callKimi(kimi, buildPersonRequest(kimi, fallbackName, pageSummaries));
             ResolvedPersonProfile profile = parseProfileFromPageSummaries(fallbackName, pageSummaries, body);
             log.info("Kimi final profile summary success resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
                     profile.getResolvedName(),
@@ -97,18 +100,10 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         }
     }
 
-    private JsonNode callKimi(KimiApiProperties kimi, String userPrompt) {
+    private JsonNode callKimi(KimiApiProperties kimi, Map<String, Object> requestBody) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(kimi.getApiKey());
         headers.setContentType(MediaType.APPLICATION_JSON);
-
-        Map<String, Object> requestBody = Map.of(
-                "model", kimi.getModel(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
-                        Map.of("role", "user", "content", userPrompt)
-                )
-        );
 
         log.info("Kimi request sent model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
         ResponseEntity<JsonNode> response = restTemplate.exchange(
@@ -118,6 +113,88 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 JsonNode.class
         );
         return response.getBody();
+    }
+
+    private Map<String, Object> buildPageRequest(KimiApiProperties kimi, String fallbackName, PageContent page) {
+        return Map.of(
+                "model", kimi.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "user", "content", buildPagePrompt(fallbackName, page))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", PAGE_SUMMARY_FUNCTION_NAME,
+                                "description", "提交单篇页面摘要的结构化结果",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "resolvedNameCandidate", Map.of("type", "string"),
+                                                "summary", Map.of("type", "string"),
+                                                "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                "tags", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                "sourceUrl", Map.of("type", "string"),
+                                                "title", Map.of("type", "string")
+                                        ),
+                                        "required", List.of("summary"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of(
+                        "type", "function",
+                        "function", Map.of("name", PAGE_SUMMARY_FUNCTION_NAME)
+                )
+        );
+    }
+
+    private Map<String, Object> buildPersonRequest(KimiApiProperties kimi,
+                                                   String fallbackName,
+                                                   List<PageSummary> pageSummaries) {
+        return Map.of(
+                "model", kimi.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "user", "content", buildPersonPrompt(fallbackName, pageSummaries))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", PERSON_PROFILE_FUNCTION_NAME,
+                                "description", "提交人物聚合画像的结构化结果",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "resolvedName", Map.of("type", "string"),
+                                                "description", Map.of("type", "string"),
+                                                "summary", Map.of("type", "string"),
+                                                "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                "tags", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                "wikipedia", Map.of("type", "string"),
+                                                "officialWebsite", Map.of("type", "string"),
+                                                "basicInfo", Map.of(
+                                                        "type", "object",
+                                                        "properties", Map.of(
+                                                                "birthDate", Map.of("type", "string"),
+                                                                "education", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                                "occupations", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                                "biographies", Map.of("type", "array", "items", Map.of("type", "string"))
+                                                        ),
+                                                        "additionalProperties", false
+                                                ),
+                                                "evidenceUrls", Map.of("type", "array", "items", Map.of("type", "string"))
+                                        ),
+                                        "required", List.of("resolvedName"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of(
+                        "type", "function",
+                        "function", Map.of("name", PERSON_PROFILE_FUNCTION_NAME)
+                )
+        );
     }
 
     private String buildPagePrompt(String fallbackName, PageContent page) {
@@ -167,7 +244,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private PageSummary parsePageSummary(PageContent page, JsonNode body) {
-        String content = extractContent(body);
+        String content = extractStructuredPayload(body, PAGE_SUMMARY_FUNCTION_NAME);
         try {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             String summary = json.path("summary").asText(null);
@@ -191,7 +268,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     private ResolvedPersonProfile parseProfileFromPageSummaries(String fallbackName,
                                                                 List<PageSummary> pageSummaries,
                                                                 JsonNode body) {
-        String content = extractContent(body);
+        String content = extractStructuredPayload(body, PERSON_PROFILE_FUNCTION_NAME);
         try {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             List<String> evidenceUrls = readStringList(json.path("evidenceUrls"));
@@ -225,6 +302,22 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             throw new ApiCallException("EMPTY_RESPONSE: kimi content is empty");
         }
         return content;
+    }
+
+    private String extractStructuredPayload(JsonNode body, String expectedFunctionName) {
+        JsonNode messageNode = body == null ? null : body.path("choices").path(0).path("message");
+        JsonNode toolCalls = messageNode == null ? null : messageNode.path("tool_calls");
+        if (toolCalls != null && toolCalls.isArray()) {
+            for (JsonNode toolCall : toolCalls) {
+                JsonNode functionNode = toolCall.path("function");
+                String functionName = functionNode.path("name").asText(null);
+                String arguments = functionNode.path("arguments").asText(null);
+                if (expectedFunctionName.equals(functionName) && StringUtils.hasText(arguments)) {
+                    return arguments;
+                }
+            }
+        }
+        return extractContent(body);
     }
 
     private List<String> readStringList(JsonNode arrayNode) {
