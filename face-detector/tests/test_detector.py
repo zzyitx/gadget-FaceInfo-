@@ -7,6 +7,25 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from detector import FaceDetector, DetectorError
+from schemas import FaceBoundingBox
+
+
+class _FakeBackend:
+    def __init__(self, candidates):
+        self._candidates = candidates
+
+    @property
+    def name(self):
+        return "fake"
+
+    def detect(self, image):
+        return self._candidates
+
+
+class _FakeCandidate:
+    def __init__(self, bbox: FaceBoundingBox, confidence: float):
+        self.bbox = bbox
+        self.confidence = confidence
 
 
 def _build_two_face_like_image() -> bytes:
@@ -62,3 +81,47 @@ def test_rejects_image_when_pixel_count_exceeds_limit():
         assert "too large" in str(exc)
     else:
         raise AssertionError("Expected DetectorError for an oversized image")
+
+
+def test_fallback_to_next_backend_when_primary_has_no_face():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend([]),
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=20, height=20),
+                        confidence=0.9,
+                    )
+                ]
+            ),
+        ],
+    )
+    image = Image.new("RGB", (80, 80), "white")
+    payload = detector.detect_image(image)
+
+    assert len(payload.faces) == 1
+
+
+def test_confidence_threshold_filters_low_confidence_faces():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=20, height=20),
+                        confidence=0.4,
+                    )
+                ]
+            )
+        ],
+        confidence_threshold=0.5,
+    )
+    image = Image.new("RGB", (80, 80), "white")
+
+    try:
+        detector.detect_image(image)
+    except DetectorError as exc:
+        assert "No face" in str(exc)
+    else:
+        raise AssertionError("Expected DetectorError when all candidates are filtered out")

@@ -467,17 +467,17 @@
 <div class="page">
   <section class="hero">
     <div class="eyebrow">Face2Info</div>
-    <h1>默认先检测，再决定继续分析哪一张脸</h1>
+    <h1>先上传检测，再选择目标人脸并开始检索</h1>
     <p class="hero-copy">
-      主入口仍然是 <code>POST /api/face2info</code>。单脸会直接进入识别与聚合流程，多脸则返回
-      <code>selection_required</code>，由页面展示总览图与人脸卡片，再调用
-      <code>POST /api/face2info/process-selected</code> 继续。
+      第一步调用 <code>POST /api/face2info/detect</code> 上传并检测，展示带框总览图与候选人脸；
+      第二步由你选中目标人脸后，再点击 <code>开始检索</code> 调用
+      <code>POST /api/face2info/process-selected</code> 进入识别与聚合主流程。
     </p>
     <div class="hero-tags">
-      <span class="chip">detect-first</span>
-      <span class="chip">selection_required</span>
-      <span class="chip">face-detector sidecar</span>
-      <span class="chip">success / partial 保持原样</span>
+       <span class="chip">detect-first</span>
+       <span class="chip">upload-then-search</span>
+       <span class="chip">face-detector sidecar</span>
+       <span class="chip">manual-face-select</span>
     </div>
   </section>
 
@@ -487,7 +487,7 @@
         <div class="section-title">
           <span class="eyebrow">上传</span>
           <h2>选择图片文件</h2>
-          <p class="section-summary">上传后会先做本地人脸检测。如果识别出多张脸，页面会让你先选人。</p>
+          <p class="section-summary">先点击开始上传进行检测，再选定人脸后点击开始检索。</p>
         </div>
 
         <div style="display:grid; gap:12px; margin-top:14px;">
@@ -502,7 +502,7 @@
             </div>
           </div>
 
-          <button id="submitButton" type="submit">开始检测</button>
+          <button id="submitButton" type="submit">开始上传</button>
         </div>
       </form>
     </aside>
@@ -527,7 +527,7 @@
           </div>
           <span class="pill" id="selectionCount">0 个候选</span>
         </div>
-        <p class="selection-note" id="selectionNote">检测到多张人脸后，点击任意一张卡片即可继续。</p>
+        <p class="selection-note" id="selectionNote">检测到人脸后，先选一张，再点击开始检索。</p>
         <div class="selection-top">
           <div class="selection-preview" id="selectionPreview">
             <div class="selection-empty">这里会展示带人脸框的总览图。</div>
@@ -620,7 +620,9 @@
   const newsBody = document.getElementById("newsBody");
 
   const state = {
+    phase: "upload",
     selection: null,
+    selectedFaceId: "",
     objectUrl: "",
   };
 
@@ -630,6 +632,7 @@
   matchesCard.addEventListener("click", handleMatchClick);
 
   renderIdle();
+  refreshActionButton();
 
   function handleImageChange() {
     const [file] = imageInput.files;
@@ -640,6 +643,9 @@
     if (!file) {
       preview.style.display = "none";
       previewImage.removeAttribute("src");
+      state.phase = "upload";
+      clearSelection();
+      refreshActionButton();
       return;
     }
     const objectUrl = URL.createObjectURL(file);
@@ -652,6 +658,10 @@
         state.objectUrl = "";
       }
     };
+    state.phase = "upload";
+    clearSelection();
+    renderIdle();
+    refreshActionButton();
   }
 
   async function handleSubmit(event) {
@@ -662,36 +672,53 @@
       return;
     }
 
-    clearSelection();
-    renderIdle();
-    setBusy(true, "正在检测...");
-
-    try {
-      const { response, data } = await requestMultipart("/api/face2info", file);
-      rawResponseEl.textContent = JSON.stringify(compactJson(data), null, 2);
-      await applyResponse(response, data, false);
-    } catch (error) {
-      renderError(error.message || "请求失败。", false);
-    } finally {
-      setBusy(false, "开始检测");
-    }
-  }
-
-  async function handleSelectionClick(event) {
-    const button = event.target.closest("button[data-face-id]");
-    if (!button || button.disabled || !state.selection) {
+    if (state.phase === "search") {
+      await submitSelectedFace();
       return;
     }
 
-    button.disabled = true;
-    markSelected(button.dataset.faceId);
+    clearSelection();
+    renderIdle();
+    setBusy(true, "正在上传并检测...");
+
+    try {
+      const { response, data } = await requestMultipart("/api/face2info/detect", file);
+      rawResponseEl.textContent = JSON.stringify(compactJsonDetection(data), null, 2);
+      if (!response.ok) {
+        renderError((data && data.error) || "检测失败。", false);
+        return;
+      }
+      const selection = normalizeDetectionResponse(data);
+      if (!selection.faces.length) {
+        renderError("未检测到可识别人脸，请更换图片后重试。", false);
+        return;
+      }
+      renderSelection(selection);
+      state.phase = "search";
+      refreshActionButton();
+    } catch (error) {
+      renderError(error.message || "上传或检测失败。", false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitSelectedFace() {
+    if (!state.selection || !state.selectedFaceId) {
+      selectionNote.textContent = "请先选择要识别的人脸，再点击开始检索。";
+      refreshActionButton();
+      return;
+    }
+
+    setBusy(true, "正在检索...");
+    setSelectionButtonsDisabled(true);
     selectionProgress.hidden = false;
     selectionProgress.textContent = "正在继续识别所选人脸，请稍候。";
 
     try {
       const payload = {
         detection_id: state.selection.detection_id,
-        face_id: button.dataset.faceId
+        face_id: state.selectedFaceId
       };
       const { response, data } = await requestJson("/api/face2info/process-selected", payload);
       rawResponseEl.textContent = JSON.stringify(compactJson(data), null, 2);
@@ -701,12 +728,27 @@
     } finally {
       selectionProgress.hidden = true;
       setSelectionButtonsDisabled(false);
+      setBusy(false);
     }
+  }
+
+  function handleSelectionClick(event) {
+    const button = event.target.closest("button[data-face-id]");
+    if (!button || button.disabled || !state.selection) {
+      return;
+    }
+
+    state.selectedFaceId = button.dataset.faceId;
+    markSelected(state.selectedFaceId);
+    selectionNote.textContent = `已选中 ${state.selectedFaceId}，点击“开始检索”继续。`;
+    refreshActionButton();
   }
 
   async function applyResponse(response, data, fromSelection) {
     if (data && data.status === "selection_required") {
       renderSelection(data.selection || {});
+      state.phase = "search";
+      refreshActionButton();
       return;
     }
     if (!response.ok || (data && data.status === "failed")) {
@@ -714,6 +756,8 @@
       return;
     }
     renderFinal(data);
+    state.phase = "upload";
+    refreshActionButton();
   }
 
   function renderIdle() {
@@ -729,11 +773,12 @@
   function renderSelection(selection) {
     const faces = Array.isArray(selection.faces) ? selection.faces.filter(Boolean) : [];
     state.selection = selection;
+    state.selectedFaceId = "";
     selectionCard.hidden = false;
     selectionCount.textContent = `${faces.length} 个候选`;
     selectionDetectionId.textContent = selection.detection_id || "-";
     selectionNote.textContent = faces.length
-      ? "检测到多张人脸，请先点击一张卡片继续识别。"
+      ? "请先点击一张人脸卡片，再点击“开始检索”。"
       : "检测到了多脸流程，但暂时没有可点击的人脸，请重新上传。";
     selectionPreview.innerHTML = selection.preview_image
       ? `<img src="${escapeHtml(selection.preview_image)}" alt="带有人脸框的总览图">`
@@ -743,9 +788,10 @@
       : '<p class="empty">没有找到可选的人脸卡片。</p>';
     selectionProgress.hidden = true;
     setSelectionButtonsDisabled(false);
+    refreshActionButton();
 
-    personTitle.textContent = "检测到多张人脸";
-    personDescription.textContent = "请先在下方选择一张人脸，再继续进入识别与聚合流程。";
+    personTitle.textContent = "上传与检测完成";
+    personDescription.textContent = "已返回带框总览图和候选人脸，请先选中目标人脸，再点击开始检索。";
     personDetails.innerHTML = "";
     matchesBody.innerHTML = '<p class="empty">当前是多脸选择阶段，完成选脸后才会继续生成结果。</p>';
     socialBody.innerHTML = '<p class="empty">当前是多脸选择阶段，完成选脸后才会继续生成结果。</p>';
@@ -865,17 +911,21 @@
       selectionCard.hidden = false;
       selectionNote.textContent = message || "选脸后继续识别失败。";
       selectionProgress.hidden = true;
+      refreshActionButton();
       return;
     }
     clearSelection();
+    state.phase = "upload";
+    refreshActionButton();
   }
 
   function clearSelection() {
     state.selection = null;
+    state.selectedFaceId = "";
     selectionCard.hidden = true;
     selectionFaceGrid.innerHTML = "";
     selectionPreview.innerHTML = '<div class="selection-empty">这里会展示带人脸框的总览图。</div>';
-    selectionNote.textContent = "检测到多张人脸后，点击任意一张卡片即可继续。";
+    selectionNote.textContent = "检测到人脸后，先选择一张，再点击开始检索。";
     selectionCount.textContent = "0 个候选";
     selectionDetectionId.textContent = "-";
     selectionProgress.hidden = true;
@@ -895,8 +945,53 @@
 
   function setBusy(disabled, label) {
     submitButton.disabled = disabled;
-    submitButton.textContent = label;
     imageInput.disabled = disabled;
+    if (disabled && label) {
+      submitButton.textContent = label;
+      return;
+    }
+    refreshActionButton();
+  }
+
+  function refreshActionButton() {
+    if (state.phase === "search") {
+      submitButton.textContent = "开始检索";
+      submitButton.disabled = !state.selectedFaceId;
+      return;
+    }
+    submitButton.textContent = "开始上传";
+    submitButton.disabled = false;
+  }
+
+  function normalizeDetectionResponse(data) {
+    const faces = Array.isArray(data && data.faces) ? data.faces.filter(Boolean) : [];
+    return {
+      detection_id: (data && data.detection_id) || "",
+      preview_image: (data && data.preview_image) || "",
+      faces: faces.map(face => ({
+        face_id: face.face_id || "",
+        confidence: face.confidence,
+        bbox: face.bbox || null,
+        crop_preview: face.crop_preview || ""
+      }))
+    };
+  }
+
+  function compactJsonDetection(data) {
+    const normalized = normalizeDetectionResponse(data);
+    return {
+      status: "detected",
+      detection: {
+        detection_id: normalized.detection_id || null,
+        preview_image: normalized.preview_image ? shorten(normalized.preview_image) : null,
+        faces: normalized.faces.slice(0, 20).map(face => ({
+          face_id: face.face_id || null,
+          confidence: face.confidence || null,
+          bbox: face.bbox || null,
+          crop_preview: face.crop_preview ? shorten(face.crop_preview) : null
+        }))
+      }
+    };
   }
 
   function renderFaceCard(face, detectionId, index) {

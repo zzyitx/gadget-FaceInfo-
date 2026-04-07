@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Protocol
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -20,6 +21,11 @@ try:  # pragma: no cover - optional dependency
     from facenet_pytorch import MTCNN  # type: ignore
 except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
     MTCNN = None
+
+try:  # pragma: no cover - optional dependency
+    import cv2  # type: ignore
+except (ImportError, ModuleNotFoundError):  # pragma: no cover - optional dependency
+    cv2 = None
 
 
 class DetectorError(RuntimeError):
@@ -36,8 +42,14 @@ class _DetectionBackend(Protocol):
     def detect(self, image: Image.Image) -> list[_FaceCandidate]:
         ...
 
+    @property
+    def name(self) -> str:
+        ...
+
 
 class _MTCNNBackend:
+    name = "mtcnn"
+
     def __init__(self) -> None:
         self._mtcnn = MTCNN(keep_all=True, device="cpu")
 
@@ -64,7 +76,51 @@ class _MTCNNBackend:
         return candidates
 
 
+class _OpenCvHaarBackend:
+    name = "opencv-haar"
+
+    def __init__(self, scale_factor: float = 1.08, min_neighbors: int = 4) -> None:
+        if cv2 is None:
+            raise RuntimeError("OpenCV is not available.")
+        cascade_path = str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml")
+        self._classifier = cv2.CascadeClassifier(cascade_path)
+        if self._classifier.empty():
+            raise RuntimeError(f"Failed to load OpenCV cascade model: {cascade_path}")
+        self._scale_factor = scale_factor
+        self._min_neighbors = min_neighbors
+
+    def detect(self, image: Image.Image) -> list[_FaceCandidate]:
+        bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        grayscale = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+        grayscale = cv2.equalizeHist(grayscale)
+        width, height = image.size
+        min_size = max(18, int(min(width, height) * 0.08))
+        faces = self._classifier.detectMultiScale(
+            grayscale,
+            scaleFactor=self._scale_factor,
+            minNeighbors=self._min_neighbors,
+            minSize=(min_size, min_size),
+        )
+
+        candidates: list[_FaceCandidate] = []
+        for x, y, w, h in faces:
+            candidates.append(
+                _FaceCandidate(
+                    bbox=FaceBoundingBox(
+                        x=max(0, int(x)),
+                        y=max(0, int(y)),
+                        width=max(1, int(w)),
+                        height=max(1, int(h)),
+                    ),
+                    confidence=0.72,
+                )
+            )
+        return candidates
+
+
 class _ConnectedComponentBackend:
+    name = "connected-component"
+
     def __init__(self, threshold: int = 240, min_area: int = 150) -> None:
         self.threshold = threshold
         self.min_area = min_area
@@ -135,18 +191,27 @@ class FaceDetector:
     def __init__(
         self,
         prefer_mtcnn: bool = True,
-        backend: _DetectionBackend | None = None,
+        backends: list[_DetectionBackend] | None = None,
         crop_padding: int = 8,
         max_pixels: int = 12_000_000,
+        confidence_threshold: float = 0.55,
     ) -> None:
         self.crop_padding = crop_padding
         self.max_pixels = max_pixels
-        self._backend = backend or self._resolve_backend(prefer_mtcnn=prefer_mtcnn)
+        self.confidence_threshold = max(0.0, min(1.0, confidence_threshold))
+        self._backends = backends or self._resolve_backends(prefer_mtcnn=prefer_mtcnn)
 
-    def _resolve_backend(self, prefer_mtcnn: bool) -> _DetectionBackend:
+    def _resolve_backends(self, prefer_mtcnn: bool) -> list[_DetectionBackend]:
+        resolved: list[_DetectionBackend] = []
         if prefer_mtcnn and MTCNN is not None:
-            return _MTCNNBackend()
-        return _ConnectedComponentBackend()
+            resolved.append(_MTCNNBackend())
+        if cv2 is not None:
+            try:
+                resolved.append(_OpenCvHaarBackend())
+            except RuntimeError:
+                pass
+        resolved.append(_ConnectedComponentBackend())
+        return resolved
 
     def detect_bytes(self, image_bytes: bytes) -> DetectionResult:
         try:
@@ -161,7 +226,8 @@ class FaceDetector:
         if width * height > self.max_pixels:
             raise DetectorError("Image is too large for face detection.")
 
-        candidates = self._backend.detect(image)
+        candidates = self._detect_with_fallbacks(image)
+        candidates = [candidate for candidate in candidates if candidate.confidence >= self.confidence_threshold]
         if not candidates:
             raise DetectorError("No face-like region was found in the uploaded image.")
 
@@ -227,3 +293,10 @@ class FaceDetector:
         buffer = BytesIO()
         image.save(buffer, format="PNG")
         return buffer.getvalue()
+
+    def _detect_with_fallbacks(self, image: Image.Image) -> list[_FaceCandidate]:
+        for backend in self._backends:
+            candidates = backend.detect(image)
+            if candidates:
+                return candidates
+        return []
