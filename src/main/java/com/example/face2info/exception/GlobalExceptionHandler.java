@@ -39,6 +39,14 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理人脸检测异常。
+     */
+    @ExceptionHandler(FaceDetectionException.class)
+    public ResponseEntity<ErrorResponse> handleFaceDetection(FaceDetectionException ex) {
+        return ResponseEntity.badRequest().body(buildError(ex.getMessage(), HttpStatus.BAD_REQUEST));
+    }
+
+    /**
      * 处理外部 API 调用异常。
      */
     @ExceptionHandler(ApiCallException.class)

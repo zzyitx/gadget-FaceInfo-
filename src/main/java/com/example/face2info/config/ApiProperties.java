@@ -30,6 +30,7 @@ public class ApiProperties {
         private KimiApiProperties kimi = new KimiApiProperties();
         private SummaryApiProperties summary = new SummaryApiProperties();
         private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();
+        private FaceDetectionProperties faceDetection = new FaceDetectionProperties();
         private Proxy proxy = new Proxy();
 
     }

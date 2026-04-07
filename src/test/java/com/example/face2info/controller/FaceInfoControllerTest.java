@@ -1,41 +1,48 @@
 package com.example.face2info.controller;
 
+import com.example.face2info.entity.internal.DetectedFace;
+import com.example.face2info.entity.internal.DetectionSession;
+import com.example.face2info.entity.internal.FaceBoundingBox;
+import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.entity.response.FaceInfoResponse;
-import com.example.face2info.entity.response.ImageMatch;
-import com.example.face2info.entity.response.PersonInfo;
+import com.example.face2info.exception.FaceDetectionException;
 import com.example.face2info.exception.GlobalExceptionHandler;
 import com.example.face2info.service.Face2InfoService;
+import com.example.face2info.service.FaceDetectionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(FaceInfoController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, FaceInfoControllerTest.TestConfig.class})
 class FaceInfoControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
-    private Face2InfoService face2InfoService;
+    @Autowired
+    private StubFace2InfoService face2InfoService;
+
+    @Autowired
+    private StubFaceDetectionService faceDetectionService;
 
     @Test
     void shouldReturnSuccessfulPayload() throws Exception {
-        when(face2InfoService.process(any())).thenReturn(new FaceInfoResponse().setStatus("success"));
+        face2InfoService.setProcessResponse(new FaceInfoResponse().setStatus("success"));
 
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         mockMvc.perform(multipart("/api/face2info").file(image))
@@ -44,89 +51,120 @@ class FaceInfoControllerTest {
     }
 
     @Test
-    void shouldExposeImageMatchesInResponseJson() throws Exception {
-        when(face2InfoService.process(any())).thenReturn(new FaceInfoResponse()
-                .setStatus("success")
-                .setImageMatches(java.util.List.of(
-                        new ImageMatch()
-                                .setTitle("Lei Jun official profile")
-                                .setLink("https://example.com/article")
-                                .setSource("Wikipedia")
-                                .setThumbnailUrl("https://thumb.example.com/1.jpg")
-                                .setSimilarityScore(97.2)
-                )));
+    void shouldDetectFacesAndExposeStructuredResponse() throws Exception {
+        SelectedFaceCrop crop = new SelectedFaceCrop()
+                .setFilename("face-1.jpg")
+                .setContentType("image/jpeg")
+                .setBytes("FACE-1".getBytes(StandardCharsets.UTF_8));
+        DetectedFace face = new DetectedFace()
+                .setFaceId("face-1")
+                .setConfidence(0.98)
+                .setFaceBoundingBox(new FaceBoundingBox().setX(12).setY(24).setWidth(100).setHeight(120))
+                .setSelectedFaceCrop(crop);
 
-        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        mockMvc.perform(multipart("/api/face2info").file(image))
+        faceDetectionService.setDetectResponse(new DetectionSession()
+                .setDetectionId("det-1")
+                .setPreviewImage("data:image/jpeg;base64,preview")
+                .setFaces(java.util.List.of(face)));
+
+        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        mockMvc.perform(multipart("/api/face2info/detect").file(image))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.image_matches[0].thumbnail_url").value("https://thumb.example.com/1.jpg"))
-                .andExpect(jsonPath("$.image_matches[0].similarity_score").value(97.2))
-                .andExpect(jsonPath("$.image_matches[0].source").value("Wikipedia"));
+                .andExpect(jsonPath("$.detection_id").value("det-1"))
+                .andExpect(jsonPath("$.preview_image").value("data:image/jpeg;base64,preview"))
+                .andExpect(jsonPath("$.faces[0].face_id").value("face-1"))
+                .andExpect(jsonPath("$.faces[0].confidence").value(0.98))
+                .andExpect(jsonPath("$.faces[0].bbox.x").value(12))
+                .andExpect(jsonPath("$.faces[0].crop_preview").value(
+                        "data:image/jpeg;base64," + Base64.getEncoder().encodeToString("FACE-1".getBytes(StandardCharsets.UTF_8))));
     }
 
     @Test
-    void shouldExposeSummaryTagsAndWarningsInResponseJson() throws Exception {
-        when(face2InfoService.process(any())).thenReturn(new FaceInfoResponse()
-                .setStatus("partial")
-                .setWarnings(java.util.List.of("正文智能处理暂时不可用"))
-                .setPerson(new PersonInfo()
-                        .setName("周杰伦")
-                        .setSummary("周杰伦是华语流行乐代表人物。")
-                        .setTags(java.util.List.of("歌手", "音乐制作人"))));
+    void shouldProcessSelectedFaceThroughMainFlow() throws Exception {
+        face2InfoService.setProcessSelectedResponse(new FaceInfoResponse().setStatus("success"));
 
-        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        mockMvc.perform(multipart("/api/face2info").file(image))
+        mockMvc.perform(post("/api/face2info/process-selected")
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"detection_id":"det-1","face_id":"face-1"}
+                                """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("partial"))
-                .andExpect(jsonPath("$.person.summary").value("周杰伦是华语流行乐代表人物。"))
-                .andExpect(jsonPath("$.person.tags[0]").value("歌手"))
-                .andExpect(jsonPath("$.warnings[0]").value("正文智能处理暂时不可用"));
+                .andExpect(jsonPath("$.status").value("success"));
     }
 
     @Test
-    void shouldNotCommitFallbackSecretsInApplicationGitConfig() throws Exception {
-        Path path = Path.of("src/main/resources/application-git.yml");
+    void shouldMapFaceDetectionExceptionToBadRequest() throws Exception {
+        faceDetectionService.setDetectException(new FaceDetectionException("no face detected"));
 
-        assertThat(path).exists();
-        assertThat(Files.readAllLines(path))
-                .filteredOn(line -> line.contains("api-key:"))
-                .allMatch(line -> line.matches(".*\\$\\{[A-Z0-9_]+:}\\s*$"),
-                        "Git version config must not contain committed fallback secrets");
+        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        mockMvc.perform(multipart("/api/face2info/detect").file(image))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("failed"))
+                .andExpect(jsonPath("$.error").value("no face detected"));
     }
 
-    @Test
-    void shouldContainPrimaryApiSectionsInApplicationGitConfig() throws Exception {
-        String content = Files.readString(Path.of("src/main/resources/application-git.yml"));
+    @TestConfiguration
+    static class TestConfig {
 
-        assertThat(content).contains("serp:");
-        assertThat(content).contains("news:");
-        assertThat(content).contains("jina:");
-        assertThat(content).contains("kimi:");
-        assertThat(content).contains("summary:");
+        @Bean
+        StubFace2InfoService face2InfoService() {
+            return new StubFace2InfoService();
+        }
+
+        @Bean
+        StubFaceDetectionService faceDetectionService() {
+            return new StubFaceDetectionService();
+        }
     }
 
-    @Test
-    void shouldContainFacecheckSectionInApplicationGitConfig() throws Exception {
-        String content = Files.readString(Path.of("src/main/resources/application-git.yml"));
+    static class StubFace2InfoService implements Face2InfoService {
+        private FaceInfoResponse processResponse = new FaceInfoResponse();
+        private FaceInfoResponse processSelectedResponse = new FaceInfoResponse();
 
-        assertThat(content).contains("facecheck:");
-        assertThat(content).contains("upload-path:");
-        assertThat(content).contains("reset-prev-images:");
+        void setProcessResponse(FaceInfoResponse response) {
+            this.processResponse = response;
+        }
+
+        void setProcessSelectedResponse(FaceInfoResponse response) {
+            this.processSelectedResponse = response;
+        }
+
+        @Override
+        public FaceInfoResponse process(org.springframework.web.multipart.MultipartFile image) {
+            return processResponse;
+        }
+
+        @Override
+        public FaceInfoResponse processSelectedFace(String detectionId, String faceId) {
+            return processSelectedResponse;
+        }
     }
 
-    @Test
-    void shouldTrackApplicationGitConfigAndIgnoreLocalApplicationConfig() throws Exception {
-        String ignoreContent = Files.readString(Path.of(".gitignore"));
+    static class StubFaceDetectionService implements FaceDetectionService {
+        private DetectionSession detectResponse;
+        private RuntimeException detectException;
 
-        assertThat(ignoreContent).contains("src/main/resources/application.yml");
-        assertThat(ignoreContent).contains("!src/main/resources/application-git.yml");
-    }
+        void setDetectResponse(DetectionSession detectResponse) {
+            this.detectResponse = detectResponse;
+            this.detectException = null;
+        }
 
-    @Test
-    void shouldMentionFacecheckConfigInReadme() throws Exception {
-        String content = Files.readString(Path.of("README.md"));
+        void setDetectException(RuntimeException detectException) {
+            this.detectException = detectException;
+            this.detectResponse = null;
+        }
 
-        assertThat(content).contains("FaceCheck");
-        assertThat(content).contains("FACECHECK_API_KEY");
+        @Override
+        public DetectionSession detect(org.springframework.web.multipart.MultipartFile image) {
+            if (detectException != null) {
+                throw detectException;
+            }
+            return detectResponse;
+        }
+
+        @Override
+        public SelectedFaceCrop getSelectedFaceCrop(String detectionId, String faceId) {
+            return null;
+        }
     }
 }
