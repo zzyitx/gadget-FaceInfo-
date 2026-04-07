@@ -34,7 +34,7 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
         purgeExpiredSessions();
         DetectionSession session = faceDetectionClient.detect(image);
         if (session == null || !StringUtils.hasText(session.getDetectionId())) {
-            throw new FaceDetectionException("face detection response missing detection_id");
+            throw new FaceDetectionException("人脸检测响应缺少 detection_id。");
         }
         session.setExpiresAt(Instant.now().plusSeconds(getSessionTtlSeconds()));
         sessions.put(session.getDetectionId(), session);
@@ -45,22 +45,22 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
     public SelectedFaceCrop getSelectedFaceCrop(String detectionId, String faceId) {
         DetectionSession session = sessions.get(detectionId);
         if (session == null) {
-            throw new FaceDetectionException("Detection session not found: detection_id=" + detectionId);
+            throw new FaceDetectionException("未找到检测会话：detection_id=" + detectionId);
         }
         if (isExpired(session)) {
             sessions.remove(detectionId);
-            throw new FaceDetectionException("Detection session expired: detection_id=" + detectionId);
+            throw new FaceDetectionException("检测会话已过期：detection_id=" + detectionId);
         }
         for (DetectedFace detectedFace : session.getFaces()) {
             if (detectedFace != null && faceId.equals(detectedFace.getFaceId())) {
                 SelectedFaceCrop crop = detectedFace.getSelectedFaceCrop();
                 if (crop == null || crop.getBytes().length == 0) {
-                    throw new FaceDetectionException("Selected face crop is missing: face_id=" + faceId);
+                    throw new FaceDetectionException("所选人脸裁剪图缺失：face_id=" + faceId);
                 }
                 return crop;
             }
         }
-        throw new FaceDetectionException("Selected face not found: detection_id=" + detectionId + ", face_id=" + faceId);
+        throw new FaceDetectionException("未找到所选人脸：detection_id=" + detectionId + "，face_id=" + faceId);
     }
 
     private void purgeExpiredSessions() {

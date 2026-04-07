@@ -30,9 +30,10 @@ import java.util.List;
 public class Face2InfoServiceImpl implements Face2InfoService {
 
     private static final String NO_FACE_ERROR = "未检测到人脸，请更换更清晰的人脸图片。";
-    private static final String MISSING_CROP_ERROR = "Selected face crop is missing or empty.";
-    private static final String BLANK_DETECTION_ID_ERROR = "detection_id must not be blank.";
-    private static final String BLANK_FACE_ID_ERROR = "face_id must not be blank.";
+    private static final String MISSING_CROP_ERROR = "所选人脸裁剪图缺失或为空。";
+    private static final String BLANK_DETECTION_ID_ERROR = "detection_id 不能为空。";
+    private static final String BLANK_FACE_ID_ERROR = "face_id 不能为空。";
+    private static final String PERSON_RESOLUTION_ERROR = "暂时无法解析人物信息。";
 
     private final ImageUtils imageUtils;
     private final FaceRecognitionService faceRecognitionService;
@@ -123,7 +124,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
     private FaceInfoResponse buildFailedResponse(String error) {
         return new FaceInfoResponse()
                 .setStatus("failed")
-                .setError(error);
+                .setError(normalizeUserMessage(error));
     }
 
     private FaceInfoResponse processRecognizedImage(MultipartFile image) {
@@ -133,11 +134,11 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         RecognitionEvidence evidence = faceRecognitionService.recognize(image);
         AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
 
-        List<String> combinedErrors = safeCopy(aggregationResult == null ? null : aggregationResult.getErrors());
-        List<String> warnings = safeCopy(aggregationResult == null ? null : aggregationResult.getWarnings());
+        List<String> combinedErrors = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getErrors()));
+        List<String> warnings = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getWarnings()));
 
         if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
-            List<String> errors = safeCopy(evidence == null ? null : evidence.getErrors());
+            List<String> errors = normalizeMessages(safeCopy(evidence == null ? null : evidence.getErrors()));
             errors.addAll(combinedErrors);
             return new FaceInfoResponse()
                     .setPerson(null)
@@ -145,7 +146,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                     .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                     .setWarnings(warnings)
                     .setStatus("failed")
-                    .setError(errors.isEmpty() ? "Unable to resolve person information." : String.join("; ", errors));
+                    .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
         }
 
         PersonInfo person = new PersonInfo()
@@ -170,6 +171,28 @@ public class Face2InfoServiceImpl implements Face2InfoService {
 
     private List<String> safeCopy(List<String> values) {
         return new ArrayList<>(values == null ? List.of() : values);
+    }
+
+    private List<String> normalizeMessages(List<String> messages) {
+        List<String> normalized = new ArrayList<>(messages.size());
+        for (String message : messages) {
+            normalized.add(normalizeUserMessage(message));
+        }
+        return normalized;
+    }
+
+    private String normalizeUserMessage(String message) {
+        if (!StringUtils.hasText(message)) {
+            return message;
+        }
+        return message
+                .replace("Selected face crop is missing or empty.", MISSING_CROP_ERROR)
+                .replace("detection_id must not be blank.", BLANK_DETECTION_ID_ERROR)
+                .replace("face_id must not be blank.", BLANK_FACE_ID_ERROR)
+                .replace("Unable to resolve person information.", PERSON_RESOLUTION_ERROR)
+                .replace("Unable to resolve person name from evidence", "无法解析人物名称")
+                .replace("news fetch failed: timeout", "新闻抓取失败：请求超时")
+                .replace("bing_images: timeout", "Bing 图片搜索超时");
     }
 
     private String toDataUrl(SelectedFaceCrop crop) {

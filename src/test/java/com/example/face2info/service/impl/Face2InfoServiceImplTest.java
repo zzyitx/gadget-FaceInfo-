@@ -117,7 +117,7 @@ class Face2InfoServiceImplTest {
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
         assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getError()).contains("crop");
+        assertThat(response.getError()).contains("人脸裁剪图");
         verify(fixture.faceRecognitionService, never()).recognize(any());
         verify(fixture.informationAggregationService, never()).aggregate(any());
     }
@@ -139,7 +139,7 @@ class Face2InfoServiceImplTest {
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
         assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getError()).contains("crop");
+        assertThat(response.getError()).contains("人脸裁剪图");
         verify(fixture.faceRecognitionService, never()).recognize(any());
         verify(fixture.informationAggregationService, never()).aggregate(any());
     }
@@ -152,7 +152,7 @@ class Face2InfoServiceImplTest {
         FaceInfoResponse response = fixture.service.processSelectedFace("det-1", "face-1");
 
         assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getError()).contains("crop");
+        assertThat(response.getError()).contains("人脸裁剪图");
         verify(fixture.faceRecognitionService, never()).recognize(any());
         verify(fixture.informationAggregationService, never()).aggregate(any());
     }
@@ -164,7 +164,7 @@ class Face2InfoServiceImplTest {
         FaceInfoResponse response = fixture.service.processSelectedFace("  ", "face-1");
 
         assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getError()).contains("detection_id");
+        assertThat(response.getError()).contains("detection_id 不能为空");
         verify(fixture.faceDetectionService, never()).getSelectedFaceCrop(any(), any());
     }
 
@@ -175,7 +175,7 @@ class Face2InfoServiceImplTest {
         FaceInfoResponse response = fixture.service.processSelectedFace("det-1", " ");
 
         assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getError()).contains("face_id");
+        assertThat(response.getError()).contains("face_id 不能为空");
         verify(fixture.faceDetectionService, never()).getSelectedFaceCrop(any(), any());
     }
 
@@ -240,7 +240,7 @@ class Face2InfoServiceImplTest {
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
         assertThat(response.getStatus()).isEqualTo("partial");
-        assertThat(response.getError()).contains("news fetch failed");
+        assertThat(response.getError()).contains("新闻抓取失败");
     }
 
     @Test
@@ -257,7 +257,7 @@ class Face2InfoServiceImplTest {
 
         assertThat(response.getStatus()).isEqualTo("failed");
         assertThat(response.getPerson()).isNull();
-        assertThat(response.getError()).contains("Unable to resolve person name");
+        assertThat(response.getError()).contains("无法解析人物名称");
     }
 
     @Test

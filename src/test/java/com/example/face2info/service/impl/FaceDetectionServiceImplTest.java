@@ -68,7 +68,7 @@ class FaceDetectionServiceImplTest {
 
         assertThatThrownBy(() -> service.getSelectedFaceCrop("det-1", "face-x"))
                 .isInstanceOf(FaceDetectionException.class)
-                .hasMessageContaining("face_id");
+                .hasMessageContaining("未找到所选人脸");
     }
 
     @Test
@@ -92,7 +92,7 @@ class FaceDetectionServiceImplTest {
 
         assertThatThrownBy(() -> service.getSelectedFaceCrop("det-1", "face-1"))
                 .isInstanceOf(FaceDetectionException.class)
-                .hasMessageContaining("expired");
+                .hasMessageContaining("已过期");
     }
 
     private ApiProperties createProperties() {
