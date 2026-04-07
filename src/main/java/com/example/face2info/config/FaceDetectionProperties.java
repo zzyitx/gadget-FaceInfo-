@@ -7,7 +7,7 @@ import lombok.Setter;
 @Setter
 public class FaceDetectionProperties {
 
-    private String baseUrl = "http://localhost:8091";
+    private String baseUrl = "http://127.0.0.1:8091";
     private String detectPath = "/detect";
     private int connectTimeoutMs = 3000;
     private int readTimeoutMs = 10000;

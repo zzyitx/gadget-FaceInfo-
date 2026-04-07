@@ -7,6 +7,7 @@ import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
 import com.example.face2info.entity.response.DetectedFaceResponse;
+import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.exception.FaceDetectionException;
 import com.example.face2info.exception.GlobalExceptionHandler;
 import com.example.face2info.service.Face2InfoService;
@@ -126,6 +127,17 @@ class FaceInfoControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value("failed"))
                 .andExpect(jsonPath("$.error").value("no face detected"));
+    }
+
+    @Test
+    void shouldMapDetectorUnavailableToServiceUnavailable() throws Exception {
+        faceDetectionService.setDetectException(new ApiCallException("人脸检测服务不可用：http://127.0.0.1:8091/detect，请先启动本地检测服务后重试。"));
+
+        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        mockMvc.perform(multipart("/api/face2info/detect").file(image))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value("failed"))
+                .andExpect(jsonPath("$.error").value("人脸检测服务不可用：http://127.0.0.1:8091/detect，请先启动本地检测服务后重试。"));
     }
 
     @TestConfiguration

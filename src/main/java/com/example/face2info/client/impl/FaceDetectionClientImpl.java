@@ -6,6 +6,7 @@ import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.FaceBoundingBox;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
+import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.exception.FaceDetectionException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
@@ -60,9 +62,14 @@ public class FaceDetectionClientImpl implements FaceDetectionClient {
                     new HttpEntity<>(body, createMultipartHeaders()),
                     String.class);
             return mapSession(response.getBody());
+        } catch (ResourceAccessException ex) {
+            log.warn("人脸检测服务不可用 endpoint={} message={}", endpoint, ex.getMessage());
+            throw new ApiCallException(
+                    "人脸检测服务不可用：" + endpoint + "，请先启动本地检测服务后重试。",
+                    ex);
         } catch (IOException | RestClientException ex) {
-            log.warn("人脸检测呼叫失败={} message={}", endpoint, ex.getMessage());
-            throw new FaceDetectionException("face detection request failed", ex);
+            log.warn("人脸检测调用失败 endpoint={} message={}", endpoint, ex.getMessage());
+            throw new FaceDetectionException("人脸检测请求失败。", ex);
         }
     }
 
@@ -86,11 +93,11 @@ public class FaceDetectionClientImpl implements FaceDetectionClient {
             }
             session.setFaces(faces);
             if (!StringUtils.hasText(session.getDetectionId())) {
-                throw new FaceDetectionException("face detection response missing detection_id");
+                throw new FaceDetectionException("人脸检测响应缺少 detection_id。");
             }
             return session;
         } catch (IOException ex) {
-            throw new FaceDetectionException("face detection response parse failed", ex);
+            throw new FaceDetectionException("人脸检测响应解析失败。", ex);
         }
     }
 

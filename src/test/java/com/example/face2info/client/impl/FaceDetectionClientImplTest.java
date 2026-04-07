@@ -4,15 +4,22 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.FaceDetectionProperties;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
+import com.example.face2info.exception.ApiCallException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -23,7 +30,7 @@ class FaceDetectionClientImplTest {
     void shouldCallLocalDetectorAndParseResponse() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("http://localhost:8091/detect"))
+        server.expect(requestTo("http://127.0.0.1:8091/detect"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {
@@ -55,10 +62,25 @@ class FaceDetectionClientImplTest {
         server.verify();
     }
 
+    @Test
+    void shouldThrowServiceUnavailableWhenDetectorConnectionIsRefused() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        when(restTemplate.postForEntity(eq("http://127.0.0.1:8091/detect"), any(), eq(String.class)))
+                .thenThrow(new ResourceAccessException("Connection refused"));
+
+        FaceDetectionClientImpl client = new FaceDetectionClientImpl(restTemplate, new ObjectMapper(), createProperties());
+
+        assertThatThrownBy(() -> client.detect(new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3})))
+                .isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("人脸检测服务")
+                .hasMessageContaining("127.0.0.1:8091")
+                .hasMessageContaining("请先启动本地检测服务");
+    }
+
     private ApiProperties createProperties() {
         ApiProperties properties = new ApiProperties();
         properties.getApi().setFaceDetection(new FaceDetectionProperties());
-        properties.getApi().getFaceDetection().setBaseUrl("http://localhost:8091");
+        properties.getApi().getFaceDetection().setBaseUrl("http://127.0.0.1:8091");
         properties.getApi().getFaceDetection().setDetectPath("/detect");
         return properties;
     }
