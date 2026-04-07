@@ -76,7 +76,7 @@ face2info:
       base-url: http://127.0.0.1:8091
       detect-path: /detect
       connect-timeout-ms: 3000
-      read-timeout-ms: 10000
+      read-timeout-ms: 60000
       session-ttl-seconds: 600
     proxy:
       enabled: false
