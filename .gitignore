@@ -46,6 +46,10 @@ build/
 ### Python ###
 __pycache__/
 *.pyc
+.venv/
+venv/
+face-detector/.venv/
+face-detector/venv/
 
 ### Mac OS ###
 .DS_Store
