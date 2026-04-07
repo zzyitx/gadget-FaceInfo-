@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import uuid
+import logging
 from collections import deque
 from dataclasses import dataclass
 from io import BytesIO
@@ -16,6 +17,8 @@ if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
 from schemas import DetectionResult, DetectedFace, FaceBoundingBox, encode_data_uri
+
+LOGGER = logging.getLogger(__name__)
 
 try:  # pragma: no cover - optional dependency
     from facenet_pytorch import MTCNN  # type: ignore
@@ -36,6 +39,7 @@ class DetectorError(RuntimeError):
 class _FaceCandidate:
     bbox: FaceBoundingBox
     confidence: float
+    backend: str = "unknown"
 
 
 class _DetectionBackend(Protocol):
@@ -51,29 +55,124 @@ class _MTCNNBackend:
     name = "mtcnn"
 
     def __init__(self) -> None:
-        self._mtcnn = MTCNN(keep_all=True, device="cpu")
+        # 偏向精度的阈值配置，减少弱候选框带来的误检与抖动。
+        self._mtcnn = MTCNN(
+            keep_all=True,
+            device="cpu",
+            min_face_size=24,
+            thresholds=[0.72, 0.82, 0.9],
+            factor=0.709,
+            post_process=False,
+        )
 
     def detect(self, image: Image.Image) -> list[_FaceCandidate]:
-        boxes, probs = self._mtcnn.detect(image)
+        # facenet-pytorch 在部分环境下对 PIL 直接输入兼容性不稳定，统一转 uint8 RGB ndarray。
+        rgb_array = np.asarray(image.convert("RGB"), dtype=np.uint8)
+        try:
+            boxes, probs, landmarks = self._mtcnn.detect(rgb_array, landmarks=True)
+        except TypeError:  # pragma: no cover - 兼容旧版 facenet-pytorch API
+            boxes, probs = self._mtcnn.detect(rgb_array)
+            landmarks = None
         if boxes is None or probs is None:
             return []
 
+        image_width, image_height = image.size
         candidates: list[_FaceCandidate] = []
-        for box, prob in zip(boxes, probs):
+        for index, (box, prob) in enumerate(zip(boxes, probs)):
             if box is None or prob is None:
                 continue
+            if float(prob) < 0.45:
+                continue
+            if landmarks is not None and index < len(landmarks) and landmarks[index] is not None:
+                if not self._is_landmark_layout_valid(landmarks[index]):
+                    continue
+                box = self._refine_box_with_landmarks(box, landmarks[index], image_width, image_height)
             x1, y1, x2, y2 = box
-            x = max(0, int(round(x1)))
-            y = max(0, int(round(y1)))
-            width = max(1, int(round(x2 - x1)))
-            height = max(1, int(round(y2 - y1)))
+            x = min(max(0, int(round(x1))), max(0, image_width - 1))
+            y = min(max(0, int(round(y1))), max(0, image_height - 1))
+            width = max(1, min(image_width - x, int(round(x2 - x1))))
+            height = max(1, min(image_height - y, int(round(y2 - y1))))
+            if width * height <= 0:
+                continue
             candidates.append(
                 _FaceCandidate(
                     bbox=FaceBoundingBox(x=x, y=y, width=width, height=height),
                     confidence=round(float(prob), 3),
+                    backend=self.name,
                 )
             )
-        return candidates
+        return self._non_max_suppression(candidates, iou_threshold=0.35)
+
+    def _is_landmark_layout_valid(self, points: np.ndarray) -> bool:
+        try:
+            points_array = np.asarray(points, dtype=np.float32)
+            if points_array.shape != (5, 2):
+                return False
+            left_eye, right_eye, nose, mouth_left, mouth_right = points_array
+            if left_eye[0] >= right_eye[0]:
+                return False
+            eye_mid_y = float((left_eye[1] + right_eye[1]) / 2.0)
+            mouth_mid_y = float((mouth_left[1] + mouth_right[1]) / 2.0)
+            if nose[1] <= eye_mid_y or nose[1] >= mouth_mid_y:
+                return False
+            if mouth_left[1] <= eye_mid_y or mouth_right[1] <= eye_mid_y:
+                return False
+            return True
+        except Exception:  # pragma: no cover - 兜底容错
+            return False
+
+    def _refine_box_with_landmarks(
+        self,
+        box: np.ndarray,
+        points: np.ndarray,
+        image_width: int,
+        image_height: int,
+    ) -> np.ndarray:
+        try:
+            points_array = np.asarray(points, dtype=np.float32)
+            if points_array.shape != (5, 2):
+                return box
+            left_eye, right_eye, nose, mouth_left, mouth_right = points_array
+            eye_distance = float(np.linalg.norm(left_eye - right_eye))
+            if eye_distance <= 1:
+                return box
+
+            center_x = float(nose[0])
+            center_y = float((left_eye[1] + right_eye[1] + mouth_left[1] + mouth_right[1]) / 4.0)
+            side = max(float(box[2] - box[0]), float(box[3] - box[1]), eye_distance * 2.25)
+
+            x1 = max(0.0, center_x - (side * 0.5))
+            y1 = max(0.0, center_y - (side * 0.6))
+            x2 = min(float(image_width), center_x + (side * 0.5))
+            y2 = min(float(image_height), center_y + (side * 0.4))
+            if x2 <= x1 or y2 <= y1:
+                return box
+            return np.array([x1, y1, x2, y2], dtype=np.float32)
+        except Exception:  # pragma: no cover - 兜底容错
+            return box
+
+    def _non_max_suppression(self, candidates: list[_FaceCandidate], iou_threshold: float) -> list[_FaceCandidate]:
+        if not candidates:
+            return []
+        ordered = sorted(candidates, key=lambda item: item.confidence, reverse=True)
+        selected: list[_FaceCandidate] = []
+        for candidate in ordered:
+            if all(self._iou(candidate.bbox, kept.bbox) < iou_threshold for kept in selected):
+                selected.append(candidate)
+        return sorted(selected, key=lambda item: (item.bbox.y, item.bbox.x))
+
+    def _iou(self, left: FaceBoundingBox, right: FaceBoundingBox) -> float:
+        x1 = max(left.x, right.x)
+        y1 = max(left.y, right.y)
+        x2 = min(left.x + left.width, right.x + right.width)
+        y2 = min(left.y + left.height, right.y + right.height)
+        inter_w = max(0, x2 - x1)
+        inter_h = max(0, y2 - y1)
+        intersection = inter_w * inter_h
+        if intersection == 0:
+            return 0.0
+        union = (left.width * left.height) + (right.width * right.height) - intersection
+        return intersection / max(1, union)
 
 
 class _OpenCvHaarBackend:
@@ -113,6 +212,7 @@ class _OpenCvHaarBackend:
                         height=max(1, int(h)),
                     ),
                     confidence=0.72,
+                    backend=self.name,
                 )
             )
         return candidates
@@ -180,6 +280,7 @@ class _ConnectedComponentBackend:
                             height=bbox_height,
                         ),
                         confidence=confidence,
+                        backend=self.name,
                     )
                 )
 
@@ -195,10 +296,12 @@ class FaceDetector:
         crop_padding: int = 8,
         max_pixels: int = 12_000_000,
         confidence_threshold: float = 0.55,
+        allow_non_mtcnn_fallback: bool = False,
     ) -> None:
         self.crop_padding = crop_padding
         self.max_pixels = max_pixels
         self.confidence_threshold = max(0.0, min(1.0, confidence_threshold))
+        self.allow_non_mtcnn_fallback = allow_non_mtcnn_fallback
         self._backends = backends or self._resolve_backends(prefer_mtcnn=prefer_mtcnn)
 
     def _resolve_backends(self, prefer_mtcnn: bool) -> list[_DetectionBackend]:
@@ -227,6 +330,7 @@ class FaceDetector:
             raise DetectorError("Image is too large for face detection.")
 
         candidates = self._detect_with_fallbacks(image)
+        candidates = self._post_process_candidates(candidates, width=width, height=height)
         candidates = [candidate for candidate in candidates if candidate.confidence >= self.confidence_threshold]
         if not candidates:
             raise DetectorError("No face-like region was found in the uploaded image.")
@@ -295,8 +399,66 @@ class FaceDetector:
         return buffer.getvalue()
 
     def _detect_with_fallbacks(self, image: Image.Image) -> list[_FaceCandidate]:
-        for backend in self._backends:
-            candidates = backend.detect(image)
-            if candidates:
-                return candidates
+        for index, backend in enumerate(self._backends):
+            try:
+                candidates = backend.detect(image)
+                if candidates:
+                    return candidates
+                is_mtcnn_first_backend = index == 0 and backend.name == "mtcnn"
+                if is_mtcnn_first_backend and not self.allow_non_mtcnn_fallback:
+                    # 精度优先：MTCNN 没有可靠结果时，不再使用低精度后备，避免误检。
+                    return []
+            except Exception as exc:
+                LOGGER.warning("Face detection backend failed and will fallback. backend=%s error=%s", backend.name, exc)
         return []
+
+    def _post_process_candidates(
+        self,
+        candidates: list[_FaceCandidate],
+        width: int,
+        height: int,
+    ) -> list[_FaceCandidate]:
+        filtered: list[_FaceCandidate] = []
+        min_face_size = max(14, int(min(width, height) * 0.035))
+        max_face_width = int(width * 0.98)
+        max_face_height = int(height * 0.98)
+
+        for candidate in candidates:
+            x = min(max(0, candidate.bbox.x), max(0, width - 1))
+            y = min(max(0, candidate.bbox.y), max(0, height - 1))
+            box_width = min(max(1, candidate.bbox.width), width - x)
+            box_height = min(max(1, candidate.bbox.height), height - y)
+            if box_width < min_face_size or box_height < min_face_size:
+                continue
+            if box_width > max_face_width or box_height > max_face_height:
+                continue
+            aspect_ratio = box_width / max(1.0, float(box_height))
+            if aspect_ratio < 0.45 or aspect_ratio > 1.9:
+                continue
+            filtered.append(
+                _FaceCandidate(
+                    bbox=FaceBoundingBox(x=x, y=y, width=box_width, height=box_height),
+                    confidence=candidate.confidence,
+                    backend=candidate.backend,
+                )
+            )
+
+        filtered.sort(key=lambda item: item.confidence, reverse=True)
+        selected: list[_FaceCandidate] = []
+        for candidate in filtered:
+            if all(self._compute_iou(candidate.bbox, kept.bbox) < 0.42 for kept in selected):
+                selected.append(candidate)
+        return sorted(selected, key=lambda item: (item.bbox.y, item.bbox.x))
+
+    def _compute_iou(self, left: FaceBoundingBox, right: FaceBoundingBox) -> float:
+        x1 = max(left.x, right.x)
+        y1 = max(left.y, right.y)
+        x2 = min(left.x + left.width, right.x + right.width)
+        y2 = min(left.y + left.height, right.y + right.height)
+        inter_w = max(0, x2 - x1)
+        inter_h = max(0, y2 - y1)
+        intersection = inter_w * inter_h
+        if intersection == 0:
+            return 0.0
+        union = (left.width * left.height) + (right.width * right.height) - intersection
+        return intersection / max(1, union)

@@ -22,10 +22,20 @@ class _FakeBackend:
         return self._candidates
 
 
+class _FailingBackend:
+    @property
+    def name(self):
+        return "failing"
+
+    def detect(self, image):
+        raise RuntimeError("backend crashed")
+
+
 class _FakeCandidate:
-    def __init__(self, bbox: FaceBoundingBox, confidence: float):
+    def __init__(self, bbox: FaceBoundingBox, confidence: float, backend: str = "fake"):
         self.bbox = bbox
         self.confidence = confidence
+        self.backend = backend
 
 
 def _build_two_face_like_image() -> bytes:
@@ -125,3 +135,137 @@ def test_confidence_threshold_filters_low_confidence_faces():
         assert "No face" in str(exc)
     else:
         raise AssertionError("Expected DetectorError when all candidates are filtered out")
+
+
+def test_fallback_to_next_backend_when_primary_raises_exception():
+    detector = FaceDetector(
+        backends=[
+            _FailingBackend(),
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=12, y=12, width=24, height=24),
+                        confidence=0.91,
+                    )
+                ]
+            ),
+        ],
+    )
+    image = Image.new("RGB", (80, 80), "white")
+
+    payload = detector.detect_image(image)
+
+    assert len(payload.faces) == 1
+
+
+def test_post_process_removes_heavily_overlapped_candidates():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=40, height=40),
+                        confidence=0.95,
+                    ),
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=14, y=14, width=40, height=40),
+                        confidence=0.7,
+                    ),
+                ]
+            )
+        ],
+        confidence_threshold=0.5,
+    )
+    image = Image.new("RGB", (100, 100), "white")
+
+    payload = detector.detect_image(image)
+
+    assert len(payload.faces) == 1
+    assert payload.faces[0].bbox.x == 10
+    assert payload.faces[0].bbox.y == 10
+
+
+def test_post_process_filters_out_invalid_aspect_ratio_candidates():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=80, height=16),
+                        confidence=0.92,
+                    )
+                ]
+            )
+        ],
+        confidence_threshold=0.5,
+    )
+    image = Image.new("RGB", (100, 100), "white")
+
+    try:
+        detector.detect_image(image)
+    except DetectorError as exc:
+        assert "No face" in str(exc)
+    else:
+        raise AssertionError("Expected DetectorError when candidate aspect ratio is invalid")
+
+
+def test_default_behavior_does_not_fallback_when_mtcnn_returns_no_face():
+    class _FakeMtcnnBackend:
+        @property
+        def name(self):
+            return "mtcnn"
+
+        def detect(self, image):
+            return []
+
+    detector = FaceDetector(
+        backends=[
+            _FakeMtcnnBackend(),
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=24, height=24),
+                        confidence=0.95,
+                    )
+                ]
+            ),
+        ],
+    )
+    image = Image.new("RGB", (80, 80), "white")
+
+    try:
+        detector.detect_image(image)
+    except DetectorError as exc:
+        assert "No face" in str(exc)
+    else:
+        raise AssertionError("Expected DetectorError because non-MTCNN fallback is disabled by default")
+
+
+def test_can_enable_non_mtcnn_fallback_explicitly():
+    class _FakeMtcnnBackend:
+        @property
+        def name(self):
+            return "mtcnn"
+
+        def detect(self, image):
+            return []
+
+    detector = FaceDetector(
+        backends=[
+            _FakeMtcnnBackend(),
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=24, height=24),
+                        confidence=0.95,
+                    )
+                ]
+            ),
+        ],
+        allow_non_mtcnn_fallback=True,
+    )
+    image = Image.new("RGB", (80, 80), "white")
+
+    payload = detector.detect_image(image)
+
+    assert len(payload.faces) == 1
