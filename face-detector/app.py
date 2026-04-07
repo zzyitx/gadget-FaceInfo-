@@ -33,6 +33,24 @@ class _MiniApp:
 
         return decorator
 
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        # FastAPI 缺失时，给出可读错误而不是 uvicorn 的 TypeError。
+        if scope.get("type") != "http":
+            await send({"type": "http.response.start", "status": 503, "headers": []})
+            await send({"type": "http.response.body", "body": b"Service unavailable.", "more_body": False})
+            return
+
+        message = (
+            "face-detector missing dependency: fastapi/starlette. "
+            "Please run: pip install -r requirements.txt"
+        ).encode("utf-8")
+        headers = [
+            (b"content-type", b"text/plain; charset=utf-8"),
+            (b"content-length", str(len(message)).encode("ascii")),
+        ]
+        await send({"type": "http.response.start", "status": 503, "headers": headers})
+        await send({"type": "http.response.body", "body": message, "more_body": False})
+
 
 async def _read_upload_bytes(image: Any) -> bytes:
     reader = getattr(image, "read", None)
