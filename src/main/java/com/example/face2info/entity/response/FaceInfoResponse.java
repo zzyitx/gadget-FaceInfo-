@@ -22,7 +22,10 @@ public class FaceInfoResponse {
     @Schema(description = "聚合过程中产生的非阻塞告警信息")
     private List<String> warnings = new ArrayList<>();
 
-    @Schema(description = "接口处理状态，常见值为 success、partial、failed", example = "success")
+    @Schema(description = "多脸时的选脸工作流信息")
+    private FaceSelectionPayload selection;
+
+    @Schema(description = "接口处理状态，常见值为 success、partial、failed、selection_required", example = "success")
     private String status;
 
     @Schema(description = "请求失败时返回的错误说明，成功时通常为空", example = "外部服务暂时不可用")
@@ -42,7 +45,7 @@ public class FaceInfoResponse {
     }
 
     public FaceInfoResponse setNews(List<NewsItem> news) {
-        this.news = news;
+        this.news = news == null ? new ArrayList<>() : news;
         return this;
     }
 
@@ -51,7 +54,7 @@ public class FaceInfoResponse {
     }
 
     public FaceInfoResponse setImageMatches(List<ImageMatch> imageMatches) {
-        this.imageMatches = imageMatches;
+        this.imageMatches = imageMatches == null ? new ArrayList<>() : imageMatches;
         return this;
     }
 
@@ -60,7 +63,16 @@ public class FaceInfoResponse {
     }
 
     public FaceInfoResponse setWarnings(List<String> warnings) {
-        this.warnings = warnings;
+        this.warnings = warnings == null ? new ArrayList<>() : warnings;
+        return this;
+    }
+
+    public FaceSelectionPayload getSelection() {
+        return selection;
+    }
+
+    public FaceInfoResponse setSelection(FaceSelectionPayload selection) {
+        this.selection = selection;
         return this;
     }
 

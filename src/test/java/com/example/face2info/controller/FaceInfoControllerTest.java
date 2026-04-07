@@ -5,6 +5,8 @@ import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.FaceBoundingBox;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.entity.response.FaceInfoResponse;
+import com.example.face2info.entity.response.FaceSelectionPayload;
+import com.example.face2info.entity.response.DetectedFaceResponse;
 import com.example.face2info.exception.FaceDetectionException;
 import com.example.face2info.exception.GlobalExceptionHandler;
 import com.example.face2info.service.Face2InfoService;
@@ -51,6 +53,26 @@ class FaceInfoControllerTest {
     }
 
     @Test
+    void shouldReturnSelectionRequiredPayload() throws Exception {
+        face2InfoService.setProcessResponse(new FaceInfoResponse()
+                .setStatus("selection_required")
+                .setSelection(new FaceSelectionPayload()
+                        .setDetectionId("det-1")
+                        .setPreviewImage("data:image/jpeg;base64,preview")
+                        .setFaces(java.util.List.of(new DetectedFaceResponse()
+                                .setFaceId("face-1")
+                                .setConfidence(0.98)))));
+
+        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        mockMvc.perform(multipart("/api/face2info").file(image))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("selection_required"))
+                .andExpect(jsonPath("$.selection.detection_id").value("det-1"))
+                .andExpect(jsonPath("$.selection.preview_image").value("data:image/jpeg;base64,preview"))
+                .andExpect(jsonPath("$.selection.faces[0].face_id").value("face-1"));
+    }
+
+    @Test
     void shouldDetectFacesAndExposeStructuredResponse() throws Exception {
         SelectedFaceCrop crop = new SelectedFaceCrop()
                 .setFilename("face-1.jpg")
@@ -90,6 +112,9 @@ class FaceInfoControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
+
+        org.assertj.core.api.Assertions.assertThat(face2InfoService.getLastDetectionId()).isEqualTo("det-1");
+        org.assertj.core.api.Assertions.assertThat(face2InfoService.getLastFaceId()).isEqualTo("face-1");
     }
 
     @Test
@@ -120,6 +145,8 @@ class FaceInfoControllerTest {
     static class StubFace2InfoService implements Face2InfoService {
         private FaceInfoResponse processResponse = new FaceInfoResponse();
         private FaceInfoResponse processSelectedResponse = new FaceInfoResponse();
+        private String lastDetectionId;
+        private String lastFaceId;
 
         void setProcessResponse(FaceInfoResponse response) {
             this.processResponse = response;
@@ -129,6 +156,14 @@ class FaceInfoControllerTest {
             this.processSelectedResponse = response;
         }
 
+        String getLastDetectionId() {
+            return lastDetectionId;
+        }
+
+        String getLastFaceId() {
+            return lastFaceId;
+        }
+
         @Override
         public FaceInfoResponse process(org.springframework.web.multipart.MultipartFile image) {
             return processResponse;
@@ -136,6 +171,8 @@ class FaceInfoControllerTest {
 
         @Override
         public FaceInfoResponse processSelectedFace(String detectionId, String faceId) {
+            this.lastDetectionId = detectionId;
+            this.lastFaceId = faceId;
             return processSelectedResponse;
         }
     }

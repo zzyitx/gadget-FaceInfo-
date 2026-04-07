@@ -1,10 +1,14 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.DetectedFace;
+import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
+import com.example.face2info.entity.response.DetectedFaceResponse;
 import com.example.face2info.entity.response.FaceInfoResponse;
+import com.example.face2info.entity.response.FaceSelectionPayload;
 import com.example.face2info.entity.response.PersonBasicInfoResponse;
 import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.service.Face2InfoService;
@@ -25,6 +29,11 @@ import java.util.List;
 @Service
 public class Face2InfoServiceImpl implements Face2InfoService {
 
+    private static final String NO_FACE_ERROR = "未检测到人脸，请更换更清晰的人脸图片。";
+    private static final String MISSING_CROP_ERROR = "Selected face crop is missing or empty.";
+    private static final String BLANK_DETECTION_ID_ERROR = "detection_id must not be blank.";
+    private static final String BLANK_FACE_ID_ERROR = "face_id must not be blank.";
+
     private final ImageUtils imageUtils;
     private final FaceRecognitionService faceRecognitionService;
     private final InformationAggregationService informationAggregationService;
@@ -42,14 +51,79 @@ public class Face2InfoServiceImpl implements Face2InfoService {
 
     @Override
     public FaceInfoResponse process(MultipartFile image) {
-        return processRecognizedImage(image);
+        log.info("总流程开始 fileName={} size={}", image.getOriginalFilename(), image.getSize());
+        imageUtils.validateImage(image);
+
+        DetectionSession session = faceDetectionService.detect(image);
+        int faceCount = session == null || session.getFaces() == null ? 0 : session.getFaces().size();
+        if (faceCount == 0) {
+            return buildFailedResponse(NO_FACE_ERROR);
+        }
+        if (faceCount > 1) {
+            return buildSelectionRequiredResponse(session);
+        }
+
+        SelectedFaceCrop crop = session.getFaces().get(0) == null ? null : session.getFaces().get(0).getSelectedFaceCrop();
+        return processSelectedCrop(crop);
     }
 
     @Override
     public FaceInfoResponse processSelectedFace(String detectionId, String faceId) {
+        if (!StringUtils.hasText(detectionId)) {
+            return buildFailedResponse(BLANK_DETECTION_ID_ERROR);
+        }
+        if (!StringUtils.hasText(faceId)) {
+            return buildFailedResponse(BLANK_FACE_ID_ERROR);
+        }
+
         SelectedFaceCrop crop = faceDetectionService.getSelectedFaceCrop(detectionId, faceId);
-        MultipartFile selectedFace = new InMemoryMultipartFile(crop.getFilename(), crop.getContentType(), crop.getBytes());
-        return processRecognizedImage(selectedFace);
+        return processSelectedCrop(crop);
+    }
+
+    private FaceInfoResponse processSelectedCrop(SelectedFaceCrop crop) {
+        if (!hasCropContent(crop)) {
+            return buildFailedResponse(MISSING_CROP_ERROR);
+        }
+        return processRecognizedImage(toMultipartFile(crop));
+    }
+
+    private boolean hasCropContent(SelectedFaceCrop crop) {
+        return crop != null && crop.getBytes() != null && crop.getBytes().length > 0;
+    }
+
+    private MultipartFile toMultipartFile(SelectedFaceCrop crop) {
+        return new InMemoryMultipartFile(crop.getFilename(), crop.getContentType(), crop.getBytes());
+    }
+
+    private FaceInfoResponse buildSelectionRequiredResponse(DetectionSession session) {
+        FaceSelectionPayload selection = new FaceSelectionPayload()
+                .setDetectionId(session.getDetectionId())
+                .setPreviewImage(session.getPreviewImage());
+
+        if (session.getFaces() != null) {
+            for (DetectedFace detectedFace : session.getFaces()) {
+                selection.getFaces().add(mapDetectedFace(detectedFace));
+            }
+        }
+
+        return new FaceInfoResponse()
+                .setStatus("selection_required")
+                .setSelection(selection);
+    }
+
+    private DetectedFaceResponse mapDetectedFace(DetectedFace detectedFace) {
+        SelectedFaceCrop crop = detectedFace == null ? null : detectedFace.getSelectedFaceCrop();
+        return new DetectedFaceResponse()
+                .setFaceId(detectedFace == null ? null : detectedFace.getFaceId())
+                .setConfidence(detectedFace == null ? 0.0 : detectedFace.getConfidence())
+                .setBbox(detectedFace == null ? null : detectedFace.getFaceBoundingBox())
+                .setCropPreview(toDataUrl(crop));
+    }
+
+    private FaceInfoResponse buildFailedResponse(String error) {
+        return new FaceInfoResponse()
+                .setStatus("failed")
+                .setError(error);
     }
 
     private FaceInfoResponse processRecognizedImage(MultipartFile image) {
@@ -59,16 +133,16 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         RecognitionEvidence evidence = faceRecognitionService.recognize(image);
         AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
 
-        List<String> combinedErrors = new ArrayList<>(aggregationResult.getErrors());
-        List<String> warnings = new ArrayList<>(aggregationResult.getWarnings());
+        List<String> combinedErrors = safeCopy(aggregationResult == null ? null : aggregationResult.getErrors());
+        List<String> warnings = safeCopy(aggregationResult == null ? null : aggregationResult.getWarnings());
 
-        if (aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
-            List<String> errors = new ArrayList<>(evidence.getErrors());
+        if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
+            List<String> errors = safeCopy(evidence == null ? null : evidence.getErrors());
             errors.addAll(combinedErrors);
             return new FaceInfoResponse()
                     .setPerson(null)
-                    .setNews(aggregationResult.getNews())
-                    .setImageMatches(evidence.getImageMatches())
+                    .setNews(aggregationResult == null ? null : aggregationResult.getNews())
+                    .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                     .setWarnings(warnings)
                     .setStatus("failed")
                     .setError(errors.isEmpty() ? "Unable to resolve person information." : String.join("; ", errors));
@@ -89,9 +163,24 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setPerson(person)
                 .setNews(aggregationResult.getNews())
                 .setWarnings(warnings)
-                .setImageMatches(evidence.getImageMatches())
+                .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                 .setStatus(status)
                 .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
+    }
+
+    private List<String> safeCopy(List<String> values) {
+        return new ArrayList<>(values == null ? List.of() : values);
+    }
+
+    private String toDataUrl(SelectedFaceCrop crop) {
+        if (!hasCropContent(crop)) {
+            return null;
+        }
+        String contentType = crop.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            contentType = "image/jpeg";
+        }
+        return "data:" + contentType + ";base64," + java.util.Base64.getEncoder().encodeToString(crop.getBytes());
     }
 
     private PersonBasicInfoResponse toResponseBasicInfo(PersonBasicInfo basicInfo) {

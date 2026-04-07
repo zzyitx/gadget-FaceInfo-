@@ -30,70 +30,69 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("similarity_score")))
                 .andExpect(content().string(containsString("image-item")))
                 .andExpect(content().string(containsString("window.open")))
-                .andExpect(content().string(containsString("id=\"debugPanel\"")))
-                .andExpect(content().string(containsString("<details")));
+                .andExpect(content().string(containsString("id=\"debugCard\"")))
+                .andExpect(content().string(containsString("compactJson(data)")));
     }
 
     @Test
-    void shouldRenderCollapsedNewsSectionWithArticleSourceLink() throws Exception {
+    void shouldRenderSelectionRequiredFlowOnIndexPage() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("id=\"newsCard\"")))
-                .andExpect(content().string(containsString("news-card")))
-                .andExpect(content().string(not(containsString("id=\"newsCard\" open"))))
-                .andExpect(content().string(containsString("renderNewsCard")))
-                .andExpect(content().string(containsString("renderArticleGroups")))
-                .andExpect(content().string(containsString("image_matches")))
-                .andExpect(content().string(containsString("item.link")))
-                .andExpect(content().string(containsString("news-toggle")))
-                .andExpect(content().string(containsString("news-source-link")))
-                .andExpect(content().string(containsString("item.url")));
+                .andExpect(content().string(containsString("selection_required")))
+                .andExpect(content().string(containsString("id=\"selectionCard\"")))
+                .andExpect(content().string(containsString("id=\"selectionFaceGrid\"")))
+                .andExpect(content().string(containsString("id=\"selectionPreview\"")))
+                .andExpect(content().string(containsString("requestJson(\"/api/face2info/process-selected\"")))
+                .andExpect(content().string(containsString("data-face-id")))
+                .andExpect(content().string(containsString("markSelected")));
     }
 
     @Test
-    void shouldRenderIndependentUploadPanelAndCollapsedInfoPanels() throws Exception {
+    void shouldRenderDetectFirstUploadAndResultPanels() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("id=\"uploadPanel\"")))
-                .andExpect(content().string(containsString("main-layout")))
+                .andExpect(content().string(containsString("detect-first")))
+                .andExpect(content().string(containsString("requestMultipart(\"/api/face2info\"")))
+                .andExpect(content().string(containsString("id=\"faceForm\"")))
                 .andExpect(content().string(containsString("id=\"socialCard\"")))
-                .andExpect(content().string(containsString("id=\"debugPanel\"")))
-                .andExpect(content().string(not(containsString("id=\"socialCard\" open"))))
-                .andExpect(content().string(not(containsString("id=\"debugPanel\" open"))));
+                .andExpect(content().string(containsString("id=\"newsCard\"")))
+                .andExpect(content().string(containsString("id=\"debugCard\"")))
+                .andExpect(content().string(containsString("id=\"personCard\"")));
     }
 
     @Test
-    void shouldRenderImageMatchesWithoutCroppingResultImages() throws Exception {
+    void shouldRenderImageMatchesAndSelectionCardsWithCoverLayout() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(".image-frame")))
-                .andExpect(content().string(containsString("object-fit: contain")))
-                .andExpect(content().string(containsString("object-position: center")))
+                .andExpect(content().string(containsString(".face-card img")))
+                .andExpect(content().string(containsString("aspect-ratio: 1 / 1")))
+                .andExpect(content().string(containsString("object-fit: cover")))
                 .andExpect(content().string(containsString("class=\"image-frame\"")))
-                .andExpect(content().string(not(containsString(".image-item img {\r\n      position: absolute;"))))
                 .andExpect(content().string(containsString(".preview img")))
-                .andExpect(content().string(containsString("object-fit: cover")));
+                .andExpect(content().string(containsString("selection-empty")));
     }
 
     @Test
-    void shouldHideVisibleStatusCardAndRenderImageDrivenArticleGroups() throws Exception {
+    void shouldRenderImageDrivenNewsAndSelectionStateMessages() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(not(containsString("id=\"statusBox\""))))
                 .andExpect(content().string(not(containsString("class=\"status\""))))
-                .andExpect(content().string(containsString("renderArticleGroups(data.image_matches || [], data.news || [])")))
-                .andExpect(content().string(containsString("article-group")))
-                .andExpect(content().string(containsString("match-group-source")));
+                .andExpect(content().string(containsString("renderNews(Array.isArray(data.news) ? data.news : [], Array.isArray(data.image_matches) ? data.image_matches : [])")))
+                .andExpect(content().string(containsString("selectionProgress")))
+                .andExpect(content().string(containsString("selection_required")))
+                .andExpect(content().string(containsString("match-group-title")));
     }
 
     @Test
-    void shouldMoveMatchTitleFromImageCardToArticleGroupHeader() throws Exception {
+    void shouldRenderFaceCardMetadataAndBBoxText() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(not(containsString("image-info .title"))))
-                .andExpect(content().string(not(containsString("class=\"title\""))))
-                .andExpect(content().string(containsString("match-group-title")))
-                .andExpect(content().string(containsString("item.title || \"")))
-                .andExpect(content().string(containsString("item.source || \"")));
+                .andExpect(content().string(containsString("face-card-title")))
+                .andExpect(content().string(containsString("face-card-meta")))
+                .andExpect(content().string(containsString("face-card-bbox")))
+                .andExpect(content().string(containsString("bboxText(face.bbox)")))
+                .andExpect(content().string(containsString("formatPercent(face.confidence)")));
     }
 }
