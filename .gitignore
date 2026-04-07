@@ -42,5 +42,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Python ###
+__pycache__/
+*.pyc
+
 ### Mac OS ###
 .DS_Store
