@@ -297,11 +297,14 @@ class FaceDetector:
         max_pixels: int = 12_000_000,
         confidence_threshold: float = 0.55,
         allow_non_mtcnn_fallback: bool = False,
+        mtcnn_quality_gate: bool = True,
     ) -> None:
         self.crop_padding = crop_padding
         self.max_pixels = max_pixels
         self.confidence_threshold = max(0.0, min(1.0, confidence_threshold))
         self.allow_non_mtcnn_fallback = allow_non_mtcnn_fallback
+        self.mtcnn_quality_gate = mtcnn_quality_gate
+        self._eye_classifier = self._init_eye_classifier() if mtcnn_quality_gate else None
         self._backends = backends or self._resolve_backends(prefer_mtcnn=prefer_mtcnn)
 
     def _resolve_backends(self, prefer_mtcnn: bool) -> list[_DetectionBackend]:
@@ -330,7 +333,7 @@ class FaceDetector:
             raise DetectorError("Image is too large for face detection.")
 
         candidates = self._detect_with_fallbacks(image)
-        candidates = self._post_process_candidates(candidates, width=width, height=height)
+        candidates = self._post_process_candidates(candidates, image=image, width=width, height=height)
         candidates = [candidate for candidate in candidates if candidate.confidence >= self.confidence_threshold]
         if not candidates:
             raise DetectorError("No face-like region was found in the uploaded image.")
@@ -415,6 +418,7 @@ class FaceDetector:
     def _post_process_candidates(
         self,
         candidates: list[_FaceCandidate],
+        image: Image.Image,
         width: int,
         height: int,
     ) -> list[_FaceCandidate]:
@@ -435,6 +439,9 @@ class FaceDetector:
             aspect_ratio = box_width / max(1.0, float(box_height))
             if aspect_ratio < 0.45 or aspect_ratio > 1.9:
                 continue
+            if candidate.backend == "mtcnn" and self.mtcnn_quality_gate:
+                if not self._passes_mtcnn_quality_gate(image, x, y, box_width, box_height, candidate.confidence):
+                    continue
             filtered.append(
                 _FaceCandidate(
                     bbox=FaceBoundingBox(x=x, y=y, width=box_width, height=box_height),
@@ -462,3 +469,75 @@ class FaceDetector:
             return 0.0
         union = (left.width * left.height) + (right.width * right.height) - intersection
         return intersection / max(1, union)
+
+    def _init_eye_classifier(self):
+        if cv2 is None:
+            return None
+        try:
+            eye_cascade_path = str(Path(cv2.data.haarcascades) / "haarcascade_eye_tree_eyeglasses.xml")
+            classifier = cv2.CascadeClassifier(eye_cascade_path)
+            if classifier.empty():
+                return None
+            return classifier
+        except Exception:  # pragma: no cover - 初始化容错
+            return None
+
+    def _passes_mtcnn_quality_gate(
+        self,
+        image: Image.Image,
+        x: int,
+        y: int,
+        box_width: int,
+        box_height: int,
+        confidence: float,
+    ) -> bool:
+        crop = np.asarray(image.crop((x, y, x + box_width, y + box_height)).convert("RGB"), dtype=np.uint8)
+        if crop.size == 0:
+            return False
+
+        skin_ratio = self._estimate_skin_ratio(crop)
+        if confidence < 0.9 and skin_ratio < 0.08:
+            return False
+        if skin_ratio < 0.05:
+            return False
+
+        if self._eye_classifier is not None and min(box_width, box_height) >= 36:
+            gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+            gray = cv2.equalizeHist(gray)
+            eyes = self._eye_classifier.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=4,
+                minSize=(8, 8),
+            )
+            if len(eyes) == 0 and confidence < 0.93:
+                return False
+        return True
+
+    def _estimate_skin_ratio(self, crop: np.ndarray) -> float:
+        if crop.ndim != 3 or crop.shape[2] != 3:
+            return 0.0
+        rgb = crop.astype(np.int16)
+        r = rgb[:, :, 0]
+        g = rgb[:, :, 1]
+        b = rgb[:, :, 2]
+
+        rgb_skin = (
+            (r > 40)
+            & (g > 20)
+            & (b > 10)
+            & ((np.maximum(np.maximum(r, g), b) - np.minimum(np.minimum(r, g), b)) > 12)
+            & (np.abs(r - g) > 10)
+            & (r > g)
+            & (r > b)
+        )
+
+        ycrcb = cv2.cvtColor(crop, cv2.COLOR_RGB2YCrCb) if cv2 is not None else None
+        if ycrcb is not None:
+            cr = ycrcb[:, :, 1]
+            cb = ycrcb[:, :, 2]
+            ycrcb_skin = (cr >= 132) & (cr <= 180) & (cb >= 80) & (cb <= 135)
+            skin_mask = rgb_skin | ycrcb_skin
+        else:
+            skin_mask = rgb_skin
+        return float(np.count_nonzero(skin_mask)) / float(skin_mask.size)

@@ -269,3 +269,50 @@ def test_can_enable_non_mtcnn_fallback_explicitly():
     payload = detector.detect_image(image)
 
     assert len(payload.faces) == 1
+
+
+def test_mtcnn_quality_gate_rejects_non_skin_like_region():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=40, height=40),
+                        confidence=0.88,
+                        backend="mtcnn",
+                    )
+                ]
+            )
+        ],
+        mtcnn_quality_gate=True,
+    )
+    image = Image.new("RGB", (80, 80), "#1A4D9B")
+
+    try:
+        detector.detect_image(image)
+    except DetectorError as exc:
+        assert "No face" in str(exc)
+    else:
+        raise AssertionError("Expected DetectorError for non-skin-like MTCNN candidate")
+
+
+def test_mtcnn_quality_gate_can_be_disabled():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=40, height=40),
+                        confidence=0.88,
+                        backend="mtcnn",
+                    )
+                ]
+            )
+        ],
+        mtcnn_quality_gate=False,
+    )
+    image = Image.new("RGB", (80, 80), "#1A4D9B")
+
+    payload = detector.detect_image(image)
+
+    assert len(payload.faces) == 1
