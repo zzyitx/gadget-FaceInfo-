@@ -2,7 +2,12 @@ fastapi>=0.115,<1.0
 uvicorn>=0.30,<1.0
 Pillow>=10.0,<12.0
 python-multipart>=0.0.9,<1.0
-opencv-python-headless>=4.9,<5.0
+# MTCNN（facenet-pytorch）在 torch 2.2.x 下与 NumPy 2.x 组合存在兼容问题，
+# 需固定 NumPy 1.x 与 OpenCV 4.10.x 以保证人脸检测链路稳定。
+numpy>=1.26,<2.0
+opencv-python-headless>=4.10,<4.11
 
-# Optional: install facenet-pytorch if you want the MTCNN backend.
-# facenet-pytorch>=2.6.0
+# 启用 MTCNN 主检测后端（推荐与下方 torch/torchvision 组合一起安装）。
+facenet-pytorch==2.6.0
+torch==2.2.2
+torchvision==0.17.2
