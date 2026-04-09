@@ -53,7 +53,7 @@ public class NewsApiClientImpl implements NewsApiClient {
 
     private String apiKey() {
         if (!StringUtils.hasText(properties.getApi().getNews().getApiKey())) {
-            throw new ApiCallException("NewsAPI key 未配置");
+            throw new ApiCallException("NewsAPI Key 未配置。");
         }
         return properties.getApi().getNews().getApiKey();
     }

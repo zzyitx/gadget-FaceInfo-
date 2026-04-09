@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(ApiCallException.class)
     public ResponseEntity<ErrorResponse> handleApiCall(ApiCallException ex) {
-        log.error("External API call failed", ex);
+        log.error("外部 API 调用失败", ex);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(buildError(ex.getMessage(), HttpStatus.SERVICE_UNAVAILABLE));
     }
@@ -79,7 +79,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
-        log.error("Unexpected error", ex);
+        log.error("发生未预期异常", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildError("服务内部错误，请稍后重试。", HttpStatus.INTERNAL_SERVER_ERROR));
     }

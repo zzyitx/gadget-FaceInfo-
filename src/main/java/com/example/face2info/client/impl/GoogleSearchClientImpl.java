@@ -72,7 +72,7 @@ public class GoogleSearchClientImpl implements GoogleSearchClient {
 
     private String apiKey() {
         if (!StringUtils.hasText(google().getApiKey())) {
-            throw new ApiCallException("Serper API key not configured.");
+            throw new ApiCallException("Serper API Key 未配置。");
         }
         return google().getApiKey();
     }

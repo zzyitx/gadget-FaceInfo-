@@ -87,7 +87,7 @@ public class SerpApiClientImpl implements SerpApiClient {
 
     private String apiKey() {
         if (!StringUtils.hasText(properties.getApi().getSerp().getApiKey())) {
-            throw new ApiCallException("SerpAPI key not configured.");
+            throw new ApiCallException("SerpAPI Key 未配置。");
         }
         return properties.getApi().getSerp().getApiKey();
     }

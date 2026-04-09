@@ -47,7 +47,7 @@ public class FaceCheckClientImpl implements FaceCheckClient {
     public FaceCheckSearchResponse search(MultipartFile image) {
         FaceCheckUploadResponse uploadResponse = upload(image);
         if (!StringUtils.hasText(uploadResponse.getIdSearch())) {
-            throw new ApiCallException("facecheck upload failed: missing id_search");
+            throw new ApiCallException("facecheck 上传失败：缺少 id_search");
         }
         return pollSearch(uploadResponse.getIdSearch());
     }
@@ -72,7 +72,7 @@ public class FaceCheckClientImpl implements FaceCheckClient {
             return mapUploadResponse(objectMapper.readTree(response.getBody()));
         } catch (IOException | RestClientException ex) {
             log.warn("FaceCheck 调用失败 endpoint={} message={}", endpoint, ex.getMessage());
-            throw new ApiCallException("facecheck upload failed", ex);
+            throw new ApiCallException("facecheck 上传失败", ex);
         }
     }
 
@@ -84,7 +84,7 @@ public class FaceCheckClientImpl implements FaceCheckClient {
         while (System.currentTimeMillis() <= deadline) {
             JsonNode body = doSearchRequest(endpoint, idSearch);
             if (hasRemoteError(body)) {
-                throw new ApiCallException("facecheck search failed: " + body.path("error").asText(""));
+                throw new ApiCallException("facecheck 查询失败：" + body.path("error").asText(""));
             }
             JsonNode itemsNode = extractItemsNode(body);
             if (itemsNode.isArray()) {
@@ -130,13 +130,13 @@ public class FaceCheckClientImpl implements FaceCheckClient {
             return objectMapper.readTree(response.getBody());
         } catch (IOException | RestClientException ex) {
             log.warn("FaceCheck 调用失败 endpoint={} message={}", endpoint, ex.getMessage());
-            throw new ApiCallException("facecheck search failed", ex);
+            throw new ApiCallException("facecheck 查询失败", ex);
         }
     }
 
     private FaceCheckUploadResponse mapUploadResponse(JsonNode body) {
         if (hasRemoteError(body)) {
-            throw new ApiCallException("facecheck upload failed: " + body.path("error").asText(""));
+            throw new ApiCallException("facecheck 上传失败：" + body.path("error").asText(""));
         }
         return new FaceCheckUploadResponse()
                 .setIdSearch(body.path("id_search").asText(""))
@@ -167,7 +167,7 @@ public class FaceCheckClientImpl implements FaceCheckClient {
             Thread.sleep(pollIntervalMillis);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new ApiCallException("facecheck search interrupted", ex);
+            throw new ApiCallException("facecheck 查询被中断", ex);
         }
     }
 

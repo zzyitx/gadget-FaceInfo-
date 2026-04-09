@@ -347,7 +347,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private List<SocialAccount> collectSocialAccounts(String name) {
-        log.info("社交账号聚合跳过 resolvedName={} reason=feature_in_progress", name);
+        log.info("社交账号聚合跳过 resolvedName={} 原因=功能开发中", name);
         return List.of(new SocialAccount()
                 .setPlatform(SOCIAL_PLACEHOLDER_PLATFORM)
                 .setUrl(SOCIAL_PLACEHOLDER_URL)

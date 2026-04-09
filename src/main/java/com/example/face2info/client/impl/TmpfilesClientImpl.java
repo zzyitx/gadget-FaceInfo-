@@ -51,7 +51,7 @@ public class TmpfilesClientImpl implements TmpfilesClient {
             ResponseEntity<String> response = restTemplate.postForEntity(UPLOAD_URL, requestEntity, String.class);
             return extractPreviewUrl(response.getBody());
         } catch (IOException e) {
-            throw new ApiCallException("Image upload failed: " + e.getMessage(), e);
+            throw new ApiCallException("图片上传失败：" + e.getMessage(), e);
         }
     }
 
@@ -71,7 +71,7 @@ public class TmpfilesClientImpl implements TmpfilesClient {
             ResponseEntity<String> response = restTemplate.postForEntity(UPLOAD_URL, requestEntity, String.class);
             return extractPreviewUrl(response.getBody());
         } catch (IOException e) {
-            throw new ApiCallException("Image upload failed: " + e.getMessage(), e);
+            throw new ApiCallException("图片上传失败：" + e.getMessage(), e);
         }
     }
 
@@ -82,7 +82,7 @@ public class TmpfilesClientImpl implements TmpfilesClient {
         String fileId = firstFile.path("id").asText(null);
 
         if (!success || fileId == null || fileId.isBlank()) {
-            throw new ApiCallException("tempfile.org returned unexpected payload: " + responseBody);
+            throw new ApiCallException("tempfile.org 返回了非预期响应：" + responseBody);
         }
 
         String previewUrl = PREVIEW_URL_TEMPLATE.formatted(fileId);

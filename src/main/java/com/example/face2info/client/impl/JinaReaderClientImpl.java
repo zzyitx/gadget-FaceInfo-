@@ -53,7 +53,7 @@ public class JinaReaderClientImpl implements JinaReaderClient {
                 pages.add(readSinglePage(url));
             } catch (ApiCallException ex) {
                 lastException = ex;
-                log.warn("Jina page read failed but batch will continue sourceUrl={} error={}",
+                log.warn("Jina 页面读取失败，但批处理继续 sourceUrl={} error={}",
                         LogSanitizer.maskUrl(url), ex.getMessage());
             }
         }
@@ -68,7 +68,7 @@ public class JinaReaderClientImpl implements JinaReaderClient {
         ApiProperties.Api api = properties.getApi();
         String normalizedUrl = normalizeOriginalUrl(url);
         String requestUrl = buildRequestUrl(api.getJina().getBaseUrl(), normalizedUrl);
-        return RetryUtils.execute("Jina read page", api.getJina().getMaxRetries(), api.getJina().getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Jina 页面读取", api.getJina().getMaxRetries(), api.getJina().getBackoffInitialMs(), () -> {
             HttpHeaders headers = new HttpHeaders();
             headers.set(HttpHeaders.ACCEPT, DEFAULT_ACCEPT);
             if (StringUtils.hasText(api.getJina().getApiKey())) {
@@ -86,7 +86,7 @@ public class JinaReaderClientImpl implements JinaReaderClient {
             );
             String body = response.getBody();
             if (!StringUtils.hasText(body)) {
-                throw new ApiCallException("Jina read page returned empty body");
+                throw new ApiCallException("Jina 页面读取返回空响应体");
             }
             log.info("Jina 页面读取成功 sourceUrl={} contentLength={}", normalizedUrl, body.length());
             return new PageContent()

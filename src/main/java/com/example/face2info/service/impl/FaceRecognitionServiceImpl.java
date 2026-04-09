@@ -78,7 +78,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         try {
             MultipartFile enhanced = summaryGenerationClient.enhanceFaceImage(image);
             if (enhanced == null || enhanced.isEmpty()) {
-                throw new IllegalStateException("enhanced image is empty");
+                throw new IllegalStateException("增强后图片为空");
             }
             log.info("人脸图像高清化完成 originalName={} enhancedName={} enhancedSize={}",
                     image.getOriginalFilename(), enhanced.getOriginalFilename(), enhanced.getSize());

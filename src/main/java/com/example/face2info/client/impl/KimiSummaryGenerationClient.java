@@ -59,15 +59,15 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     public PageSummary summarizePage(String fallbackName, PageContent page) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
-        log.info("Kimi page summary start fallbackName={} url={} title={}",
+        log.info("Kimi 页面摘要开始 fallbackName={} url={} title={}",
                 fallbackName,
                 page == null ? null : page.getUrl(),
                 page == null ? null : page.getTitle());
 
-        return RetryUtils.execute("Kimi summarize page", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Kimi 页面摘要", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildPageRequest(kimi, fallbackName, page));
             PageSummary summary = parsePageSummary(page, body);
-            log.info("Kimi page summary success url={} summaryLength={} tagCount={} factCount={}",
+            log.info("Kimi 页面摘要成功 url={} summaryLength={} tagCount={} factCount={}",
                     summary.getSourceUrl(),
                     summary.getSummary() == null ? 0 : summary.getSummary().length(),
                     summary.getTags() == null ? 0 : summary.getTags().size(),
@@ -80,15 +80,15 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     public MultipartFile enhanceFaceImage(MultipartFile image) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
-        log.info("Kimi face enhancement start fileName={} size={} contentType={}",
+        log.info("Kimi 人脸增强开始 fileName={} size={} contentType={}",
                 image == null ? null : image.getOriginalFilename(),
                 image == null ? 0 : image.getSize(),
                 image == null ? null : image.getContentType());
 
-        return RetryUtils.execute("Kimi enhance face image", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Kimi 人脸增强", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildFaceEnhanceRequest(kimi, image));
             MultipartFile enhanced = parseEnhancedImage(image, body);
-            log.info("Kimi face enhancement success originalName={} enhancedName={} enhancedSize={}",
+            log.info("Kimi 人脸增强成功 originalName={} enhancedName={} enhancedSize={}",
                     image == null ? null : image.getOriginalFilename(),
                     enhanced.getOriginalFilename(),
                     enhanced.getSize());
@@ -100,14 +100,14 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     public List<String> recognizeFaceCandidateNames(MultipartFile image) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
-        log.info("Kimi face candidate recognition start fileName={} size={}",
+        log.info("Kimi 候选姓名识别开始 fileName={} size={}",
                 image == null ? null : image.getOriginalFilename(),
                 image == null ? 0 : image.getSize());
 
-        return RetryUtils.execute("Kimi recognize face names", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Kimi 候选姓名识别", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildFaceCandidateRequest(kimi, image));
             List<String> candidates = parseFaceCandidates(body);
-            log.info("Kimi face candidate recognition success count={} candidates={}", candidates.size(), candidates);
+            log.info("Kimi 候选姓名识别成功 count={} candidates={}", candidates.size(), candidates);
             return candidates;
         });
     }
@@ -117,12 +117,12 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
         int pageSummaryCount = pageSummaries == null ? 0 : pageSummaries.size();
-        log.info("Kimi final profile summary start fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
+        log.info("Kimi 最终画像摘要开始 fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
 
-        return RetryUtils.execute("Kimi summarize person", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Kimi 人物总结", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildPersonRequest(kimi, fallbackName, pageSummaries));
             ResolvedPersonProfile profile = parseProfileFromPageSummaries(fallbackName, pageSummaries, body);
-            log.info("Kimi final profile summary success resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
+            log.info("Kimi 最终画像摘要成功 resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
                     profile.getResolvedName(),
                     profile.getSummary() == null ? 0 : profile.getSummary().length(),
                     profile.getTags() == null ? 0 : profile.getTags().size(),
@@ -138,15 +138,15 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                                              ResolvedPersonProfile draftProfile) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
-        log.info("Kimi profile judgement start fallbackName={} candidateCount={} pageSummaryCount={}",
+        log.info("Kimi 综合判断开始 fallbackName={} candidateCount={} pageSummaryCount={}",
                 fallbackName,
                 candidateNames == null ? 0 : candidateNames.size(),
                 pageSummaries == null ? 0 : pageSummaries.size());
 
-        return RetryUtils.execute("Kimi profile judgement", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+        return RetryUtils.execute("Kimi 综合判断", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
             JsonNode body = callKimi(kimi, buildJudgementRequest(kimi, fallbackName, candidateNames, pageSummaries, draftProfile));
             ResolvedPersonProfile judged = parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
-            log.info("Kimi profile judgement success resolvedName={} summaryLength={}",
+            log.info("Kimi 综合判断成功 resolvedName={} summaryLength={}",
                     judged.getResolvedName(),
                     judged.getSummary() == null ? 0 : judged.getSummary().length());
             return judged;
@@ -157,11 +157,11 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         if (!StringUtils.hasText(kimi.getApiKey())
                 || !StringUtils.hasText(kimi.getBaseUrl())
                 || !StringUtils.hasText(kimi.getModel())) {
-            log.error("Kimi config missing baseUrlConfigured={} modelConfigured={} apiKeyConfigured={}",
+            log.error("Kimi 配置缺失 baseUrlConfigured={} modelConfigured={} apiKeyConfigured={}",
                     StringUtils.hasText(kimi.getBaseUrl()),
                     StringUtils.hasText(kimi.getModel()),
                     StringUtils.hasText(kimi.getApiKey()));
-            throw new ApiCallException("CONFIG_MISSING: kimi config is incomplete");
+            throw new ApiCallException("CONFIG_MISSING: Kimi 配置不完整");
         }
     }
 
@@ -170,7 +170,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         headers.setBearerAuth(kimi.getApiKey());
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        log.info("Kimi request sent model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
+        log.info("Kimi 请求已发送 model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
         ResponseEntity<JsonNode> response = restTemplate.exchange(
                 kimi.getBaseUrl(),
                 HttpMethod.POST,
@@ -485,7 +485,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             String base64 = trimToNull(json.path("enhancedImageBase64").asText(null));
             if (!StringUtils.hasText(base64)) {
-                throw new ApiCallException("EMPTY_RESPONSE: kimi enhanced image is empty");
+                throw new ApiCallException("EMPTY_RESPONSE: Kimi 增强后图片为空");
             }
 
             String filename = firstNonBlank(
@@ -502,8 +502,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             byte[] bytes = Base64.getDecoder().decode(stripDataUrlPrefix(base64));
             return new InMemoryMultipartFile(filename, contentType, bytes);
         } catch (JsonProcessingException | IllegalArgumentException ex) {
-            log.warn("Kimi face enhancement parse failed error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: kimi enhanced image is not valid", ex);
+            log.warn("Kimi 人脸增强结果解析失败 error={}", ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: Kimi 增强后图片格式不合法", ex);
         }
     }
 
@@ -513,8 +513,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             return readStringList(json.path("candidateNames"));
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi face candidates parse failed error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: kimi face candidates is not valid json", ex);
+            log.warn("Kimi 候选姓名结果解析失败 error={}", ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: Kimi 候选姓名结果不是合法 JSON", ex);
         }
     }
 
@@ -524,7 +524,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             String summary = json.path("summary").asText(null);
             if (!StringUtils.hasText(summary)) {
-                throw new ApiCallException("EMPTY_RESPONSE: kimi page summary is empty");
+                throw new ApiCallException("EMPTY_RESPONSE: Kimi 页面摘要为空");
             }
 
             return new PageSummary()
@@ -535,8 +535,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(readStringList(json.path("tags")));
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi page summary parse failed error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: kimi page summary is not valid json", ex);
+            log.warn("Kimi 页面摘要解析失败 error={}", ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: Kimi 页面摘要不是合法 JSON", ex);
         }
     }
 
@@ -548,8 +548,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             return toProfile(json, fallbackName, pageSummaries == null ? List.of() : pageSummaries, null);
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi final profile parse failed fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: kimi content is not valid json", ex);
+            log.warn("Kimi 最终画像解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: Kimi 返回内容不是合法 JSON", ex);
         }
     }
 
@@ -562,8 +562,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
             return toProfile(json, fallbackName, pageSummaries == null ? List.of() : pageSummaries, draftProfile);
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi judgement profile parse failed fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: kimi judgement content is not valid json", ex);
+            log.warn("Kimi 综合判断结果解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: Kimi 综合判断内容不是合法 JSON", ex);
         }
     }
 
@@ -634,7 +634,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     private String extractContent(JsonNode body) {
         String content = body == null ? null : body.path("choices").path(0).path("message").path("content").asText(null);
         if (!StringUtils.hasText(content)) {
-            throw new ApiCallException("EMPTY_RESPONSE: kimi content is empty");
+            throw new ApiCallException("EMPTY_RESPONSE: Kimi 返回内容为空");
         }
         return content;
     }
@@ -686,7 +686,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         try {
             return Base64.getEncoder().encodeToString(image.getBytes());
         } catch (IOException ex) {
-            throw new ApiCallException("INVALID_IMAGE: unable to read image bytes", ex);
+            throw new ApiCallException("INVALID_IMAGE: 无法读取图片字节内容", ex);
         }
     }
 

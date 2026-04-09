@@ -38,7 +38,7 @@ public final class RetryUtils {
             }
             if (attempt < maxRetries) {
                 long sleepMs = initialBackoffMs * (1L << (attempt - 1));
-                log.warn("{} attempt {} failed, retrying in {} ms", name, attempt, sleepMs);
+                log.warn("{} 第 {} 次尝试失败，将在 {} 毫秒后重试", name, attempt, sleepMs);
                 try {
                     Thread.sleep(sleepMs);
                 } catch (InterruptedException interruptedException) {
