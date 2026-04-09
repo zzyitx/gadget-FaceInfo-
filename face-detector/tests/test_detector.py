@@ -49,7 +49,7 @@ def _build_two_face_like_image() -> bytes:
 
 
 def test_detects_multiple_regions_and_returns_public_payload():
-    detector = FaceDetector(prefer_mtcnn=False)
+    detector = FaceDetector(prefer_mtcnn=False, non_mtcnn_quality_gate=False)
 
     result = detector.detect_bytes(_build_two_face_like_image())
 
@@ -316,3 +316,35 @@ def test_mtcnn_quality_gate_can_be_disabled():
     payload = detector.detect_image(image)
 
     assert len(payload.faces) == 1
+
+
+def test_non_mtcnn_quality_gate_filters_non_face_regions():
+    image = Image.new("RGB", (120, 80), "#1A4D9B")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((10, 10, 49, 49), fill="#F2C6A0")
+    draw.rectangle((70, 10, 109, 49), fill="#1A4D9B")
+
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=40, height=40),
+                        confidence=0.72,
+                        backend="opencv-haar",
+                    ),
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=70, y=10, width=40, height=40),
+                        confidence=0.72,
+                        backend="opencv-haar",
+                    ),
+                ]
+            )
+        ],
+        non_mtcnn_quality_gate=True,
+    )
+
+    payload = detector.detect_image(image)
+
+    assert len(payload.faces) == 1
+    assert payload.faces[0].bbox.x == 10

@@ -7,7 +7,8 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import app
+from app import create_app
+from detector import FaceDetector
 
 
 class FakeUploadFile:
@@ -28,11 +29,17 @@ def _build_single_face_like_image() -> bytes:
     return buffer.getvalue()
 
 
+def _build_test_app():
+    return create_app(detector=FaceDetector(prefer_mtcnn=False, non_mtcnn_quality_gate=False))
+
+
 def test_detect_route_is_registered():
+    app = _build_test_app()
     assert "/detect" in app.local_routes
 
 
 def test_detect_route_returns_expected_payload_shape():
+    app = _build_test_app()
     payload = asyncio.run(app.local_routes["/detect"](FakeUploadFile(_build_single_face_like_image())))
 
     assert payload["detection_id"]
@@ -44,6 +51,7 @@ def test_detect_route_returns_expected_payload_shape():
 
 
 def test_detect_route_returns_error_payload_for_invalid_image():
+    app = _build_test_app()
     payload = asyncio.run(app.local_routes["/detect"](FakeUploadFile(b"not-an-image")))
 
     assert payload["status_code"] == 400

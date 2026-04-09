@@ -298,12 +298,14 @@ class FaceDetector:
         confidence_threshold: float = 0.55,
         allow_non_mtcnn_fallback: bool = False,
         mtcnn_quality_gate: bool = True,
+        non_mtcnn_quality_gate: bool = True,
     ) -> None:
         self.crop_padding = crop_padding
         self.max_pixels = max_pixels
         self.confidence_threshold = max(0.0, min(1.0, confidence_threshold))
         self.allow_non_mtcnn_fallback = allow_non_mtcnn_fallback
         self.mtcnn_quality_gate = mtcnn_quality_gate
+        self.non_mtcnn_quality_gate = non_mtcnn_quality_gate
         self._eye_classifier = self._init_eye_classifier() if mtcnn_quality_gate else None
         self._backends = backends or self._resolve_backends(prefer_mtcnn=prefer_mtcnn)
 
@@ -439,8 +441,15 @@ class FaceDetector:
             aspect_ratio = box_width / max(1.0, float(box_height))
             if aspect_ratio < 0.45 or aspect_ratio > 1.9:
                 continue
-            if candidate.backend == "mtcnn" and self.mtcnn_quality_gate:
-                if not self._passes_mtcnn_quality_gate(image, x, y, box_width, box_height, candidate.confidence):
+            should_check_quality = (
+                (candidate.backend == "mtcnn" and self.mtcnn_quality_gate)
+                or (
+                    candidate.backend in {"opencv-haar", "connected-component"}
+                    and self.non_mtcnn_quality_gate
+                )
+            )
+            if should_check_quality:
+                if not self._passes_face_quality_gate(image, x, y, box_width, box_height, candidate.confidence):
                     continue
             filtered.append(
                 _FaceCandidate(
@@ -482,7 +491,7 @@ class FaceDetector:
         except Exception:  # pragma: no cover - 初始化容错
             return None
 
-    def _passes_mtcnn_quality_gate(
+    def _passes_face_quality_gate(
         self,
         image: Image.Image,
         x: int,
@@ -496,6 +505,9 @@ class FaceDetector:
             return False
 
         skin_ratio = self._estimate_skin_ratio(crop)
+        # 肤色比例足够高时直接放行，避免眼镜/偏头导致眼睛级联漏检。
+        if skin_ratio >= 0.2:
+            return True
         if confidence < 0.9 and skin_ratio < 0.08:
             return False
         if skin_ratio < 0.05:
