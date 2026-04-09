@@ -7,6 +7,7 @@ import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,16 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
         return new PageSummary()
                 .setSourceUrl(page.getUrl())
                 .setTitle(page.getTitle());
+    }
+
+    @Override
+    public MultipartFile enhanceFaceImage(MultipartFile image) {
+        return image;
+    }
+
+    @Override
+    public List<String> recognizeFaceCandidateNames(MultipartFile image) {
+        return List.of();
     }
 
     @Override
@@ -65,4 +76,13 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
 
         return profile;
     }
+
+    @Override
+    public ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
+                                                             List<String> candidateNames,
+                                                             List<PageSummary> pageSummaries,
+                                                             ResolvedPersonProfile draftProfile) {
+        return draftProfile == null ? new ResolvedPersonProfile().setResolvedName(fallbackName) : draftProfile;
+    }
 }
+

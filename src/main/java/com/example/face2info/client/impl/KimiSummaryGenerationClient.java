@@ -8,6 +8,7 @@ import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.util.InMemoryMultipartFile;
 import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -23,7 +24,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +41,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private static final String PAGE_SUMMARY_FUNCTION_NAME = "submit_page_summary";
     private static final String PERSON_PROFILE_FUNCTION_NAME = "submit_person_profile";
+    private static final String FACE_ENHANCE_FUNCTION_NAME = "submit_enhanced_face_image";
+    private static final String FACE_CANDIDATE_FUNCTION_NAME = "submit_face_candidate_names";
+    private static final String PROFILE_JUDGEMENT_FUNCTION_NAME = "submit_profile_judgement";
 
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
@@ -70,6 +77,42 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
+    public MultipartFile enhanceFaceImage(MultipartFile image) {
+        KimiApiProperties kimi = properties.getApi().getKimi();
+        validateConfig(kimi);
+        log.info("Kimi face enhancement start fileName={} size={} contentType={}",
+                image == null ? null : image.getOriginalFilename(),
+                image == null ? 0 : image.getSize(),
+                image == null ? null : image.getContentType());
+
+        return RetryUtils.execute("Kimi enhance face image", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+            JsonNode body = callKimi(kimi, buildFaceEnhanceRequest(kimi, image));
+            MultipartFile enhanced = parseEnhancedImage(image, body);
+            log.info("Kimi face enhancement success originalName={} enhancedName={} enhancedSize={}",
+                    image == null ? null : image.getOriginalFilename(),
+                    enhanced.getOriginalFilename(),
+                    enhanced.getSize());
+            return enhanced;
+        });
+    }
+
+    @Override
+    public List<String> recognizeFaceCandidateNames(MultipartFile image) {
+        KimiApiProperties kimi = properties.getApi().getKimi();
+        validateConfig(kimi);
+        log.info("Kimi face candidate recognition start fileName={} size={}",
+                image == null ? null : image.getOriginalFilename(),
+                image == null ? 0 : image.getSize());
+
+        return RetryUtils.execute("Kimi recognize face names", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+            JsonNode body = callKimi(kimi, buildFaceCandidateRequest(kimi, image));
+            List<String> candidates = parseFaceCandidates(body);
+            log.info("Kimi face candidate recognition success count={} candidates={}", candidates.size(), candidates);
+            return candidates;
+        });
+    }
+
+    @Override
     public ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
@@ -85,6 +128,28 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     profile.getTags() == null ? 0 : profile.getTags().size(),
                     profile.getEvidenceUrls() == null ? 0 : profile.getEvidenceUrls().size());
             return profile;
+        });
+    }
+
+    @Override
+    public ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
+                                                             List<String> candidateNames,
+                                                             List<PageSummary> pageSummaries,
+                                                             ResolvedPersonProfile draftProfile) {
+        KimiApiProperties kimi = properties.getApi().getKimi();
+        validateConfig(kimi);
+        log.info("Kimi profile judgement start fallbackName={} candidateCount={} pageSummaryCount={}",
+                fallbackName,
+                candidateNames == null ? 0 : candidateNames.size(),
+                pageSummaries == null ? 0 : pageSummaries.size());
+
+        return RetryUtils.execute("Kimi profile judgement", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+            JsonNode body = callKimi(kimi, buildJudgementRequest(kimi, fallbackName, candidateNames, pageSummaries, draftProfile));
+            ResolvedPersonProfile judged = parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
+            log.info("Kimi profile judgement success resolvedName={} summaryLength={}",
+                    judged.getResolvedName(),
+                    judged.getSummary() == null ? 0 : judged.getSummary().length());
+            return judged;
         });
     }
 
@@ -126,7 +191,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of(
                                 "name", PAGE_SUMMARY_FUNCTION_NAME,
-                                "description", "提交单篇页面摘要的结构化结果",
+                                "description", "鎻愪氦鍗曠瘒椤甸潰鎽樿鐨勭粨鏋勫寲缁撴灉",
                                 "parameters", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
@@ -149,6 +214,66 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
+    private Map<String, Object> buildFaceEnhanceRequest(KimiApiProperties kimi, MultipartFile image) {
+        return Map.of(
+                "model", kimi.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "user", "content", buildFaceEnhancePrompt(image))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", FACE_ENHANCE_FUNCTION_NAME,
+                                "description", "Submit enhanced face image",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "enhancedImageBase64", Map.of("type", "string"),
+                                                "filename", Map.of("type", "string"),
+                                                "contentType", Map.of("type", "string")
+                                        ),
+                                        "required", List.of("enhancedImageBase64"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of(
+                        "type", "function",
+                        "function", Map.of("name", FACE_ENHANCE_FUNCTION_NAME)
+                )
+        );
+    }
+
+    private Map<String, Object> buildFaceCandidateRequest(KimiApiProperties kimi, MultipartFile image) {
+        return Map.of(
+                "model", kimi.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "user", "content", buildFaceCandidatePrompt(image))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", FACE_CANDIDATE_FUNCTION_NAME,
+                                "description", "Submit face candidate names",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "candidateNames", Map.of("type", "array", "items", Map.of("type", "string"))
+                                        ),
+                                        "required", List.of("candidateNames"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of(
+                        "type", "function",
+                        "function", Map.of("name", FACE_CANDIDATE_FUNCTION_NAME)
+                )
+        );
+    }
+
     private Map<String, Object> buildPersonRequest(KimiApiProperties kimi,
                                                    String fallbackName,
                                                    List<PageSummary> pageSummaries) {
@@ -162,32 +287,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of(
                                 "name", PERSON_PROFILE_FUNCTION_NAME,
-                                "description", "提交人物聚合画像的结构化结果",
-                                "parameters", Map.of(
-                                        "type", "object",
-                                        "properties", Map.of(
-                                                "resolvedName", Map.of("type", "string"),
-                                                "description", Map.of("type", "string"),
-                                                "summary", Map.of("type", "string"),
-                                                "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
-                                                "tags", Map.of("type", "array", "items", Map.of("type", "string")),
-                                                "wikipedia", Map.of("type", "string"),
-                                                "officialWebsite", Map.of("type", "string"),
-                                                "basicInfo", Map.of(
-                                                        "type", "object",
-                                                        "properties", Map.of(
-                                                                "birthDate", Map.of("type", "string"),
-                                                                "education", Map.of("type", "array", "items", Map.of("type", "string")),
-                                                                "occupations", Map.of("type", "array", "items", Map.of("type", "string")),
-                                                                "biographies", Map.of("type", "array", "items", Map.of("type", "string"))
-                                                        ),
-                                                        "additionalProperties", false
-                                                ),
-                                                "evidenceUrls", Map.of("type", "array", "items", Map.of("type", "string"))
-                                        ),
-                                        "required", List.of("resolvedName"),
-                                        "additionalProperties", false
-                                )
+                                "description", "鎻愪氦浜虹墿鑱氬悎鐢诲儚鐨勭粨鏋勫寲缁撴灉",
+                                "parameters", profileSchema()
                         )
                 )),
                 "tool_choice", Map.of(
@@ -197,20 +298,95 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
+    private Map<String, Object> buildJudgementRequest(KimiApiProperties kimi,
+                                                       String fallbackName,
+                                                       List<String> candidateNames,
+                                                       List<PageSummary> pageSummaries,
+                                                       ResolvedPersonProfile draftProfile) {
+        return Map.of(
+                "model", kimi.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "user", "content", buildJudgementPrompt(fallbackName, candidateNames, pageSummaries, draftProfile))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", PROFILE_JUDGEMENT_FUNCTION_NAME,
+                                "description", "Submit comprehensive judged profile",
+                                "parameters", profileSchema()
+                        )
+                )),
+                "tool_choice", Map.of(
+                        "type", "function",
+                        "function", Map.of("name", PROFILE_JUDGEMENT_FUNCTION_NAME)
+                )
+        );
+    }
+
+    private Map<String, Object> profileSchema() {
+        return Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "resolvedName", Map.of("type", "string"),
+                        "description", Map.of("type", "string"),
+                        "summary", Map.of("type", "string"),
+                        "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
+                        "tags", Map.of("type", "array", "items", Map.of("type", "string")),
+                        "wikipedia", Map.of("type", "string"),
+                        "officialWebsite", Map.of("type", "string"),
+                        "basicInfo", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "birthDate", Map.of("type", "string"),
+                                        "education", Map.of("type", "array", "items", Map.of("type", "string")),
+                                        "occupations", Map.of("type", "array", "items", Map.of("type", "string")),
+                                        "biographies", Map.of("type", "array", "items", Map.of("type", "string"))
+                                ),
+                                "additionalProperties", false
+                        ),
+                        "evidenceUrls", Map.of("type", "array", "items", Map.of("type", "string"))
+                ),
+                "required", List.of("resolvedName"),
+                "additionalProperties", false
+        );
+    }
+
     private String buildPagePrompt(String fallbackName, PageContent page) {
         return """
-                请基于以下单篇正文提取人物信息，只能输出 JSON，且返回内容语言必须为中文。
-                JSON 字段固定为 resolvedNameCandidate、summary、keyFacts、tags、sourceUrl。
-                fallbackName: %s
+                璇峰熀浜庝互涓嬪崟绡囨鏂囨彁鍙栦汉鐗╀俊鎭紝鍙兘杈撳嚭 JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?resolvedNameCandidate銆乻ummary銆乲eyFacts銆乼ags銆乻ourceUrl銆乼itle銆?                fallbackName: %s
                 title: %s
                 url: %s
-                正文如下：
-                %s
+                姝ｆ枃濡備笅锛?                %s
                 """.formatted(
                 fallbackName,
                 page == null ? null : page.getTitle(),
                 page == null ? null : page.getUrl(),
                 page == null ? null : page.getContent()
+        );
+    }
+
+    private String buildFaceEnhancePrompt(MultipartFile image) {
+        return """
+                璇峰涓嬮潰鐨勪汉鑴稿浘鍍忚繘琛岄珮娓呭寲澧炲己锛屽敖閲忎繚鎸佷汉鐗╄韩浠界壒寰佷笉鍙樸€?                鍙緭鍑?JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?enhancedImageBase64銆乫ilename銆乧ontentType銆?                鍏朵腑 enhancedImageBase64 鍙厑璁哥函 base64 鍐呭锛屼笉瑕?data url 鍓嶇紑銆?                filename: %s
+                contentType: %s
+                imageBase64: %s
+                """.formatted(
+                image == null ? null : image.getOriginalFilename(),
+                image == null ? null : image.getContentType(),
+                toBase64(image)
+        );
+    }
+
+    private String buildFaceCandidatePrompt(MultipartFile image) {
+        return """
+                璇锋牴鎹笅闈㈢殑浜鸿劯鍥惧儚鍒ゆ柇浜虹墿韬唤锛岀粰鍑烘渶澶?3 涓€欓€夊悕绉帮紙鎸夊彲淇″害闄嶅簭锛夈€?                鍙緭鍑?JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?candidateNames銆?                filename: %s
+                contentType: %s
+                imageBase64: %s
+                """.formatted(
+                image == null ? null : image.getOriginalFilename(),
+                image == null ? null : image.getContentType(),
+                toBase64(image)
         );
     }
 
@@ -234,13 +410,93 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于以下篇级摘要集合生成人物最终画像，只能输出 JSON，且返回内容语言必须为中文。
-                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
-                basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
-                fallbackName: %s
-                篇级摘要如下：
-                %s
+                璇峰熀浜庝互涓嬬瘒绾ф憳瑕侀泦鍚堢敓鎴愪汉鐗╂渶缁堢敾鍍忥紝鍙兘杈撳嚭 JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?resolvedName銆乨escription銆乻ummary銆乲eyFacts銆乼ags銆亀ikipedia銆乷fficialWebsite銆乥asicInfo銆乪videnceUrls銆?                basicInfo 涓哄璞★紝瀛楁鍥哄畾涓?birthDate銆乪ducation銆乷ccupations銆乥iographies銆?                fallbackName: %s
+                绡囩骇鎽樿濡備笅锛?                %s
                 """.formatted(fallbackName, pageSummaryContent);
+    }
+
+    private String buildJudgementPrompt(String fallbackName,
+                                        List<String> candidateNames,
+                                        List<PageSummary> pageSummaries,
+                                        ResolvedPersonProfile draftProfile) {
+        String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
+                .map(summary -> """
+                        sourceUrl: %s
+                        title: %s
+                        resolvedNameCandidate: %s
+                        summary: %s
+                        keyFacts: %s
+                        tags: %s
+                        """.formatted(
+                        summary.getSourceUrl(),
+                        summary.getTitle(),
+                        summary.getResolvedNameCandidate(),
+                        summary.getSummary(),
+                        summary.getKeyFacts(),
+                        summary.getTags()
+                ))
+                .collect(Collectors.joining("\n---\n"));
+
+        return """
+                璇峰熀浜庡€欓€夊悕绉般€佺瘒绾ф€荤粨鍜屾渶缁堟€荤粨鑽夌杩涜涓€娆＄患鍚堝垽鏂紝杈撳嚭鏇寸ǔ鍋ョ殑浜虹墿鏈€缁堢敾鍍忋€?                鍙緭鍑?JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?resolvedName銆乨escription銆乻ummary銆乲eyFacts銆乼ags銆亀ikipedia銆乷fficialWebsite銆乥asicInfo銆乪videnceUrls銆?                basicInfo 涓哄璞★紝瀛楁鍥哄畾涓?birthDate銆乪ducation銆乷ccupations銆乥iographies銆?                fallbackName: %s
+                candidateNames: %s
+                draftResolvedName: %s
+                draftDescription: %s
+                draftSummary: %s
+                draftKeyFacts: %s
+                draftTags: %s
+                draftEvidenceUrls: %s
+                绡囩骇鎽樿濡備笅锛?                %s
+                """.formatted(
+                fallbackName,
+                candidateNames,
+                draftProfile == null ? null : draftProfile.getResolvedName(),
+                draftProfile == null ? null : draftProfile.getDescription(),
+                draftProfile == null ? null : draftProfile.getSummary(),
+                draftProfile == null ? null : draftProfile.getKeyFacts(),
+                draftProfile == null ? null : draftProfile.getTags(),
+                draftProfile == null ? null : draftProfile.getEvidenceUrls(),
+                pageSummaryContent
+        );
+    }
+
+    private MultipartFile parseEnhancedImage(MultipartFile originalImage, JsonNode body) {
+        String content = extractStructuredPayload(body, FACE_ENHANCE_FUNCTION_NAME);
+        try {
+            JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
+            String base64 = trimToNull(json.path("enhancedImageBase64").asText(null));
+            if (!StringUtils.hasText(base64)) {
+                throw new ApiCallException("EMPTY_RESPONSE: kimi enhanced image is empty");
+            }
+
+            String filename = firstNonBlank(
+                    trimToNull(json.path("filename").asText(null)),
+                    originalImage == null ? null : originalImage.getOriginalFilename(),
+                    "enhanced-face.jpg"
+            );
+            String contentType = firstNonBlank(
+                    trimToNull(json.path("contentType").asText(null)),
+                    originalImage == null ? null : originalImage.getContentType(),
+                    "image/jpeg"
+            );
+
+            byte[] bytes = Base64.getDecoder().decode(stripDataUrlPrefix(base64));
+            return new InMemoryMultipartFile(filename, contentType, bytes);
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            log.warn("Kimi face enhancement parse failed error={}", ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: kimi enhanced image is not valid", ex);
+        }
+    }
+
+    private List<String> parseFaceCandidates(JsonNode body) {
+        String content = extractStructuredPayload(body, FACE_CANDIDATE_FUNCTION_NAME);
+        try {
+            JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
+            return readStringList(json.path("candidateNames"));
+        } catch (JsonProcessingException ex) {
+            log.warn("Kimi face candidates parse failed error={}", ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: kimi face candidates is not valid json", ex);
+        }
     }
 
     private PageSummary parsePageSummary(PageContent page, JsonNode body) {
@@ -253,9 +509,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             }
 
             return new PageSummary()
-                    .setSourceUrl(firstNonBlank(json.path("sourceUrl").asText(null), page == null ? null : page.getUrl()))
-                    .setTitle(firstNonBlank(json.path("title").asText(null), page == null ? null : page.getTitle()))
-                    .setResolvedNameCandidate(json.path("resolvedNameCandidate").asText(null))
+                    .setSourceUrl(firstNonBlank(trimToNull(json.path("sourceUrl").asText(null)), page == null ? null : page.getUrl()))
+                    .setTitle(firstNonBlank(trimToNull(json.path("title").asText(null)), page == null ? null : page.getTitle()))
+                    .setResolvedNameCandidate(trimToNull(json.path("resolvedNameCandidate").asText(null)))
                     .setSummary(summary.trim())
                     .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(readStringList(json.path("tags")));
@@ -271,29 +527,89 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         String content = extractStructuredPayload(body, PERSON_PROFILE_FUNCTION_NAME);
         try {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
-            List<String> evidenceUrls = readStringList(json.path("evidenceUrls"));
-            if (evidenceUrls.isEmpty() && pageSummaries != null) {
-                evidenceUrls = pageSummaries.stream()
-                        .map(PageSummary::getSourceUrl)
-                        .filter(StringUtils::hasText)
-                        .distinct()
-                        .toList();
-            }
-
-            return new ResolvedPersonProfile()
-                    .setResolvedName(firstNonBlank(json.path("resolvedName").asText(null), fallbackName))
-                    .setDescription(trimToNull(json.path("description").asText(null)))
-                    .setSummary(trimToNull(json.path("summary").asText(null)))
-                    .setKeyFacts(readStringList(json.path("keyFacts")))
-                    .setTags(readStringList(json.path("tags")))
-                    .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
-                    .setOfficialWebsite(trimToNull(json.path("officialWebsite").asText(null)))
-                    .setBasicInfo(readBasicInfo(json.path("basicInfo")))
-                    .setEvidenceUrls(evidenceUrls);
+            return toProfile(json, fallbackName, pageSummaries == null ? List.of() : pageSummaries, null);
         } catch (JsonProcessingException ex) {
             log.warn("Kimi final profile parse failed fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
             throw new ApiCallException("INVALID_RESPONSE: kimi content is not valid json", ex);
         }
+    }
+
+    private ResolvedPersonProfile parseJudgedProfile(String fallbackName,
+                                                     List<PageSummary> pageSummaries,
+                                                     ResolvedPersonProfile draftProfile,
+                                                     JsonNode body) {
+        String content = extractStructuredPayload(body, PROFILE_JUDGEMENT_FUNCTION_NAME);
+        try {
+            JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
+            return toProfile(json, fallbackName, pageSummaries == null ? List.of() : pageSummaries, draftProfile);
+        } catch (JsonProcessingException ex) {
+            log.warn("Kimi judgement profile parse failed fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: kimi judgement content is not valid json", ex);
+        }
+    }
+
+    private ResolvedPersonProfile toProfile(JsonNode json,
+                                            String fallbackName,
+                                            List<PageSummary> pageSummaries,
+                                            ResolvedPersonProfile draftProfile) {
+        List<String> evidenceUrls = readStringList(json.path("evidenceUrls"));
+        if (evidenceUrls.isEmpty() && pageSummaries != null && !pageSummaries.isEmpty()) {
+            evidenceUrls = pageSummaries.stream()
+                    .map(PageSummary::getSourceUrl)
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .toList();
+        }
+        if (evidenceUrls.isEmpty() && draftProfile != null && draftProfile.getEvidenceUrls() != null) {
+            evidenceUrls = draftProfile.getEvidenceUrls();
+        }
+
+        ResolvedPersonProfile profile = new ResolvedPersonProfile()
+                .setResolvedName(firstNonBlank(trimToNull(json.path("resolvedName").asText(null)), fallbackName))
+                .setDescription(trimToNull(json.path("description").asText(null)))
+                .setSummary(trimToNull(json.path("summary").asText(null)))
+                .setKeyFacts(readStringList(json.path("keyFacts")))
+                .setTags(readStringList(json.path("tags")))
+                .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
+                .setOfficialWebsite(trimToNull(json.path("officialWebsite").asText(null)))
+                .setBasicInfo(readBasicInfo(json.path("basicInfo")))
+                .setEvidenceUrls(evidenceUrls);
+
+        if (draftProfile != null) {
+            if (!StringUtils.hasText(profile.getDescription())) {
+                profile.setDescription(draftProfile.getDescription());
+            }
+            if (!StringUtils.hasText(profile.getSummary())) {
+                profile.setSummary(draftProfile.getSummary());
+            }
+            if ((profile.getKeyFacts() == null || profile.getKeyFacts().isEmpty()) && draftProfile.getKeyFacts() != null) {
+                profile.setKeyFacts(draftProfile.getKeyFacts());
+            }
+            if ((profile.getTags() == null || profile.getTags().isEmpty()) && draftProfile.getTags() != null) {
+                profile.setTags(draftProfile.getTags());
+            }
+            if (!StringUtils.hasText(profile.getWikipedia())) {
+                profile.setWikipedia(draftProfile.getWikipedia());
+            }
+            if (!StringUtils.hasText(profile.getOfficialWebsite())) {
+                profile.setOfficialWebsite(draftProfile.getOfficialWebsite());
+            }
+            if ((profile.getBasicInfo() == null || isBasicInfoEmpty(profile.getBasicInfo())) && draftProfile.getBasicInfo() != null) {
+                profile.setBasicInfo(draftProfile.getBasicInfo());
+            }
+        }
+
+        return profile;
+    }
+
+    private boolean isBasicInfoEmpty(PersonBasicInfo basicInfo) {
+        if (basicInfo == null) {
+            return true;
+        }
+        return !StringUtils.hasText(basicInfo.getBirthDate())
+                && (basicInfo.getEducation() == null || basicInfo.getEducation().isEmpty())
+                && (basicInfo.getOccupations() == null || basicInfo.getOccupations().isEmpty())
+                && (basicInfo.getBiographies() == null || basicInfo.getBiographies().isEmpty());
     }
 
     private String extractContent(JsonNode body) {
@@ -344,8 +660,38 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .setBiographies(readStringList(basicInfoNode.path("biographies")));
     }
 
-    private String firstNonBlank(String primary, String fallback) {
-        return StringUtils.hasText(primary) ? primary : fallback;
+    private String toBase64(MultipartFile image) {
+        if (image == null) {
+            return "";
+        }
+        try {
+            return Base64.getEncoder().encodeToString(image.getBytes());
+        } catch (IOException ex) {
+            throw new ApiCallException("INVALID_IMAGE: unable to read image bytes", ex);
+        }
+    }
+
+    private String stripDataUrlPrefix(String value) {
+        if (!StringUtils.hasText(value)) {
+            return value;
+        }
+        int index = value.indexOf(",");
+        if (value.startsWith("data:") && index > 0) {
+            return value.substring(index + 1);
+        }
+        return value;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String trimToNull(String value) {
@@ -373,3 +719,4 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         return withoutOpeningFence;
     }
 }
+
