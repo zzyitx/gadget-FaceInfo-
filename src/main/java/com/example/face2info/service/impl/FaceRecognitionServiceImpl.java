@@ -2,6 +2,7 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.SerpApiClient;
+import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
@@ -36,30 +37,82 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     private final SerpApiClient serpApiClient;
     private final NameExtractor nameExtractor;
     private final TmpfilesClient tmpfilesClient;
+    private final SummaryGenerationClient summaryGenerationClient;
 
     public FaceRecognitionServiceImpl(GoogleSearchClient googleSearchClient,
                                       SerpApiClient serpApiClient,
                                       NameExtractor nameExtractor,
-                                      TmpfilesClient tmpfilesClient) {
+                                      TmpfilesClient tmpfilesClient,
+                                      SummaryGenerationClient summaryGenerationClient) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.nameExtractor = nameExtractor;
         this.tmpfilesClient = tmpfilesClient;
+        this.summaryGenerationClient = summaryGenerationClient;
     }
 
     @Override
     public RecognitionEvidence recognize(MultipartFile image) {
         log.info("人脸识别模块开始 fileName={} size={} contentType={}",
                 image.getOriginalFilename(), image.getSize(), image.getContentType());
-        String imageUrl = tmpfilesClient.uploadImage(image);
+
+        RecognitionEvidence evidence = new RecognitionEvidence();
+        MultipartFile processedImage = enhanceFaceImageSafely(image, evidence);
+
+        String imageUrl = tmpfilesClient.uploadImage(processedImage);
         log.info("人脸识别模块已获得临时图片地址 imageUrl={}", imageUrl);
-        RecognitionEvidence evidence = searchByImageUrl(imageUrl);
+
+        RecognitionEvidence searchEvidence = searchByImageUrl(imageUrl);
+        searchEvidence.setSeedQueries(recognizeCandidateNames(processedImage, searchEvidence));
+        searchEvidence.getErrors().addAll(0, evidence.getErrors());
+
         log.info("人脸识别模块完成 imageMatchCount={} seedQueryCount={} webEvidenceCount={} errorCount={}",
-                evidence.getImageMatches().size(),
-                evidence.getSeedQueries().size(),
-                evidence.getWebEvidences().size(),
-                evidence.getErrors().size());
-        return evidence;
+                searchEvidence.getImageMatches().size(),
+                searchEvidence.getSeedQueries().size(),
+                searchEvidence.getWebEvidences().size(),
+                searchEvidence.getErrors().size());
+        return searchEvidence;
+    }
+
+    private MultipartFile enhanceFaceImageSafely(MultipartFile image, RecognitionEvidence evidence) {
+        try {
+            MultipartFile enhanced = summaryGenerationClient.enhanceFaceImage(image);
+            if (enhanced == null || enhanced.isEmpty()) {
+                throw new IllegalStateException("enhanced image is empty");
+            }
+            log.info("人脸图像高清化完成 originalName={} enhancedName={} enhancedSize={}",
+                    image.getOriginalFilename(), enhanced.getOriginalFilename(), enhanced.getSize());
+            return enhanced;
+        } catch (RuntimeException ex) {
+            log.warn("人脸图像高清化失败，回退原图 fileName={} error={}", image.getOriginalFilename(), ex.getMessage(), ex);
+            evidence.getErrors().add("face_enhance: " + ex.getMessage());
+            return image;
+        }
+    }
+
+    private List<String> recognizeCandidateNames(MultipartFile image, RecognitionEvidence evidence) {
+        try {
+            List<String> rawCandidates = summaryGenerationClient.recognizeFaceCandidateNames(image);
+            Set<String> normalized = new LinkedHashSet<>();
+            if (rawCandidates != null) {
+                for (String rawCandidate : rawCandidates) {
+                    String cleaned = nameExtractor.cleanCandidateName(rawCandidate);
+                    if (StringUtils.hasText(cleaned)) {
+                        normalized.add(cleaned);
+                        if (normalized.size() >= MAX_SEED_QUERIES) {
+                            break;
+                        }
+                    }
+                }
+            }
+            List<String> candidates = new ArrayList<>(normalized);
+            log.info("大模型候选名称识别完成 count={} candidates={}", candidates.size(), candidates);
+            return candidates;
+        } catch (RuntimeException ex) {
+            log.warn("大模型候选名称识别失败 fileName={} error={}", image.getOriginalFilename(), ex.getMessage(), ex);
+            evidence.getErrors().add("face_name_recognition: " + ex.getMessage());
+            return List.of();
+        }
     }
 
     private RecognitionEvidence searchByImageUrl(String imageUrl) {
@@ -89,10 +142,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             log.info("识别来源完成 source=yandex_images_similar cumulativeWebEvidenceCount={}", webEvidences.size());
         }
 
-        List<String> seedQueries = extractSeedQueries(lensResponse, yandexAboutResponse, yandexSimilarResponse);
-        evidence.setSeedQueries(seedQueries);
-        log.info("候选名称提取完成 seedQueries={}", seedQueries);
-
         SerpApiResponse bingResponse = safeSearch("bing_images", imageUrl, evidence,
                 () -> serpApiClient.reverseImageSearchByUrlBing(imageUrl));
         if (bingResponse != null && bingResponse.getRoot() != null) {
@@ -116,41 +165,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             log.warn("识别来源失败 source={} imageUrl={} error={}", source, imageUrl, ex.getMessage(), ex);
             evidence.getErrors().add(source + ": " + ex.getMessage());
             return null;
-        }
-    }
-
-    private List<String> extractSeedQueries(SerpApiResponse... responses) {
-        Set<String> queries = new LinkedHashSet<>();
-        for (SerpApiResponse response : responses) {
-            if (response == null || response.getRoot() == null) {
-                continue;
-            }
-            collectSeedQuery(queries, firstNonBlank(response.getRoot(), "knowledgeGraph.title", "knowledge_graph.title"));
-            collectSeedQueriesFromArray(queries, response.getRoot().path("organic"));
-            collectSeedQueriesFromArray(queries, response.getRoot().path("image_results"));
-            if (queries.size() >= MAX_SEED_QUERIES) {
-                break;
-            }
-        }
-        return new ArrayList<>(queries).subList(0, Math.min(queries.size(), MAX_SEED_QUERIES));
-    }
-
-    private void collectSeedQueriesFromArray(Set<String> queries, JsonNode nodes) {
-        if (!nodes.isArray()) {
-            return;
-        }
-        for (JsonNode node : nodes) {
-            collectSeedQuery(queries, node.path("title").asText(null));
-            if (queries.size() >= MAX_SEED_QUERIES) {
-                return;
-            }
-        }
-    }
-
-    private void collectSeedQuery(Set<String> queries, String rawTitle) {
-        String query = nameExtractor.cleanCandidateName(rawTitle);
-        if (StringUtils.hasText(query)) {
-            queries.add(query);
         }
     }
 
@@ -338,3 +352,4 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         SerpApiResponse get();
     }
 }
+

@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class InformationAggregationServiceImpl implements InformationAggregationService {
 
     private static final String SUMMARY_WARNING = "正文智能处理暂时不可用";
+    private static final String JUDGEMENT_WARNING = "综合判断暂时不可用";
     private static final String KIMI_SUFFIX = " (由 Kimi 总结)";
     private static final String SOCIAL_PLACEHOLDER_PLATFORM = "pending";
     private static final String SOCIAL_PLACEHOLDER_URL = "#";
@@ -91,6 +92,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         ResolvedPersonProfile profile = resolveProfileFromEvidence(
                 evidence.getWebEvidences(),
                 firstSeedQuery(evidence),
+                safeList(evidence.getSeedQueries()),
                 result.getWarnings()
         );
         String resolvedName = resolveNameOrFallback(profile, evidence);
@@ -116,10 +118,17 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName) {
-        return resolveProfileFromEvidence(evidences, fallbackName, new ArrayList<>());
+        return resolveProfileFromEvidence(evidences, fallbackName, List.of(), new ArrayList<>());
     }
 
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName, List<String> warnings) {
+        return resolveProfileFromEvidence(evidences, fallbackName, List.of(), warnings);
+    }
+
+    ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences,
+                                                     String fallbackName,
+                                                     List<String> candidateNames,
+                                                     List<String> warnings) {
         List<String> urls = selectTopUrls(evidences);
         if (urls.isEmpty()) {
             return new ResolvedPersonProfile().setResolvedName(fallbackName);
@@ -148,8 +157,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     .setEvidenceUrls(urls);
         }
 
+        ResolvedPersonProfile profile;
         try {
-            ResolvedPersonProfile profile = summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+            profile = summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
             if (profile == null) {
                 warnings.add(SUMMARY_WARNING);
                 return new ResolvedPersonProfile().setResolvedName(fallbackName).setEvidenceUrls(urls);
@@ -161,7 +171,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         .distinct()
                         .toList());
             }
-            return profile;
         } catch (RuntimeException ex) {
             log.error("Kimi 最终总结失败 fallbackName={} pageSummaryCount={} category={} error={}",
                     fallbackName, pageSummaries.size(), classifySummaryFailure(ex), ex.getMessage(), ex);
@@ -169,6 +178,39 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return new ResolvedPersonProfile()
                     .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
+        }
+
+        return applyComprehensiveJudgement(fallbackName, safeList(candidateNames), pageSummaries, profile, warnings);
+    }
+
+    private ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
+                                                              List<String> candidateNames,
+                                                              List<PageSummary> pageSummaries,
+                                                              ResolvedPersonProfile profile,
+                                                              List<String> warnings) {
+        try {
+            ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
+                    fallbackName,
+                    candidateNames,
+                    pageSummaries,
+                    profile
+            );
+            if (judged == null) {
+                warnings.add(JUDGEMENT_WARNING);
+                return profile;
+            }
+            if (!StringUtils.hasText(judged.getResolvedName()) && StringUtils.hasText(profile.getResolvedName())) {
+                judged.setResolvedName(profile.getResolvedName());
+            }
+            if ((judged.getEvidenceUrls() == null || judged.getEvidenceUrls().isEmpty()) && profile.getEvidenceUrls() != null) {
+                judged.setEvidenceUrls(profile.getEvidenceUrls());
+            }
+            return judged;
+        } catch (RuntimeException ex) {
+            log.warn("综合判断失败 fallbackName={} candidateCount={} pageSummaryCount={} error={}",
+                    fallbackName, candidateNames.size(), pageSummaries.size(), ex.getMessage(), ex);
+            warnings.add(JUDGEMENT_WARNING);
+            return profile;
         }
     }
 
@@ -300,6 +342,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return evidence.getSeedQueries().get(0);
     }
 
+    private List<String> safeList(List<String> values) {
+        return values == null ? List.of() : values;
+    }
+
     private List<SocialAccount> collectSocialAccounts(String name) {
         log.info("社交账号聚合跳过 resolvedName={} reason=feature_in_progress", name);
         return List.of(new SocialAccount()
@@ -347,3 +393,4 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
     }
 }
+
