@@ -279,6 +279,49 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldApplyComprehensiveJudgementAfterFinalSummary() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("page summary");
+        ResolvedPersonProfile draftProfile = new ResolvedPersonProfile()
+                .setResolvedName("Uncertain Name")
+                .setSummary("draft summary")
+                .setEvidenceUrls(List.of("https://example.com/a"));
+        ResolvedPersonProfile judgedProfile = new ResolvedPersonProfile()
+                .setResolvedName("Jay Chou")
+                .setSummary("judged summary")
+                .setEvidenceUrls(List.of("https://example.com/a"));
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(summaryGenerationClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary))).thenReturn(draftProfile);
+        when(summaryGenerationClient.applyComprehensiveJudgement(
+                "Jay Chou",
+                List.of("Jay Chou", "周杰伦"),
+                List.of(pageSummary),
+                draftProfile)).thenReturn(judgedProfile);
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        );
+
+        AggregationResult result = service.aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou", "周杰伦"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getName()).isEqualTo("Jay Chou");
+        assertThat(result.getPerson().getSummary()).isEqualTo("judged summary (由 Kimi 总结)");
+        verify(summaryGenerationClient).applyComprehensiveJudgement(
+                "Jay Chou",
+                List.of("Jay Chou", "周杰伦"),
+                List.of(pageSummary),
+                draftProfile);
+    }
+
+    @Test
     void shouldFallbackToWebEvidenceAndStillCallKimiWhenJinaFails() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -300,6 +343,12 @@ class InformationAggregationServiceImplTest {
                         .setResolvedName("Jay Chou")
                         .setSummary("Jay Chou is a singer.")
                         .setEvidenceUrls(List.of("https://example.com/a")));
+        when(summaryGenerationClient.applyComprehensiveJudgement(
+                anyString(),
+                anyList(),
+                anyList(),
+                org.mockito.ArgumentMatchers.any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(3));
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
@@ -390,6 +439,11 @@ class InformationAggregationServiceImplTest {
             when(summaryGenerationClient.summarizePage(fallbackName, page)).thenReturn(pageSummary);
         }
         when(summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries)).thenReturn(profile);
+        when(summaryGenerationClient.applyComprehensiveJudgement(
+                fallbackName,
+                List.of(fallbackName),
+                pageSummaries,
+                profile)).thenReturn(profile);
     }
 
     private ApiProperties createApiProperties(Integer maxPageReads) {
