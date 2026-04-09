@@ -191,7 +191,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of(
                                 "name", PAGE_SUMMARY_FUNCTION_NAME,
-                                "description", "鎻愪氦鍗曠瘒椤甸潰鎽樿鐨勭粨鏋勫寲缁撴灉",
+                                "description", "提交单篇页面摘要的结构化结果",
                                 "parameters", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
@@ -225,7 +225,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of(
                                 "name", FACE_ENHANCE_FUNCTION_NAME,
-                                "description", "Submit enhanced face image",
+                                "description", "提交增强人脸图像",
                                 "parameters", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
@@ -256,7 +256,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of(
                                 "name", FACE_CANDIDATE_FUNCTION_NAME,
-                                "description", "Submit face candidate names",
+                                "description", "提交图像识别的人物候选名称",
                                 "parameters", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
@@ -287,7 +287,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of(
                                 "name", PERSON_PROFILE_FUNCTION_NAME,
-                                "description", "鎻愪氦浜虹墿鑱氬悎鐢诲儚鐨勭粨鏋勫寲缁撴灉",
+                                "description", "提交人物聚合画像的结构化结果",
                                 "parameters", profileSchema()
                         )
                 )),
@@ -313,7 +313,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of(
                                 "name", PROFILE_JUDGEMENT_FUNCTION_NAME,
-                                "description", "Submit comprehensive judged profile",
+                                "description", "提交综合判断后的最终人物画像",
                                 "parameters", profileSchema()
                         )
                 )),
@@ -354,10 +354,13 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private String buildPagePrompt(String fallbackName, PageContent page) {
         return """
-                璇峰熀浜庝互涓嬪崟绡囨鏂囨彁鍙栦汉鐗╀俊鎭紝鍙兘杈撳嚭 JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?resolvedNameCandidate銆乻ummary銆乲eyFacts銆乼ags銆乻ourceUrl銆乼itle銆?                fallbackName: %s
+                请基于以下单篇正文提取人物信息，只能输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 resolvedNameCandidate、summary、keyFacts、tags、sourceUrl、title。
+                fallbackName: %s
                 title: %s
                 url: %s
-                姝ｆ枃濡備笅锛?                %s
+                正文如下：
+                %s
                 """.formatted(
                 fallbackName,
                 page == null ? null : page.getTitle(),
@@ -368,7 +371,11 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private String buildFaceEnhancePrompt(MultipartFile image) {
         return """
-                璇峰涓嬮潰鐨勪汉鑴稿浘鍍忚繘琛岄珮娓呭寲澧炲己锛屽敖閲忎繚鎸佷汉鐗╄韩浠界壒寰佷笉鍙樸€?                鍙緭鍑?JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?enhancedImageBase64銆乫ilename銆乧ontentType銆?                鍏朵腑 enhancedImageBase64 鍙厑璁哥函 base64 鍐呭锛屼笉瑕?data url 鍓嶇紑銆?                filename: %s
+                请对下面的人脸图像进行高清化增强，尽量保持人物身份特征不变。
+                只输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 enhancedImageBase64、filename、contentType。
+                其中 enhancedImageBase64 只允许纯 base64 内容，不要 data url 前缀。
+                filename: %s
                 contentType: %s
                 imageBase64: %s
                 """.formatted(
@@ -380,7 +387,10 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private String buildFaceCandidatePrompt(MultipartFile image) {
         return """
-                璇锋牴鎹笅闈㈢殑浜鸿劯鍥惧儚鍒ゆ柇浜虹墿韬唤锛岀粰鍑烘渶澶?3 涓€欓€夊悕绉帮紙鎸夊彲淇″害闄嶅簭锛夈€?                鍙緭鍑?JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?candidateNames銆?                filename: %s
+                请根据下面的人脸图像判断人物身份，给出最多 3 个候选名称（按可信度降序）。
+                只输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 candidateNames。
+                filename: %s
                 contentType: %s
                 imageBase64: %s
                 """.formatted(
@@ -410,8 +420,12 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                璇峰熀浜庝互涓嬬瘒绾ф憳瑕侀泦鍚堢敓鎴愪汉鐗╂渶缁堢敾鍍忥紝鍙兘杈撳嚭 JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?resolvedName銆乨escription銆乻ummary銆乲eyFacts銆乼ags銆亀ikipedia銆乷fficialWebsite銆乥asicInfo銆乪videnceUrls銆?                basicInfo 涓哄璞★紝瀛楁鍥哄畾涓?birthDate銆乪ducation銆乷ccupations銆乥iographies銆?                fallbackName: %s
-                绡囩骇鎽樿濡備笅锛?                %s
+                请基于以下篇级摘要集合生成人物最终画像，只能输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
+                fallbackName: %s
+                篇级摘要如下：
+                %s
                 """.formatted(fallbackName, pageSummaryContent);
     }
 
@@ -438,7 +452,11 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                璇峰熀浜庡€欓€夊悕绉般€佺瘒绾ф€荤粨鍜屾渶缁堟€荤粨鑽夌杩涜涓€娆＄患鍚堝垽鏂紝杈撳嚭鏇寸ǔ鍋ョ殑浜虹墿鏈€缁堢敾鍍忋€?                鍙緭鍑?JSON锛屼笖杩斿洖鍐呭璇█蹇呴』涓轰腑鏂囥€?                JSON 瀛楁鍥哄畾涓?resolvedName銆乨escription銆乻ummary銆乲eyFacts銆乼ags銆亀ikipedia銆乷fficialWebsite銆乥asicInfo銆乪videnceUrls銆?                basicInfo 涓哄璞★紝瀛楁鍥哄畾涓?birthDate銆乪ducation銆乷ccupations銆乥iographies銆?                fallbackName: %s
+                请基于候选名称、篇级总结和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
+                只输出 JSON，且返回内容语言必须为中文。
+                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
+                fallbackName: %s
                 candidateNames: %s
                 draftResolvedName: %s
                 draftDescription: %s
@@ -446,7 +464,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 draftKeyFacts: %s
                 draftTags: %s
                 draftEvidenceUrls: %s
-                绡囩骇鎽樿濡備笅锛?                %s
+                篇级摘要如下：
+                %s
                 """.formatted(
                 fallbackName,
                 candidateNames,
@@ -719,4 +738,3 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         return withoutOpeningFence;
     }
 }
-
