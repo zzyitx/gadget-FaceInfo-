@@ -4,6 +4,7 @@ import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.TmpfilesClient;
+import com.example.face2info.service.ImageSimilarityService;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
@@ -15,6 +16,8 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,6 +33,7 @@ class FaceRecognitionServiceImplTest {
     private final SerpApiClient serpApiClient = mock(SerpApiClient.class);
     private final TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
     private final SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+    private final ImageSimilarityService imageSimilarityService = mock(ImageSimilarityService.class);
     private final NameExtractor nameExtractor = new NameExtractor();
 
     @Test
@@ -44,36 +48,38 @@ class FaceRecognitionServiceImplTest {
                           "organic": [{
                             "title": "Jay Chou profile",
                             "link": "https://example.com/a",
-                            "source": "Lens"
+                            "source": "Lens",
+                            "thumbnailUrl": "https://example.com/a.jpg"
                           }]
                         }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "image_results": [{ "title": "Jay Chou singer", "link": "https://example.com/b", "source": "Yandex" }]
+                          "image_preview": { "image": { "link": "https://example.com/about-preview.jpg" } },
+                          "image_results": [{ "title": "Jay Chou singer", "link": "https://example.com/b", "source": "Yandex", "thumbnail": "https://example.com/b.jpg" }]
                         }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "image_results": [{ "title": "Jay Chou concert", "link": "https://example.com/c", "source": "Yandex" }]
+                          "image_results": [{ "title": "Jay Chou concert", "link": "https://example.com/c", "source": "Yandex", "thumbnail": "https://example.com/c.jpg" }]
                         }
                         """)));
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("""
                         {
-                          "image_results": [{ "title": "Jay Chou live", "link": "https://example.com/d", "source": "Bing" }]
+                          "related_content": [{ "title": "Jay Chou live", "link": "https://example.com/d", "source": "Bing", "thumbnail": "https://example.com/d.jpg" }]
                         }
                         """)));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         RecognitionEvidence result = service.recognize(image);
 
-        assertThat(result.getImageMatches()).hasSize(1);
-        assertThat(result.getImageMatches().get(0).getThumbnailUrl()).isNull();
+        assertThat(result.getImageMatches()).hasSizeGreaterThanOrEqualTo(3);
+        assertThat(result.getImageMatches()).extracting("thumbnailUrl")
+                .contains("https://example.com/a.jpg", "https://example.com/b.jpg", "https://example.com/d.jpg");
         assertThat(result.getSeedQueries()).contains("Jay Chou");
         assertThat(result.getWebEvidences()).extracting(WebEvidence::getUrl)
                 .contains("https://example.com/a", "https://example.com/b", "https://example.com/c", "https://example.com/d");
@@ -102,8 +108,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         RecognitionEvidence result = service.recognize(image);
 
@@ -125,8 +130,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         RecognitionEvidence evidence = service.recognize(image);
 
@@ -170,8 +174,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         RecognitionEvidence evidence = service.recognize(image);
 
@@ -198,8 +201,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         assertThat(service.recognize(image).getSeedQueries()).contains("Lei Jun");
         verify(tmpfilesClient).uploadImage(image);
@@ -224,8 +226,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         RecognitionEvidence result = service.recognize(image);
 
@@ -250,8 +251,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         service.recognize(image);
 
@@ -277,8 +277,7 @@ class FaceRecognitionServiceImplTest {
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenThrow(new RuntimeException("timeout"));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         RecognitionEvidence result = service.recognize(image);
 
@@ -300,8 +299,7 @@ class FaceRecognitionServiceImplTest {
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{" + "\"image_results\": []}")));
 
-        FaceRecognitionServiceImpl service = new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient);
+        FaceRecognitionServiceImpl service = createService();
 
         RecognitionEvidence evidence = service.recognize(image);
 
@@ -326,6 +324,13 @@ class FaceRecognitionServiceImplTest {
         }
         builder.append("]}");
         return builder.toString();
+    }
+
+    private FaceRecognitionServiceImpl createService() {
+        when(imageSimilarityService.score(any(), anyString(), anyDouble()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+        return new FaceRecognitionServiceImpl(
+                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient, imageSimilarityService);
     }
 }
 
