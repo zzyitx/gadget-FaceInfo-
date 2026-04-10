@@ -9,7 +9,6 @@ import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.exception.FaceDetectionException;
 import com.example.face2info.service.FaceDetectionService;
-import com.example.face2info.service.MinioService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -17,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,24 +24,21 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class FaceDetectionServiceImpl implements FaceDetectionService {
 
-    private static final String MISSING_DETECTION_ID_ERROR = "人脸检测响应缺少 detection_id。";
+    private static final String MISSING_DETECTION_ID_ERROR = "人脸检测响应缺少 detection_id";
 
     private final FaceDetectionClient faceDetectionClient;
     private final FaceEnhancementClient faceEnhancementClient;
     private final TmpfilesClient tmpfilesClient;
-    private final MinioService minioService;
     private final ApiProperties properties;
     private final Map<String, DetectionSession> sessions = new ConcurrentHashMap<>();
 
     public FaceDetectionServiceImpl(FaceDetectionClient faceDetectionClient,
                                     FaceEnhancementClient faceEnhancementClient,
                                     TmpfilesClient tmpfilesClient,
-                                    MinioService minioService,
                                     ApiProperties properties) {
         this.faceDetectionClient = faceDetectionClient;
         this.faceEnhancementClient = faceEnhancementClient;
         this.tmpfilesClient = tmpfilesClient;
-        this.minioService = minioService;
         this.properties = properties;
     }
 
@@ -90,18 +87,19 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
             if (enhanced == null || enhanced.isEmpty()) {
                 throw new IllegalStateException("enhanced image is empty");
             }
-            String filename = StringUtils.hasText(enhanced.getOriginalFilename())
-                    ? enhanced.getOriginalFilename()
-                    : (StringUtils.hasText(image.getOriginalFilename()) ? image.getOriginalFilename() : "enhanced-face.jpg");
-            String contentType = StringUtils.hasText(enhanced.getContentType())
-                    ? enhanced.getContentType()
-                    : (StringUtils.hasText(image.getContentType()) ? image.getContentType() : "image/jpeg");
-            String minioUrl = minioService.upload(enhanced.getBytes(), filename, contentType);
-            return new EnhancedImageResult(enhanced, minioUrl);
+            return new EnhancedImageResult(enhanced, toDataUrl(enhanced, image.getContentType()));
         } catch (RuntimeException | IOException ex) {
             log.warn("图像高清化失败，检测流程回退原图 fileName={} error={}", image.getOriginalFilename(), ex.getMessage());
             return new EnhancedImageResult(image, null);
         }
+    }
+
+    private String toDataUrl(MultipartFile image, String fallbackContentType) throws IOException {
+        String contentType = StringUtils.hasText(image.getContentType()) ? image.getContentType() : fallbackContentType;
+        if (!StringUtils.hasText(contentType)) {
+            contentType = "image/jpeg";
+        }
+        return "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(image.getBytes());
     }
 
     private void purgeExpiredSessions() {

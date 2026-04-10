@@ -18,7 +18,7 @@ public class FaceSelectionPayload {
     private String previewImage;
 
     @JsonProperty("enhanced_image_url")
-    @Schema(description = "高清化图片的 MinIO 链接")
+    @Schema(description = "高清化图片（data URL）")
     private String enhancedImageUrl;
 
     @Schema(description = "检测到的人脸列表")
