@@ -214,7 +214,7 @@ curl -s -X POST "https://api.replicate.com/v1/predictions" \
   }'
 ```
 
-返回 `output` 为增强后图片 URL。项目内会自动下载该 URL，并把增强结果上传到 MinIO 后返回 `enhanced_image_url`。
+返回 `output` 为增强后图片 URL。项目内会自动下载该 URL，并把增强结果转为 `data URL` 后通过 `enhanced_image_url` 返回给前端。
 
 ## FaceCheck 图片匹配
 

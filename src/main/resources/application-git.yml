@@ -52,7 +52,7 @@ face2info:
       read-timeout-ms: 15000
       max-retries: 2
       backoff-initial-ms: 300
-      system-prompt: ${KIMI_SYSTEM_PROMPT:你是一个人物信息提取助手。进行人脸增强时只返回可访问的图片URL（不要返回Base64）；输出结构化文本时只输出JSON。}
+      system-prompt: ${KIMI_SYSTEM_PROMPT:你是一个人物信息提取助手，输出结构化文本时只输出JSON。}
     summary:
       enabled: true
       provider: kimi
@@ -83,19 +83,19 @@ face2info:
       provider: replicate
       connect-timeout-ms: 5000
       read-timeout-ms: 90000
-      replicate:
-        base-url: https://api.replicate.com
-        api-key: ${REPLICATE_API_TOKEN:}
-        model-owner: tencentarc
-        model-name: gfpgan
-        model-version: ${REPLICATE_GFPGAN_VERSION:}
-        gfpgan-version: ${REPLICATE_GFPGAN_RESTORE_VERSION:v1.4}
-        scale: ${REPLICATE_GFPGAN_SCALE:2}
-        prefer-wait-seconds: 30
-        poll-interval-ms: 1500
-        poll-timeout-ms: 45000
-        max-retries: 2
-        backoff-initial-ms: 300
+    replicate:
+      base-url: https://api.replicate.com
+      api-key: ${REPLICATE_API_TOKEN:}
+      model-owner: tencentarc
+      model-name: gfpgan
+      model-version: ${REPLICATE_GFPGAN_VERSION:}
+      gfpgan-version: ${REPLICATE_GFPGAN_RESTORE_VERSION:v1.4}
+      scale: ${REPLICATE_GFPGAN_SCALE:2}
+      prefer-wait-seconds: 30
+      poll-interval-ms: 1500
+      poll-timeout-ms: 45000
+      max-retries: 2
+      backoff-initial-ms: 300
     minio:
       endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
       public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
