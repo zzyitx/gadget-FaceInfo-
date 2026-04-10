@@ -20,79 +20,77 @@ class StaticPageTest {
     private MockMvc mockMvc;
 
     @Test
-    void shouldRenderSerperImageMatchSectionOnIndexPage() throws Exception {
+    void shouldRenderUploadAndSelectionFlowOnIndexPage() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("id=\"matchesCard\"")))
-                .andExpect(content().string(not(containsString("facecheck_matches"))))
-                .andExpect(content().string(containsString("renderImageMatches")))
-                .andExpect(content().string(containsString("thumbnail_url")))
-                .andExpect(content().string(containsString("similarity_score")))
-                .andExpect(content().string(containsString("image-item")))
-                .andExpect(content().string(containsString("window.open")))
-                .andExpect(content().string(containsString("id=\"debugCard\"")))
-                .andExpect(content().string(containsString("compactJson(data)")));
-    }
-
-    @Test
-    void shouldRenderSelectionRequiredFlowOnIndexPage() throws Exception {
-        mockMvc.perform(get("/index.html"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("selection_required")))
+                .andExpect(content().string(containsString("id=\"faceForm\"")))
                 .andExpect(content().string(containsString("id=\"selectionCard\"")))
                 .andExpect(content().string(containsString("id=\"selectionFaceGrid\"")))
-                .andExpect(content().string(containsString("id=\"selectionPreview\"")))
+                .andExpect(content().string(containsString("requestMultipart(\"/api/face2info/detect\"")))
                 .andExpect(content().string(containsString("requestJson(\"/api/face2info/process-selected\"")))
-                .andExpect(content().string(containsString("data-face-id")))
-                .andExpect(content().string(containsString("markSelected")));
+                .andExpect(content().string(containsString("sessionStorage.setItem(SEARCH_RESULT_KEY")))
+                .andExpect(content().string(containsString("window.location.href = \"/result.html\"")));
     }
 
     @Test
-    void shouldRenderDetectFirstUploadAndResultPanels() throws Exception {
+    void shouldRenderTopTitleAndStatusAreaOnIndexPage() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("detect-first")))
-                .andExpect(content().string(containsString("requestMultipart(\"/api/face2info\"")))
                 .andExpect(content().string(containsString("id=\"faceForm\"")))
-                .andExpect(content().string(containsString("id=\"socialCard\"")))
-                .andExpect(content().string(containsString("id=\"newsCard\"")))
-                .andExpect(content().string(containsString("id=\"debugCard\"")))
-                .andExpect(content().string(containsString("id=\"personCard\"")));
+                .andExpect(content().string(containsString("id=\"statusCard\"")))
+                .andExpect(content().string(containsString("id=\"statusTitle\"")))
+                .andExpect(content().string(containsString("setStatus(")))
+                .andExpect(content().string(containsString("id=\"selectionPreview\"")));
     }
 
     @Test
-    void shouldRenderImageMatchesAndSelectionCardsWithCoverLayout() throws Exception {
+    void shouldNotRenderResultPanelsOnIndexPage() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString(".image-frame")))
-                .andExpect(content().string(containsString(".face-card img")))
-                .andExpect(content().string(containsString("aspect-ratio: 1 / 1")))
-                .andExpect(content().string(containsString("object-fit: cover")))
-                .andExpect(content().string(containsString("class=\"image-frame\"")))
-                .andExpect(content().string(containsString(".preview img")))
-                .andExpect(content().string(containsString("selection-empty")));
-    }
-
-    @Test
-    void shouldRenderImageDrivenNewsAndSelectionStateMessages() throws Exception {
-        mockMvc.perform(get("/index.html"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(not(containsString("id=\"statusBox\""))))
-                .andExpect(content().string(not(containsString("class=\"status\""))))
-                .andExpect(content().string(containsString("renderNews(Array.isArray(data.news) ? data.news : [], Array.isArray(data.image_matches) ? data.image_matches : [])")))
-                .andExpect(content().string(containsString("selectionProgress")))
-                .andExpect(content().string(containsString("selection_required")))
-                .andExpect(content().string(containsString("match-group-title")));
+                .andExpect(content().string(not(containsString("id=\"matchesCard\""))))
+                .andExpect(content().string(not(containsString("id=\"socialCard\""))))
+                .andExpect(content().string(not(containsString("id=\"newsCard\""))))
+                .andExpect(content().string(not(containsString("id=\"debugCard\""))))
+                .andExpect(content().string(not(containsString("id=\"personCard\""))));
     }
 
     @Test
     void shouldRenderFaceCardMetadataAndBBoxText() throws Exception {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
+                .andExpect(content().string(containsString(".face-card img")))
+                .andExpect(content().string(containsString("aspect-ratio: 1 / 1")))
+                .andExpect(content().string(containsString("object-fit: cover")))
                 .andExpect(content().string(containsString("face-card-title")))
                 .andExpect(content().string(containsString("face-card-meta")))
                 .andExpect(content().string(containsString("face-card-bbox")))
                 .andExpect(content().string(containsString("bboxText(face.bbox)")))
                 .andExpect(content().string(containsString("formatPercent(face.confidence)")));
+    }
+
+    @Test
+    void shouldRenderResultPageSectionsAndNavigation() throws Exception {
+        mockMvc.perform(get("/result.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("id=\"personCard\"")))
+                .andExpect(content().string(containsString("id=\"matchesCard\"")))
+                .andExpect(content().string(containsString("id=\"socialCard\"")))
+                .andExpect(content().string(containsString("id=\"newsCard\"")))
+                .andExpect(content().string(containsString("id=\"debugCard\"")))
+                .andExpect(content().string(containsString("href=\"/index.html\"")))
+                .andExpect(content().string(containsString("bootstrapResult()")))
+                .andExpect(content().string(containsString("SEARCH_RESULT_KEY")));
+    }
+
+    @Test
+    void shouldRenderResultPageImageAndNewsRenderingLogic() throws Exception {
+        mockMvc.perform(get("/result.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("renderImageMatches")))
+                .andExpect(content().string(containsString("renderNews")))
+                .andExpect(content().string(containsString("thumbnail_url")))
+                .andExpect(content().string(containsString("similarity_score")))
+                .andExpect(content().string(containsString("data-link")))
+                .andExpect(content().string(containsString("window.open")));
     }
 }

@@ -30,29 +30,48 @@
     }
 
     .page {
-      width: min(1200px, calc(100% - 24px));
+      width: min(920px, calc(100% - 24px));
       margin: 20px auto 36px;
       display: grid;
       gap: 16px;
     }
 
     .hero,
-    .card,
-    .upload-card {
+    .upload-card,
+    .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 24px;
       box-shadow: var(--shadow);
-    }
-
-    .hero,
-    .card,
-    .upload-card {
       padding: 22px;
     }
 
-    .hero h1,
-    .section-title h2 {
+    .eyebrow,
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 12px;
+    }
+
+    .eyebrow {
+      color: var(--primary);
+      background: rgba(140, 63, 37, 0.12);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .pill {
+      color: var(--primary);
+      background: rgba(140, 63, 37, 0.08);
+      padding: 7px 12px;
+    }
+
+    h1,
+    h2 {
       margin: 0;
       font-family: Georgia, serif;
       letter-spacing: -0.02em;
@@ -60,66 +79,21 @@
 
     .hero h1 {
       margin-top: 12px;
-      font-size: clamp(34px, 5vw, 60px);
+      font-size: clamp(34px, 5vw, 56px);
       line-height: 1;
-    }
-
-    .eyebrow,
-    .pill,
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .eyebrow {
-      padding: 8px 12px;
-      color: var(--primary);
-      background: rgba(140, 63, 37, 0.12);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .pill,
-    .chip {
-      padding: 7px 12px;
-      color: var(--primary);
-      background: rgba(140, 63, 37, 0.08);
     }
 
     .hero-copy,
     .section-summary,
-    .meta-text,
-    .empty,
     .tip,
     .selection-note,
     .selection-progress,
-    .item p,
-    .meta-line {
+    .empty,
+    .meta-line,
+    .face-card-meta,
+    .face-card-bbox {
       color: var(--muted);
       line-height: 1.7;
-    }
-
-    .hero-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 16px;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-      gap: 16px;
-      align-items: start;
-    }
-
-    .upload-card {
-      position: sticky;
-      top: 16px;
     }
 
     .section-title {
@@ -127,21 +101,10 @@
       gap: 10px;
     }
 
-    .section-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: flex-start;
-      margin-bottom: 14px;
-    }
-
     .dropzone,
     .selection-preview,
     .meta-box,
-    .face-card,
-    .image-item,
-    .item,
-    pre {
+    .face-card {
       border: 1px solid rgba(41, 28, 20, 0.12);
       border-radius: 18px;
     }
@@ -157,17 +120,19 @@
       display: none;
       margin-top: 12px;
       overflow: hidden;
+      border-radius: 18px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.92);
     }
 
-    .preview img,
-    .selection-preview img,
-    .face-card img,
-    .image-item img {
+    .preview img {
       display: block;
       width: 100%;
+      max-height: 520px;
+      height: auto;
+      object-fit: contain;
+      object-position: center;
     }
-
-    .preview img { max-height: 280px; object-fit: cover; }
 
     button {
       width: 100%;
@@ -188,13 +153,14 @@
       box-shadow: none;
     }
 
-    .results {
-      display: grid;
-      gap: 16px;
-    }
+    .selection-card[hidden] { display: none !important; }
 
-    .selection-card[hidden] {
-      display: none !important;
+    .selection-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
     }
 
     .selection-top {
@@ -205,14 +171,21 @@
     }
 
     .selection-preview {
-      overflow: hidden;
+      overflow: auto;
       background: var(--surface-2);
       min-height: 240px;
+      display: grid;
+      place-items: center;
+      padding: 8px;
     }
 
     .selection-preview img {
-      height: 100%;
-      object-fit: cover;
+      display: block;
+      width: 100%;
+      max-height: 520px;
+      height: auto;
+      object-fit: contain;
+      object-position: center;
     }
 
     .selection-empty {
@@ -248,10 +221,19 @@
       word-break: break-word;
     }
 
+    .selection-progress {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border: 1px solid rgba(140, 63, 37, 0.14);
+      border-radius: 16px;
+      background: rgba(140, 63, 37, 0.08);
+    }
+
     .face-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
+      margin-top: 12px;
     }
 
     .face-card {
@@ -260,6 +242,7 @@
       background: #fff;
       text-align: left;
       cursor: pointer;
+      border-radius: 18px;
     }
 
     .face-card:disabled {
@@ -272,12 +255,9 @@
       box-shadow: 0 14px 28px rgba(140, 63, 37, 0.16);
     }
 
-    .face-card-preview {
-      background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(242, 225, 210, 0.82));
-    }
-
-    .face-card img,
-    .image-item img {
+    .face-card img {
+      display: block;
+      width: 100%;
       aspect-ratio: 1 / 1;
       object-fit: cover;
     }
@@ -289,12 +269,14 @@
       color: var(--muted);
       padding: 18px;
       text-align: center;
+      background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(242, 225, 210, 0.82));
     }
 
     .face-card-body {
       display: grid;
       gap: 6px;
       padding: 14px 16px 16px;
+      border-top: 1px solid rgba(41, 28, 20, 0.08);
     }
 
     .face-card-title {
@@ -302,157 +284,25 @@
       line-height: 1.4;
     }
 
-    .face-card-meta,
-    .face-card-bbox {
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.55;
-    }
-
-    .selection-progress {
-      margin-top: 12px;
-      padding: 12px 14px;
-      border: 1px solid rgba(140, 63, 37, 0.14);
-      border-radius: 16px;
-      background: rgba(140, 63, 37, 0.08);
-    }
-
-    .image-list,
-    .list {
-      display: grid;
-      gap: 12px;
-    }
-
-    .image-item {
-      overflow: hidden;
-      cursor: pointer;
-      background: #fff;
-    }
-
-    .image-frame {
-      min-height: 220px;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(242, 225, 210, 0.82));
-    }
-
-    .image-info,
-    .face-card-body {
-      border-top: 1px solid rgba(41, 28, 20, 0.08);
-    }
-
-    .image-info {
-      display: grid;
-      gap: 6px;
-      padding: 14px 16px 16px;
-      background: rgba(255, 250, 246, 0.95);
-    }
-
-    .image-title,
-    .match-group-title {
-      font-weight: 700;
-      line-height: 1.5;
-    }
-
-    .image-source,
-    .image-score {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .image-score {
-      color: var(--primary);
-      font-weight: 700;
-    }
-
-    .tags,
-    .link-row,
-    .info-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .info-grid {
-      gap: 10px;
-    }
-
-    .info-box {
-      min-width: 180px;
-      flex: 1 1 180px;
-      padding: 12px 14px;
-      border-radius: 16px;
-      background: rgba(242, 225, 210, 0.36);
-    }
-
-    .info-box span {
-      display: block;
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-    }
-
-    .info-box strong {
-      display: block;
-      margin-top: 4px;
-      line-height: 1.5;
-      word-break: break-word;
-    }
-
-    .item {
-      padding: 14px 16px;
-      background: rgba(242, 225, 210, 0.34);
-    }
-
-    .item a {
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 700;
-    }
-
-    .item a:hover { text-decoration: underline; }
-
-    .link-row a {
-      display: inline-flex;
-      align-items: center;
-      padding: 9px 12px;
-      border-radius: 999px;
-      border: 1px solid rgba(140, 63, 37, 0.12);
-      color: var(--primary);
-      text-decoration: none;
-      background: rgba(140, 63, 37, 0.06);
-    }
-
-    pre {
-      margin: 0;
-      padding: 14px 16px;
-      background: rgba(255, 255, 255, 0.88);
-      white-space: pre-wrap;
-      word-break: break-word;
+    .status-card {
+      background: rgba(255, 255, 255, 0.86);
     }
 
     @media (max-width: 980px) {
-      .layout,
       .selection-top {
         grid-template-columns: 1fr;
-      }
-
-      .upload-card {
-        position: static;
       }
     }
 
     @media (max-width: 640px) {
       .page {
-        width: min(100% - 16px, 1200px);
+        width: min(100% - 16px, 920px);
         margin: 12px auto 24px;
       }
 
       .hero,
-      .card,
-      .upload-card {
+      .upload-card,
+      .card {
         padding: 18px;
         border-radius: 20px;
       }
@@ -467,144 +317,83 @@
 <div class="page">
   <section class="hero">
     <div class="eyebrow">Face2Info</div>
-    <h1>先上传检测，再选择目标人脸并开始检索</h1>
+    <h1>上传图片并选择目标人脸</h1>
     <p class="hero-copy">
-      第一步调用 <code>POST /api/face2info/detect</code> 上传并检测，展示带框总览图与候选人脸；
-      第二步由你选中目标人脸后，再点击 <code>开始检索</code> 调用
-      <code>POST /api/face2info/process-selected</code> 进入识别与聚合主流程。
+      先点击 <code>开始上传</code> 完成人脸检测，勾选目标人像框后再点击 <code>开始检索</code>，
+      页面会跳转到详情页展示人物聚合结果。
     </p>
-    <div class="hero-tags">
-       <span class="chip">detect-first</span>
-       <span class="chip">upload-then-search</span>
-       <span class="chip">face-detector sidecar</span>
-       <span class="chip">manual-face-select</span>
-    </div>
   </section>
 
-  <div class="layout">
-    <aside class="upload-card">
-      <form id="faceForm">
-        <div class="section-title">
-          <span class="eyebrow">上传</span>
-          <h2>选择图片文件</h2>
-          <p class="section-summary">先点击开始上传进行检测，再选定人脸后点击开始检索。</p>
-        </div>
+  <section class="upload-card">
+    <form id="faceForm">
+      <div class="section-title">
+        <span class="eyebrow">上传</span>
+        <h2>选择图片文件</h2>
+        <p class="section-summary">支持 jpg、jpeg、png 格式。检测完成后需要先勾选人脸框。</p>
+      </div>
 
-        <div style="display:grid; gap:12px; margin-top:14px;">
-          <div>
-            <label for="image">选择图片文件</label>
-            <div class="dropzone">
-              <input id="image" name="image" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required>
-              <div class="tip">支持 jpg、jpeg、png 格式。</div>
-              <div class="preview" id="preview">
-                <img id="previewImage" alt="图片预览">
-              </div>
-            </div>
-          </div>
-
-          <button id="submitButton" type="submit">开始上传</button>
-        </div>
-      </form>
-    </aside>
-
-    <main class="results">
-      <section class="card" id="personCard">
-        <div class="section-header">
-          <div class="section-title">
-            <span class="eyebrow">人物</span>
-            <h2 id="personTitle">等待上传图片</h2>
-          </div>
-        </div>
-        <p class="description" id="personDescription">上传后，这里会先显示检测结果对应的人物信息。</p>
-        <div id="personDetails"></div>
-      </section>
-
-      <section class="card selection-card" id="selectionCard" hidden>
-        <div class="section-header">
-          <div class="section-title">
-            <span class="eyebrow">多脸检测</span>
-            <h2>请选择要继续分析的人脸</h2>
-          </div>
-          <span class="pill" id="selectionCount">0 个候选</span>
-        </div>
-        <p class="selection-note" id="selectionNote">检测到人脸后，先选一张，再点击开始检索。</p>
-        <div class="selection-top">
-          <div class="selection-preview" id="selectionPreview">
-            <div class="selection-empty">这里会展示带人脸框的总览图。</div>
-          </div>
-          <div class="selection-meta">
-            <div class="meta-box">
-              <span>检测会话</span>
-              <strong id="selectionDetectionId">-</strong>
-            </div>
-            <div class="meta-box">
-              <span>继续接口</span>
-              <strong>/api/face2info/process-selected</strong>
-            </div>
-            <div class="meta-box">
-              <span>说明</span>
-              <strong>点选某张脸后，页面会继续调用后端完成后续识别。</strong>
+      <div style="display:grid; gap:12px; margin-top:14px;">
+        <div>
+          <label for="image">选择图片文件</label>
+          <div class="dropzone">
+            <input id="image" name="image" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required>
+            <div class="tip">上传后会先调用检测接口，生成候选人脸。</div>
+            <div class="preview" id="preview">
+              <img id="previewImage" alt="图片预览">
             </div>
           </div>
         </div>
-        <div class="selection-progress" id="selectionProgress" hidden>正在继续识别所选人脸，请稍候。</div>
-        <div class="face-grid" id="selectionFaceGrid"></div>
-      </section>
+        <button id="submitButton" type="submit">开始上传</button>
+      </div>
+    </form>
+  </section>
 
-      <section class="card" id="matchesCard">
-        <div class="section-header">
-          <div class="section-title">
-            <span class="eyebrow">图片匹配</span>
-            <h2>匹配结果</h2>
-          </div>
-          <span class="pill">Serper</span>
-        </div>
-        <div id="matchesBody"><p class="empty">上传图片后，匹配结果会在这里显示。</p></div>
-      </section>
+  <section class="card selection-card" id="selectionCard" hidden>
+    <div class="selection-header">
+      <div class="section-title">
+        <span class="eyebrow">人像框选择</span>
+        <h2>请选择要检索的人脸</h2>
+      </div>
+      <span class="pill" id="selectionCount">0 个候选</span>
+    </div>
+    <p class="selection-note" id="selectionNote">检测到人脸后，请点选一张人脸再点击开始检索。</p>
 
-      <section class="card" id="socialCard">
-        <div class="section-header">
-          <div class="section-title">
-            <span class="eyebrow">公开信息</span>
-            <h2>社交账号</h2>
-          </div>
+    <div class="selection-top">
+      <div class="selection-preview" id="selectionPreview">
+        <div class="selection-empty">这里会展示检测总览图。</div>
+      </div>
+      <div class="selection-meta">
+        <div class="meta-box">
+          <span>检测会话</span>
+          <strong id="selectionDetectionId">-</strong>
         </div>
-        <div id="socialBody"><p class="empty">上传图片后，社交账号会在这里显示。</p></div>
-      </section>
+        <div class="meta-box">
+          <span>下一步</span>
+          <strong>确认人脸后点击“开始检索”跳转详情页</strong>
+        </div>
+      </div>
+    </div>
 
-      <section class="card" id="newsCard">
-        <div class="section-header">
-          <div class="section-title">
-            <span class="eyebrow">公开信息</span>
-            <h2>相关文章</h2>
-          </div>
-        </div>
-        <div id="newsBody"><p class="empty">上传图片后，相关文章会在这里显示。</p></div>
-      </section>
+    <div class="selection-progress" id="selectionProgress" hidden>正在继续识别所选人脸，请稍候。</div>
+    <div class="face-grid" id="selectionFaceGrid"></div>
+  </section>
 
-      <section class="card" id="debugCard">
-        <div class="section-header">
-          <div class="section-title">
-            <span class="eyebrow">调试</span>
-            <h2>原始 JSON</h2>
-          </div>
-        </div>
-        <pre id="rawResponse">{}</pre>
-      </section>
-    </main>
-  </div>
+  <section class="card status-card" id="statusCard">
+    <div class="section-title">
+      <span class="eyebrow">状态</span>
+      <h2 id="statusTitle">等待上传图片</h2>
+    </div>
+    <p class="meta-line" id="statusText">上传图片后会在本页展示候选人脸，详情结果将在新页面显示。</p>
+  </section>
 </div>
 
 <script>
+  const SEARCH_RESULT_KEY = "face2info:lastResult";
   const form = document.getElementById("faceForm");
   const imageInput = document.getElementById("image");
   const preview = document.getElementById("preview");
   const previewImage = document.getElementById("previewImage");
   const submitButton = document.getElementById("submitButton");
-  const rawResponseEl = document.getElementById("rawResponse");
-  const personTitle = document.getElementById("personTitle");
-  const personDescription = document.getElementById("personDescription");
-  const personDetails = document.getElementById("personDetails");
   const selectionCard = document.getElementById("selectionCard");
   const selectionNote = document.getElementById("selectionNote");
   const selectionCount = document.getElementById("selectionCount");
@@ -612,12 +401,8 @@
   const selectionPreview = document.getElementById("selectionPreview");
   const selectionFaceGrid = document.getElementById("selectionFaceGrid");
   const selectionProgress = document.getElementById("selectionProgress");
-  const matchesCard = document.getElementById("matchesCard");
-  const matchesBody = document.getElementById("matchesBody");
-  const socialCard = document.getElementById("socialCard");
-  const socialBody = document.getElementById("socialBody");
-  const newsCard = document.getElementById("newsCard");
-  const newsBody = document.getElementById("newsBody");
+  const statusTitle = document.getElementById("statusTitle");
+  const statusText = document.getElementById("statusText");
 
   const state = {
     phase: "upload",
@@ -629,9 +414,7 @@
   imageInput.addEventListener("change", handleImageChange);
   form.addEventListener("submit", handleSubmit);
   selectionFaceGrid.addEventListener("click", handleSelectionClick);
-  matchesCard.addEventListener("click", handleMatchClick);
 
-  renderIdle();
   refreshActionButton();
 
   function handleImageChange() {
@@ -640,14 +423,17 @@
       URL.revokeObjectURL(state.objectUrl);
       state.objectUrl = "";
     }
+
     if (!file) {
       preview.style.display = "none";
       previewImage.removeAttribute("src");
-      state.phase = "upload";
       clearSelection();
+      state.phase = "upload";
+      setStatus("等待上传图片", "上传图片后会在本页展示候选人脸，详情结果将在新页面显示。");
       refreshActionButton();
       return;
     }
+
     const objectUrl = URL.createObjectURL(file);
     state.objectUrl = objectUrl;
     previewImage.src = objectUrl;
@@ -658,9 +444,10 @@
         state.objectUrl = "";
       }
     };
-    state.phase = "upload";
+
     clearSelection();
-    renderIdle();
+    state.phase = "upload";
+    setStatus("图片已准备", "点击“开始上传”后将调用检测接口并展示候选人脸。");
     refreshActionButton();
   }
 
@@ -668,7 +455,7 @@
     event.preventDefault();
     const [file] = imageInput.files;
     if (!file) {
-      renderError("请先选择一张图片。", false);
+      setStatus("未选择图片", "请先选择一张图片后再继续。");
       return;
     }
 
@@ -678,26 +465,28 @@
     }
 
     clearSelection();
-    renderIdle();
     setBusy(true, "正在上传并检测...");
+    setStatus("检测中", "正在上传图片并检测人脸，请稍候。");
 
     try {
       const { response, data } = await requestMultipart("/api/face2info/detect", file);
-      rawResponseEl.textContent = JSON.stringify(compactJsonDetection(data), null, 2);
       if (!response.ok) {
-        renderError((data && data.error) || "检测失败。", false);
+        setStatus("检测失败", (data && data.error) || "检测失败，请稍后重试。");
         return;
       }
+
       const selection = normalizeDetectionResponse(data);
       if (!selection.faces.length) {
-        renderError("未检测到可识别人脸，请更换图片后重试。", false);
+        setStatus("未检测到人脸", "请更换图片后重试。");
         return;
       }
+
       renderSelection(selection);
       state.phase = "search";
+      setStatus("检测完成", "请选择要分析的人脸，然后点击“开始检索”。");
       refreshActionButton();
     } catch (error) {
-      renderError(error.message || "上传或检测失败。", false);
+      setStatus("上传失败", error.message || "上传或检测失败。");
     } finally {
       setBusy(false);
     }
@@ -714,6 +503,7 @@
     setSelectionButtonsDisabled(true);
     selectionProgress.hidden = false;
     selectionProgress.textContent = "正在继续识别所选人脸，请稍候。";
+    setStatus("检索中", "正在聚合人物信息，完成后将自动进入详情页。");
 
     try {
       const payload = {
@@ -721,10 +511,18 @@
         face_id: state.selectedFaceId
       };
       const { response, data } = await requestJson("/api/face2info/process-selected", payload);
-      rawResponseEl.textContent = JSON.stringify(compactJson(data), null, 2);
-      await applyResponse(response, data, true);
+      if (!response.ok || (data && data.status === "failed")) {
+        const message = (data && data.error) || "选脸后继续识别失败。";
+        setStatus("检索失败", message);
+        selectionNote.textContent = message;
+        return;
+      }
+      sessionStorage.setItem(SEARCH_RESULT_KEY, JSON.stringify(data || {}));
+      window.location.href = "/result.html";
     } catch (error) {
-      renderError(error.message || "选脸后继续识别失败。", true);
+      const message = error.message || "选脸后继续识别失败。";
+      setStatus("检索失败", message);
+      selectionNote.textContent = message;
     } finally {
       selectionProgress.hidden = true;
       setSelectionButtonsDisabled(false);
@@ -737,37 +535,10 @@
     if (!button || button.disabled || !state.selection) {
       return;
     }
-
     state.selectedFaceId = button.dataset.faceId;
     markSelected(state.selectedFaceId);
     selectionNote.textContent = `已选中 ${state.selectedFaceId}，点击“开始检索”继续。`;
     refreshActionButton();
-  }
-
-  async function applyResponse(response, data, fromSelection) {
-    if (data && data.status === "selection_required") {
-      renderSelection(data.selection || {});
-      state.phase = "search";
-      refreshActionButton();
-      return;
-    }
-    if (!response.ok || (data && data.status === "failed")) {
-      renderError((data && data.error) || "请求失败。", fromSelection);
-      return;
-    }
-    renderFinal(data);
-    state.phase = "upload";
-    refreshActionButton();
-  }
-
-  function renderIdle() {
-    personTitle.textContent = "等待上传图片";
-    personDescription.textContent = "上传后，这里会先显示检测结果对应的人物信息。";
-    personDetails.innerHTML = "";
-    matchesBody.innerHTML = '<p class="empty">上传图片后，匹配结果会在这里显示。</p>';
-    socialBody.innerHTML = '<p class="empty">上传图片后，社交账号会在这里显示。</p>';
-    newsBody.innerHTML = '<p class="empty">上传图片后，相关文章会在这里显示。</p>';
-    rawResponseEl.textContent = "{}";
   }
 
   function renderSelection(selection) {
@@ -777,146 +548,16 @@
     selectionCard.hidden = false;
     selectionCount.textContent = `${faces.length} 个候选`;
     selectionDetectionId.textContent = selection.detection_id || "-";
-    selectionNote.textContent = faces.length
-      ? "请先点击一张人脸卡片，再点击“开始检索”。"
-      : "检测到了多脸流程，但暂时没有可点击的人脸，请重新上传。";
-    selectionPreview.innerHTML = selection.preview_image
-      ? `<img src="${escapeHtml(selection.preview_image)}" alt="带有人脸框的总览图">`
-      : '<div class="selection-empty">这里会展示带人脸框的总览图。</div>';
-    selectionFaceGrid.innerHTML = faces.length
-      ? faces.map((face, index) => renderFaceCard(face, selection.detection_id, index)).join("")
-      : '<p class="empty">没有找到可选的人脸卡片。</p>';
+    selectionNote.textContent = "请先点击一张人脸卡片，再点击“开始检索”。";
+
+    const previewImageUrl = selection.enhanced_image_url || selection.preview_image;
+    selectionPreview.innerHTML = previewImageUrl
+      ? `<img src="${escapeHtml(previewImageUrl)}" alt="检测总览图">`
+      : '<div class="selection-empty">这里会展示检测总览图。</div>';
+
+    selectionFaceGrid.innerHTML = faces.map((face, index) => renderFaceCard(face, selection.detection_id, index)).join("");
     selectionProgress.hidden = true;
     setSelectionButtonsDisabled(false);
-    refreshActionButton();
-
-    personTitle.textContent = "上传与检测完成";
-    personDescription.textContent = "已返回带框总览图和候选人脸，请先选中目标人脸，再点击开始检索。";
-    personDetails.innerHTML = "";
-    matchesBody.innerHTML = '<p class="empty">当前是多脸选择阶段，完成选脸后才会继续生成结果。</p>';
-    socialBody.innerHTML = '<p class="empty">当前是多脸选择阶段，完成选脸后才会继续生成结果。</p>';
-    newsBody.innerHTML = '<p class="empty">当前是多脸选择阶段，完成选脸后才会继续生成结果。</p>';
-  }
-
-  function renderFinal(data) {
-    const person = data.person || null;
-    personTitle.textContent = person && person.name ? person.name : "未知人物";
-    personDescription.textContent = person && (person.description || person.summary)
-      ? person.description || person.summary
-      : "暂无人物简介。";
-
-    const tags = Array.isArray(person && person.tags) ? person.tags.filter(Boolean) : [];
-    const info = person && person.basic_info ? person.basic_info : {};
-    const links = [];
-    if (person && person.wikipedia) links.push({ label: "Wikipedia", url: person.wikipedia });
-    if (person && person.official_website) links.push({ label: "官方网站", url: person.official_website });
-
-    const personMeta = [];
-    if (info.birth_date) personMeta.push(["出生日期", info.birth_date]);
-    if (info.education) personMeta.push(["教育背景", info.education]);
-    if (info.occupations) personMeta.push(["职业", info.occupations]);
-    if (info.biographies) personMeta.push(["简介", info.biographies]);
-
-    personDetails.innerHTML = [
-      tags.length ? `<div class="tags">${tags.slice(0, 8).map(tag => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}</div>` : "",
-      personMeta.length ? `<div class="info-grid">${personMeta.map(([label, value]) => `<div class="info-box"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>` : "",
-      links.length ? `<div class="link-row">${links.map(link => `<a href="${escapeHtml(link.url)}" target="_blank" rel="noreferrer">${escapeHtml(link.label)}</a>`).join("")}</div>` : ""
-    ].join("");
-
-    renderImageMatches(Array.isArray(data.image_matches) ? data.image_matches : [], data.status, data.error);
-    renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
-    renderNews(Array.isArray(data.news) ? data.news : [], Array.isArray(data.image_matches) ? data.image_matches : []);
-    clearSelection();
-  }
-
-  function renderImageMatches(matches, status, error) {
-    if (!matches.length) {
-      matchesBody.innerHTML = `<p class="empty">${escapeHtml(status === "partial" && error ? "当前只返回了部分结果，图片匹配暂时为空。" : "暂无图片匹配结果。")}</p>`;
-      return;
-    }
-
-    const html = matches.slice(0, 20).map((item, index) => {
-      const img = item.thumbnail_url
-        ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="${escapeHtml(item.title || "匹配结果")}" onerror="this.style.display='none'">`
-        : '<div class="selection-empty">暂无缩略图</div>';
-      return `
-        <div class="image-item" data-link="${escapeHtml(item.link || item.thumbnail_url || "#")}">
-          <div class="image-frame">${img}</div>
-          <div class="image-info">
-            <div class="image-title">#${escapeHtml(item.position || index + 1)} ${escapeHtml(item.title || "未命名结果")}</div>
-            <div class="image-source">${escapeHtml(item.source || "未知来源")}</div>
-            <div class="image-score">相似度 ${formatPercent(item.similarity_score)}</div>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    matchesBody.innerHTML = [
-      '<p class="meta-text">点击缩略图可以打开对应来源页面。</p>',
-      `<div class="image-list">${html}</div>`
-    ].join("");
-  }
-
-  function renderSocial(accounts) {
-    if (!accounts.length) {
-      socialBody.innerHTML = '<p class="empty">暂无公开社交账号。</p>';
-      return;
-    }
-    const html = accounts.map(account => `
-      <article class="item">
-        <div class="chip">${escapeHtml(account.platform || "未知平台")}</div>
-        <a href="${escapeHtml(account.url || "#")}" target="_blank" rel="noreferrer">
-          ${escapeHtml(account.username || account.url || "打开链接")}
-        </a>
-        <p>${escapeHtml(account.url || "-")}</p>
-      </article>
-    `).join("");
-    socialBody.innerHTML = `<div class="list">${html}</div>`;
-  }
-
-  function renderNews(newsList, imageMatches) {
-    if (!imageMatches.length) {
-      newsBody.innerHTML = '<p class="empty">暂无相关文章。</p>';
-      return;
-    }
-    const newsHtml = newsList.length
-      ? `<div class="list">${newsList.slice(0, 20).map(item => `
-          <article class="item">
-            <a href="${escapeHtml(item.url || "#")}" target="_blank" rel="noreferrer">${escapeHtml(item.title || "未命名文章")}</a>
-            <p>${escapeHtml(item.source || "未知来源")} | ${escapeHtml(item.published_at || "-")}</p>
-            <p>${escapeHtml(item.summary || "暂无摘要。")}</p>
-            ${item.url ? `<p><a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">查看原文</a></p>` : ""}
-          </article>
-        `).join("")}</div>`
-      : '<p class="empty">该图片结果暂时没有相关文章。</p>';
-    const groups = imageMatches.slice(0, 20).map(item => `
-      <section class="item">
-        <div class="match-group-title">${escapeHtml(item.title || "未命名结果")}</div>
-        <div class="meta-line">来源：${escapeHtml(item.source || "未知来源")}</div>
-        ${newsHtml}
-      </section>
-    `).join("");
-    newsBody.innerHTML = `<div class="list">${groups}</div>`;
-  }
-
-  function renderError(message, keepSelection) {
-    personTitle.textContent = "加载失败";
-    personDescription.textContent = message || "请求失败。";
-    personDetails.innerHTML = "";
-    matchesBody.innerHTML = '<p class="empty">当前请求失败，未生成新的图片匹配结果。</p>';
-    socialBody.innerHTML = '<p class="empty">当前请求失败，未生成新的社交账号结果。</p>';
-    newsBody.innerHTML = '<p class="empty">当前请求失败，未生成新的相关文章结果。</p>';
-
-    if (keepSelection && state.selection) {
-      selectionCard.hidden = false;
-      selectionNote.textContent = message || "选脸后继续识别失败。";
-      selectionProgress.hidden = true;
-      refreshActionButton();
-      return;
-    }
-    clearSelection();
-    state.phase = "upload";
-    refreshActionButton();
   }
 
   function clearSelection() {
@@ -924,8 +565,8 @@
     state.selectedFaceId = "";
     selectionCard.hidden = true;
     selectionFaceGrid.innerHTML = "";
-    selectionPreview.innerHTML = '<div class="selection-empty">这里会展示带人脸框的总览图。</div>';
-    selectionNote.textContent = "检测到人脸后，先选择一张，再点击开始检索。";
+    selectionPreview.innerHTML = '<div class="selection-empty">这里会展示检测总览图。</div>';
+    selectionNote.textContent = "检测到人脸后，请点选一张人脸再点击开始检索。";
     selectionCount.textContent = "0 个候选";
     selectionDetectionId.textContent = "-";
     selectionProgress.hidden = true;
@@ -963,34 +604,23 @@
     submitButton.disabled = false;
   }
 
+  function setStatus(title, text) {
+    statusTitle.textContent = title;
+    statusText.textContent = text;
+  }
+
   function normalizeDetectionResponse(data) {
     const faces = Array.isArray(data && data.faces) ? data.faces.filter(Boolean) : [];
     return {
       detection_id: (data && data.detection_id) || "",
       preview_image: (data && data.preview_image) || "",
+      enhanced_image_url: (data && data.enhanced_image_url) || "",
       faces: faces.map(face => ({
         face_id: face.face_id || "",
         confidence: face.confidence,
         bbox: face.bbox || null,
         crop_preview: face.crop_preview || ""
       }))
-    };
-  }
-
-  function compactJsonDetection(data) {
-    const normalized = normalizeDetectionResponse(data);
-    return {
-      status: "detected",
-      detection: {
-        detection_id: normalized.detection_id || null,
-        preview_image: normalized.preview_image ? shorten(normalized.preview_image) : null,
-        faces: normalized.faces.slice(0, 20).map(face => ({
-          face_id: face.face_id || null,
-          confidence: face.confidence || null,
-          bbox: face.bbox || null,
-          crop_preview: face.crop_preview ? shorten(face.crop_preview) : null
-        }))
-      }
     };
   }
 
@@ -1001,7 +631,7 @@
       : '<div class="face-placeholder">暂无裁剪预览</div>';
     return `
       <button type="button" class="face-card" data-face-id="${escapeHtml(faceId)}" data-detection-id="${escapeHtml(detectionId || "")}">
-        <div class="face-card-preview">${previewHtml}</div>
+        ${previewHtml}
         <div class="face-card-body">
           <div class="face-card-title">候选 ${index + 1}</div>
           <div class="face-card-meta">face_id：${escapeHtml(faceId)}</div>
@@ -1025,18 +655,6 @@
     return value === 0 || value ? String(value) : "-";
   }
 
-  function cardHeader(label, title, pillText = "") {
-    return `
-      <div class="section-header">
-        <div class="section-title">
-          <span class="eyebrow">${escapeHtml(label)}</span>
-          <h2>${escapeHtml(title)}</h2>
-        </div>
-        ${pillText ? `<span class="pill">${escapeHtml(pillText)}</span>` : ""}
-      </div>
-    `;
-  }
-
   function formatPercent(value) {
     const num = Number(value);
     if (!Number.isFinite(num)) return "-";
@@ -1050,61 +668,6 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
-  }
-
-  function compactJson(data) {
-    const selection = data && data.selection;
-    return {
-      status: data && data.status ? data.status : null,
-      error: data && data.error ? data.error : null,
-      warnings: Array.isArray(data && data.warnings) ? data.warnings.slice(0, 8) : [],
-      person: data && data.person ? {
-        name: data.person.name || null,
-        description: data.person.description || null,
-        summary: data.person.summary || null,
-        tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],
-        wikipedia: data.person.wikipedia || null,
-        official_website: data.person.official_website || null
-      } : null,
-      image_matches: Array.isArray(data && data.image_matches) ? data.image_matches.slice(0, 20).map(item => ({
-        position: item.position || null,
-        title: item.title || null,
-        source: item.source || null,
-        link: item.link || null,
-        thumbnail_url: item.thumbnail_url ? shorten(item.thumbnail_url) : null,
-        similarity_score: item.similarity_score || null
-      })) : [],
-      news: Array.isArray(data && data.news) ? data.news.slice(0, 20).map(item => ({
-        title: item.title || null,
-        source: item.source || null,
-        url: item.url || null,
-        published_at: item.published_at || null,
-        summary: item.summary || null
-      })) : [],
-      selection: selection ? {
-        detection_id: selection.detection_id || null,
-        preview_image: selection.preview_image ? shorten(selection.preview_image) : null,
-        faces: Array.isArray(selection.faces) ? selection.faces.slice(0, 20).map(face => ({
-          face_id: face.face_id || null,
-          confidence: face.confidence || null,
-          bbox: face.bbox || null,
-          crop_preview: face.crop_preview ? shorten(face.crop_preview) : null
-        })) : []
-      } : null
-    };
-  }
-
-  function shorten(value) {
-    const text = String(value);
-    return text.length <= 120 ? text : `${text.slice(0, 72)}…${text.slice(-24)}`;
-  }
-
-  function handleMatchClick(event) {
-    const target = event.target.closest("[data-link]");
-    if (!target) return;
-    const link = target.dataset.link;
-    if (!link || link === "#") return;
-    window.open(link, "_blank", "noreferrer");
   }
 
   async function requestMultipart(url, file) {

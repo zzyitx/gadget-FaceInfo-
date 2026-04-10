@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face2Info 检索结果</title>
+  <style>
+    :root {
+      --bg: #f7efe6;
+      --surface: rgba(255, 250, 246, 0.95);
+      --surface-2: rgba(255, 255, 255, 0.88);
+      --border: rgba(41, 28, 20, 0.12);
+      --text: #1f1712;
+      --muted: #675a51;
+      --primary: #8c3f25;
+      --primary-2: #b85b33;
+      --shadow: 0 18px 38px rgba(59, 34, 20, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(184, 91, 51, 0.13), transparent 28%),
+        linear-gradient(180deg, #f8f2eb, var(--bg));
+    }
+
+    .page {
+      width: min(1200px, calc(100% - 24px));
+      margin: 20px auto 36px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero,
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 22px;
+    }
+
+    .hero-top {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hero h1,
+    .section-title h2 {
+      margin: 0;
+      font-family: Georgia, serif;
+      letter-spacing: -0.02em;
+    }
+
+    .hero h1 {
+      margin-top: 12px;
+      font-size: clamp(32px, 4vw, 50px);
+      line-height: 1;
+    }
+
+    .eyebrow,
+    .pill,
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .eyebrow {
+      padding: 8px 12px;
+      color: var(--primary);
+      background: rgba(140, 63, 37, 0.12);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .pill,
+    .chip {
+      padding: 7px 12px;
+      color: var(--primary);
+      background: rgba(140, 63, 37, 0.08);
+    }
+
+    .hero-copy,
+    .empty,
+    .item p,
+    .meta-line,
+    .image-source {
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(140, 63, 37, 0.22);
+      background: #fff;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .section-title {
+      display: grid;
+      gap: 10px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    .image-item,
+    .item,
+    .info-box,
+    pre {
+      border: 1px solid rgba(41, 28, 20, 0.12);
+      border-radius: 18px;
+    }
+
+    .image-list,
+    .list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .image-item {
+      overflow: hidden;
+      cursor: pointer;
+      background: #fff;
+    }
+
+    .image-frame {
+      min-height: 220px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(242, 225, 210, 0.82));
+    }
+
+    .image-item img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+    }
+
+    .image-info {
+      display: grid;
+      gap: 6px;
+      padding: 14px 16px 16px;
+      border-top: 1px solid rgba(41, 28, 20, 0.08);
+      background: rgba(255, 250, 246, 0.95);
+    }
+
+    .image-title,
+    .match-group-title {
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .image-score {
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.5;
+    }
+
+    .tags,
+    .link-row,
+    .info-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .info-grid {
+      gap: 10px;
+    }
+
+    .info-box {
+      min-width: 180px;
+      flex: 1 1 180px;
+      padding: 12px 14px;
+      background: rgba(242, 225, 210, 0.36);
+    }
+
+    .info-box span {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .info-box strong {
+      display: block;
+      margin-top: 4px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .item {
+      padding: 14px 16px;
+      background: rgba(242, 225, 210, 0.34);
+    }
+
+    .item a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .item a:hover {
+      text-decoration: underline;
+    }
+
+    .link-row a {
+      display: inline-flex;
+      align-items: center;
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(140, 63, 37, 0.12);
+      color: var(--primary);
+      text-decoration: none;
+      background: rgba(140, 63, 37, 0.06);
+    }
+
+    pre {
+      margin: 0;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.88);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    @media (max-width: 640px) {
+      .page {
+        width: min(100% - 16px, 1200px);
+        margin: 12px auto 24px;
+      }
+
+      .hero,
+      .card {
+        padding: 18px;
+        border-radius: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <section class="hero">
+    <div class="hero-top">
+      <div class="eyebrow">Face2Info 结果页</div>
+      <a class="back-link" href="/index.html">返回首页重新上传</a>
+    </div>
+    <h1>人物详情检索结果</h1>
+    <p class="hero-copy">本页展示所选人像框对应的人物信息、图片匹配、公开社交账号与相关文章。</p>
+  </section>
+
+  <section class="card" id="personCard">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="eyebrow">人物</span>
+        <h2 id="personTitle">等待加载结果</h2>
+      </div>
+    </div>
+    <p class="description" id="personDescription">请在首页完成上传与选脸后再查看本页。</p>
+    <div id="personDetails"></div>
+  </section>
+
+  <section class="card" id="matchesCard">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="eyebrow">图片匹配</span>
+        <h2>匹配结果</h2>
+      </div>
+      <span class="pill">Serper</span>
+    </div>
+    <div id="matchesBody"><p class="empty">暂无图片匹配结果。</p></div>
+  </section>
+
+  <section class="card" id="socialCard">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="eyebrow">公开信息</span>
+        <h2>社交账号</h2>
+      </div>
+    </div>
+    <div id="socialBody"><p class="empty">暂无公开社交账号。</p></div>
+  </section>
+
+  <section class="card" id="newsCard">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="eyebrow">公开信息</span>
+        <h2>相关文章</h2>
+      </div>
+    </div>
+    <div id="newsBody"><p class="empty">暂无相关文章。</p></div>
+  </section>
+
+  <section class="card" id="debugCard">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="eyebrow">调试</span>
+        <h2>原始 JSON</h2>
+      </div>
+    </div>
+    <pre id="rawResponse">{}</pre>
+  </section>
+</div>
+
+<script>
+  const SEARCH_RESULT_KEY = "face2info:lastResult";
+  const rawResponseEl = document.getElementById("rawResponse");
+  const personTitle = document.getElementById("personTitle");
+  const personDescription = document.getElementById("personDescription");
+  const personDetails = document.getElementById("personDetails");
+  const matchesCard = document.getElementById("matchesCard");
+  const matchesBody = document.getElementById("matchesBody");
+  const socialBody = document.getElementById("socialBody");
+  const newsBody = document.getElementById("newsBody");
+
+  matchesCard.addEventListener("click", handleMatchClick);
+  bootstrapResult();
+
+  function bootstrapResult() {
+    const raw = sessionStorage.getItem(SEARCH_RESULT_KEY);
+    if (!raw) {
+      renderError("未找到检索结果，请返回首页重新上传并完成人像框选择。");
+      return;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (error) {
+      renderError("结果数据解析失败，请返回首页重试。");
+      return;
+    }
+
+    rawResponseEl.textContent = JSON.stringify(compactJson(data), null, 2);
+    if (!data || data.status === "failed") {
+      renderError((data && data.error) || "检索失败，请返回首页重试。");
+      return;
+    }
+    renderFinal(data);
+  }
+
+  function renderFinal(data) {
+    const person = data.person || null;
+    personTitle.textContent = person && person.name ? person.name : "未知人物";
+    personDescription.textContent = person && (person.description || person.summary)
+      ? person.description || person.summary
+      : "暂无人物简介。";
+
+    const tags = Array.isArray(person && person.tags) ? person.tags.filter(Boolean) : [];
+    const info = person && person.basic_info ? person.basic_info : {};
+    const links = [];
+    if (person && person.wikipedia) links.push({ label: "Wikipedia", url: person.wikipedia });
+    if (person && person.official_website) links.push({ label: "官方网站", url: person.official_website });
+
+    const personMeta = [];
+    if (info.birth_date) personMeta.push(["出生日期", info.birth_date]);
+    if (info.education) personMeta.push(["教育背景", info.education]);
+    if (info.occupations) personMeta.push(["职业", info.occupations]);
+    if (info.biographies) personMeta.push(["简介", info.biographies]);
+
+    personDetails.innerHTML = [
+      tags.length ? `<div class="tags">${tags.slice(0, 8).map(tag => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}</div>` : "",
+      personMeta.length ? `<div class="info-grid">${personMeta.map(([label, value]) => `<div class="info-box"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>` : "",
+      links.length ? `<div class="link-row">${links.map(link => `<a href="${escapeHtml(link.url)}" target="_blank" rel="noreferrer">${escapeHtml(link.label)}</a>`).join("")}</div>` : ""
+    ].join("");
+
+    const matches = Array.isArray(data.image_matches) ? data.image_matches : [];
+    renderImageMatches(matches, data.status, data.error);
+    renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
+    renderNews(Array.isArray(data.news) ? data.news : [], matches);
+  }
+
+  function renderImageMatches(matches, status, error) {
+    if (!matches.length) {
+      matchesBody.innerHTML = `<p class="empty">${escapeHtml(status === "partial" && error ? "当前只返回了部分结果，图片匹配暂时为空。" : "暂无图片匹配结果。")}</p>`;
+      return;
+    }
+
+    const html = matches.slice(0, 20).map((item, index) => {
+      const img = item.thumbnail_url
+        ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="${escapeHtml(item.title || "匹配结果")}" onerror="this.style.display='none'">`
+        : '<div class="selection-empty">暂无缩略图</div>';
+      return `
+        <div class="image-item" data-link="${escapeHtml(item.link || item.thumbnail_url || "#")}">
+          <div class="image-frame">${img}</div>
+          <div class="image-info">
+            <div class="image-title">#${escapeHtml(item.position || index + 1)} ${escapeHtml(item.title || "未命名结果")}</div>
+            <div class="image-source">${escapeHtml(item.source || "未知来源")}</div>
+            <div class="image-score">相似度 ${formatPercent(item.similarity_score)}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    matchesBody.innerHTML = [
+      '<p class="meta-line">点击缩略图可以打开对应来源页面。</p>',
+      `<div class="image-list">${html}</div>`
+    ].join("");
+  }
+
+  function renderSocial(accounts) {
+    if (!accounts.length) {
+      socialBody.innerHTML = '<p class="empty">暂无公开社交账号。</p>';
+      return;
+    }
+    const html = accounts.map(account => `
+      <article class="item">
+        <div class="chip">${escapeHtml(account.platform || "未知平台")}</div>
+        <a href="${escapeHtml(account.url || "#")}" target="_blank" rel="noreferrer">
+          ${escapeHtml(account.username || account.url || "打开链接")}
+        </a>
+        <p>${escapeHtml(account.url || "-")}</p>
+      </article>
+    `).join("");
+    socialBody.innerHTML = `<div class="list">${html}</div>`;
+  }
+
+  function renderNews(newsList, imageMatches) {
+    if (!imageMatches.length) {
+      newsBody.innerHTML = '<p class="empty">暂无相关文章。</p>';
+      return;
+    }
+    const newsHtml = newsList.length
+      ? `<div class="list">${newsList.slice(0, 20).map(item => `
+          <article class="item">
+            <a href="${escapeHtml(item.url || "#")}" target="_blank" rel="noreferrer">${escapeHtml(item.title || "未命名文章")}</a>
+            <p>${escapeHtml(item.source || "未知来源")} | ${escapeHtml(item.published_at || "-")}</p>
+            <p>${escapeHtml(item.summary || "暂无摘要。")}</p>
+            ${item.url ? `<p><a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">查看原文</a></p>` : ""}
+          </article>
+        `).join("")}</div>`
+      : '<p class="empty">该图片结果暂时没有相关文章。</p>';
+    const groups = imageMatches.slice(0, 20).map(item => `
+      <section class="item">
+        <div class="match-group-title">${escapeHtml(item.title || "未命名结果")}</div>
+        <div class="meta-line">来源：${escapeHtml(item.source || "未知来源")}</div>
+        ${newsHtml}
+      </section>
+    `).join("");
+    newsBody.innerHTML = `<div class="list">${groups}</div>`;
+  }
+
+  function renderError(message) {
+    personTitle.textContent = "加载失败";
+    personDescription.textContent = message || "请求失败。";
+    personDetails.innerHTML = "";
+    matchesBody.innerHTML = '<p class="empty">当前未生成图片匹配结果。</p>';
+    socialBody.innerHTML = '<p class="empty">当前未生成社交账号结果。</p>';
+    newsBody.innerHTML = '<p class="empty">当前未生成相关文章结果。</p>';
+    rawResponseEl.textContent = "{}";
+  }
+
+  function formatPercent(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "-";
+    return `${(num <= 1 ? num * 100 : num).toFixed(2)}%`;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function compactJson(data) {
+    return {
+      status: data && data.status ? data.status : null,
+      error: data && data.error ? data.error : null,
+      warnings: Array.isArray(data && data.warnings) ? data.warnings.slice(0, 8) : [],
+      person: data && data.person ? {
+        name: data.person.name || null,
+        description: data.person.description || null,
+        summary: data.person.summary || null,
+        tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],
+        wikipedia: data.person.wikipedia || null,
+        official_website: data.person.official_website || null
+      } : null,
+      image_matches: Array.isArray(data && data.image_matches) ? data.image_matches.slice(0, 20).map(item => ({
+        position: item.position || null,
+        title: item.title || null,
+        source: item.source || null,
+        link: item.link || null,
+        thumbnail_url: item.thumbnail_url ? shorten(item.thumbnail_url) : null,
+        similarity_score: item.similarity_score || null
+      })) : [],
+      news: Array.isArray(data && data.news) ? data.news.slice(0, 20).map(item => ({
+        title: item.title || null,
+        source: item.source || null,
+        url: item.url || null,
+        published_at: item.published_at || null,
+        summary: item.summary || null
+      })) : []
+    };
+  }
+
+  function shorten(value) {
+    const text = String(value);
+    return text.length <= 120 ? text : `${text.slice(0, 72)}...${text.slice(-24)}`;
+  }
+
+  function handleMatchClick(event) {
+    const target = event.target.closest("[data-link]");
+    if (!target) return;
+    const link = target.dataset.link;
+    if (!link || link === "#") return;
+    window.open(link, "_blank", "noreferrer");
+  }
+</script>
+</body>
+</html>
