@@ -31,6 +31,7 @@ public class ApiProperties {
         private SummaryApiProperties summary = new SummaryApiProperties();
         private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();
         private FaceDetectionProperties faceDetection = new FaceDetectionProperties();
+        private FaceEnhanceProperties faceEnhance = new FaceEnhanceProperties();
         private MinioProperties minio = new MinioProperties();
         private Proxy proxy = new Proxy();
 

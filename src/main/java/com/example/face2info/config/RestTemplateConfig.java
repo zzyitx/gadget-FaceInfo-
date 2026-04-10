@@ -34,7 +34,8 @@ public class RestTemplateConfig {
                 properties.getApi().getKimi().getConnectTimeoutMs(),
                 properties.getApi().getSummary().getConnectTimeoutMs(),
                 properties.getApi().getFacecheck().getConnectTimeoutMs(),
-                properties.getApi().getFaceDetection().getConnectTimeoutMs()
+                properties.getApi().getFaceDetection().getConnectTimeoutMs(),
+                properties.getApi().getFaceEnhance().getConnectTimeoutMs()
         );
         int readTimeout = max(
                 properties.getApi().getSerp().getReadTimeoutMs(),
@@ -44,7 +45,8 @@ public class RestTemplateConfig {
                 properties.getApi().getKimi().getReadTimeoutMs(),
                 properties.getApi().getSummary().getReadTimeoutMs(),
                 properties.getApi().getFacecheck().getReadTimeoutMs(),
-                properties.getApi().getFaceDetection().getReadTimeoutMs()
+                properties.getApi().getFaceDetection().getReadTimeoutMs(),
+                properties.getApi().getFaceEnhance().getReadTimeoutMs()
         );
         ClientHttpRequestFactory requestFactory = requestFactory(connectTimeout, readTimeout, properties);
         RestTemplate restTemplate = new RestTemplate(new BufferingClientHttpRequestFactory(requestFactory));
