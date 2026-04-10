@@ -88,7 +88,7 @@ face2info:
       api-key: ${REPLICATE_API_TOKEN:}
       model-owner: tencentarc
       model-name: gfpgan
-      model-version: ${REPLICATE_GFPGAN_VERSION:}
+        model-version: ${REPLICATE_GFPGAN_VERSION:0fbacf7afc6c144e5be9767cff80f25aff23e52b0708f17e20f9879b2f21516c}
       gfpgan-version: ${REPLICATE_GFPGAN_RESTORE_VERSION:v1.4}
       scale: ${REPLICATE_GFPGAN_SCALE:2}
       prefer-wait-seconds: 30

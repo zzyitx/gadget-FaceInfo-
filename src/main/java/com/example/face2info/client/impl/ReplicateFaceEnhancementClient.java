@@ -46,9 +46,15 @@ public class ReplicateFaceEnhancementClient implements FaceEnhancementClient {
     public MultipartFile enhanceFaceImageByUrl(String imageUrl, MultipartFile originalImage) {
         FaceEnhanceProperties faceEnhance = properties.getApi().getFaceEnhance();
         if (!faceEnhance.isEnabled()) {
+            log.info("人脸增强已禁用，跳过 Replicate 调用");
             return originalImage;
         }
         validateInput(imageUrl, originalImage, faceEnhance.getReplicate());
+        log.info("开始调用 Replicate GFP-GAN imageUrl={} model={}/{} version={}",
+                imageUrl,
+                faceEnhance.getReplicate().getModelOwner(),
+                faceEnhance.getReplicate().getModelName(),
+                faceEnhance.getReplicate().getModelVersion());
 
         JsonNode createdPrediction = RetryUtils.execute(
                 "Replicate 人脸增强创建任务",
