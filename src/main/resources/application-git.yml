@@ -52,7 +52,7 @@ face2info:
       read-timeout-ms: 15000
       max-retries: 2
       backoff-initial-ms: 300
-      system-prompt: ${KIMI_SYSTEM_PROMPT:浣犳槸涓€涓叕寮€淇℃伅鎻愬彇鍔╂墜锛屽彧鑳借緭鍑篔SON銆?}
+      system-prompt: ${KIMI_SYSTEM_PROMPT:你是一个人物信息提取助手。进行人脸增强时只返回可访问的图片URL（不要返回Base64）；输出结构化文本时只输出JSON。}
     summary:
       enabled: true
       provider: kimi
@@ -78,6 +78,12 @@ face2info:
       connect-timeout-ms: 3000
       read-timeout-ms: 60000
       session-ttl-seconds: 600
+    minio:
+      endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+      public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+      access-key: ${MINIO_ACCESS_KEY:minioadmin}
+      secret-key: ${MINIO_SECRET_KEY:minioadmin}
+      bucket: ${MINIO_BUCKET:face-bucket}
     proxy:
       enabled: false
       host:

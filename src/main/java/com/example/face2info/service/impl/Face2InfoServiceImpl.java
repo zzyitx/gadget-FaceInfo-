@@ -99,7 +99,8 @@ public class Face2InfoServiceImpl implements Face2InfoService {
     private FaceInfoResponse buildSelectionRequiredResponse(DetectionSession session) {
         FaceSelectionPayload selection = new FaceSelectionPayload()
                 .setDetectionId(session.getDetectionId())
-                .setPreviewImage(session.getPreviewImage());
+                .setPreviewImage(session.getPreviewImage())
+                .setEnhancedImageUrl(session.getEnhancedImageUrl());
 
         if (session.getFaces() != null) {
             for (DetectedFace detectedFace : session.getFaces()) {

@@ -36,8 +36,8 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
-    public MultipartFile enhanceFaceImage(MultipartFile image) {
-        return image;
+    public MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType) {
+        throw new UnsupportedOperationException("noop summary provider does not support image enhancement by URL");
     }
 
     @Override

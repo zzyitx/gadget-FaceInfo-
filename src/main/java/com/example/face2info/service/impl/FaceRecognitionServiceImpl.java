@@ -56,15 +56,11 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         log.info("人脸识别模块开始 fileName={} size={} contentType={}",
                 image.getOriginalFilename(), image.getSize(), image.getContentType());
 
-        RecognitionEvidence evidence = new RecognitionEvidence();
-        MultipartFile processedImage = enhanceFaceImageSafely(image, evidence);
-
-        String imageUrl = tmpfilesClient.uploadImage(processedImage);
+        String imageUrl = tmpfilesClient.uploadImage(image);
         log.info("人脸识别模块已获得临时图片地址 imageUrl={}", imageUrl);
 
         RecognitionEvidence searchEvidence = searchByImageUrl(imageUrl);
-        searchEvidence.setSeedQueries(recognizeCandidateNames(processedImage, searchEvidence));
-        searchEvidence.getErrors().addAll(0, evidence.getErrors());
+        searchEvidence.setSeedQueries(recognizeCandidateNames(image, searchEvidence));
 
         log.info("人脸识别模块完成 imageMatchCount={} seedQueryCount={} webEvidenceCount={} errorCount={}",
                 searchEvidence.getImageMatches().size(),
@@ -72,22 +68,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 searchEvidence.getWebEvidences().size(),
                 searchEvidence.getErrors().size());
         return searchEvidence;
-    }
-
-    private MultipartFile enhanceFaceImageSafely(MultipartFile image, RecognitionEvidence evidence) {
-        try {
-            MultipartFile enhanced = summaryGenerationClient.enhanceFaceImage(image);
-            if (enhanced == null || enhanced.isEmpty()) {
-                throw new IllegalStateException("增强后图片为空");
-            }
-            log.info("人脸图像高清化完成 originalName={} enhancedName={} enhancedSize={}",
-                    image.getOriginalFilename(), enhanced.getOriginalFilename(), enhanced.getSize());
-            return enhanced;
-        } catch (RuntimeException ex) {
-            log.warn("人脸图像高清化失败，回退原图 fileName={} error={}", image.getOriginalFilename(), ex.getMessage(), ex);
-            evidence.getErrors().add("face_enhance: " + ex.getMessage());
-            return image;
-        }
     }
 
     private List<String> recognizeCandidateNames(MultipartFile image, RecognitionEvidence evidence) {

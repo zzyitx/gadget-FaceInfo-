@@ -76,22 +76,23 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         });
     }
 
+
     @Override
-    public MultipartFile enhanceFaceImage(MultipartFile image) {
+    public MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
-        log.info("Kimi 人脸增强开始 fileName={} size={} contentType={}",
-                image == null ? null : image.getOriginalFilename(),
-                image == null ? 0 : image.getSize(),
-                image == null ? null : image.getContentType());
+
+        log.info("Kimi 人脸增强开始 imageUrl={} fileName={} contentType={}", imageUrl, filename, contentType);
 
         return RetryUtils.execute("Kimi 人脸增强", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildFaceEnhanceRequest(kimi, image));
-            MultipartFile enhanced = parseEnhancedImage(image, body);
+            JsonNode body = callKimi(kimi, buildFaceEnhanceRequestByUrl(kimi, imageUrl, filename, contentType));
+            MultipartFile enhanced = parseEnhancedImage(filename, contentType, body);
+
             log.info("Kimi 人脸增强成功 originalName={} enhancedName={} enhancedSize={}",
-                    image == null ? null : image.getOriginalFilename(),
+                    filename,
                     enhanced.getOriginalFilename(),
                     enhanced.getSize());
+
             return enhanced;
         });
     }
@@ -214,12 +215,21 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
-    private Map<String, Object> buildFaceEnhanceRequest(KimiApiProperties kimi, MultipartFile image) {
+
+    /**
+     * 构建请求（已改为返回 imageUrl，不再使用 base64）
+     */
+    private Map<String, Object> buildFaceEnhanceRequestByUrl(KimiApiProperties kimi,
+                                                             String imageUrl,
+                                                             String filename,
+                                                             String contentType) {
+
         return Map.of(
                 "model", kimi.getModel(),
                 "messages", List.of(
                         Map.of("role", "system", "content", kimi.getSystemPrompt()),
-                        Map.of("role", "user", "content", buildFaceEnhancePrompt(image))
+                        Map.of("role", "user", "content",
+                                buildFaceEnhancePromptByUrl(imageUrl, filename, contentType))
                 ),
                 "tools", List.of(Map.of(
                         "type", "function",
@@ -229,11 +239,11 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                 "parameters", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
-                                                "enhancedImageBase64", Map.of("type", "string"),
+                                                "imageUrl", Map.of("type", "string"),
                                                 "filename", Map.of("type", "string"),
                                                 "contentType", Map.of("type", "string")
                                         ),
-                                        "required", List.of("enhancedImageBase64"),
+                                        "required", List.of("imageUrl"),
                                         "additionalProperties", false
                                 )
                         )
@@ -369,20 +379,27 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
-    private String buildFaceEnhancePrompt(MultipartFile image) {
+
+    /**
+     * Prompt：要求返回图片URL（关键改动）
+     */
+    private String buildFaceEnhancePromptByUrl(String imageUrl, String filename, String contentType) {
         return """
-                请对下面的人脸图像进行高清化增强，尽量保持人物身份特征不变。
-                只输出 JSON，且返回内容语言必须为中文。
-                JSON 字段固定为 enhancedImageBase64、filename、contentType。
-                其中 enhancedImageBase64 只允许纯 base64 内容，不要 data url 前缀。
-                filename: %s
-                contentType: %s
-                imageBase64: %s
-                """.formatted(
-                image == null ? null : image.getOriginalFilename(),
-                image == null ? null : image.getContentType(),
-                toBase64(image)
-        );
+                请对输入图片进行人脸增强（提高清晰度、去噪、细节优化），要求必须保持人物特征不变。
+                
+                要求：
+                1. 输出增强后的图片，并提供可访问的图片URL
+                2. 不要返回 base64
+                3. 返回 JSON 格式如下：
+                
+                {
+                  "imageUrl": "增强后的图片访问地址",
+                  "filename": "%s",
+                  "contentType": "%s"
+                }
+                
+                原始图片URL: %s
+                """.formatted(filename, contentType, imageUrl);
     }
 
     private String buildFaceCandidatePrompt(MultipartFile image) {
@@ -479,31 +496,48 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
-    private MultipartFile parseEnhancedImage(MultipartFile originalImage, JsonNode body) {
+    /**
+     * 解析 Kimi 返回并下载高清化图片字节。
+     */
+    private MultipartFile parseEnhancedImage(String originalFilename,
+                                             String originalContentType,
+                                             JsonNode body) {
+
         String content = extractStructuredPayload(body, FACE_ENHANCE_FUNCTION_NAME);
+
         try {
             JsonNode json = objectMapper.readTree(normalizeJsonContent(content));
-            String base64 = trimToNull(json.path("enhancedImageBase64").asText(null));
-            if (!StringUtils.hasText(base64)) {
-                throw new ApiCallException("EMPTY_RESPONSE: Kimi 增强后图片为空");
+
+            String imageUrl = trimToNull(json.path("imageUrl").asText(null));
+            if (!StringUtils.hasText(imageUrl)) {
+                throw new ApiCallException("EMPTY_RESPONSE: Kimi未返回图片URL");
             }
 
             String filename = firstNonBlank(
                     trimToNull(json.path("filename").asText(null)),
-                    originalImage == null ? null : originalImage.getOriginalFilename(),
+                    originalFilename,
                     "enhanced-face.jpg"
             );
+
             String contentType = firstNonBlank(
                     trimToNull(json.path("contentType").asText(null)),
-                    originalImage == null ? null : originalImage.getContentType(),
+                    originalContentType,
                     "image/jpeg"
             );
 
-            byte[] bytes = Base64.getDecoder().decode(stripDataUrlPrefix(base64));
+            // 下载图片
+            byte[] bytes = downloadImage(imageUrl);
+
+            // 校验（防止脏数据）
+            if (bytes.length < 10 * 1024) {
+                throw new ApiCallException("INVALID_IMAGE: 图片过小，疑似异常");
+            }
+
             return new InMemoryMultipartFile(filename, contentType, bytes);
-        } catch (JsonProcessingException | IllegalArgumentException ex) {
+
+        } catch (Exception ex) {
             log.warn("Kimi 人脸增强结果解析失败 error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: Kimi 增强后图片格式不合法", ex);
+            throw new ApiCallException("INVALID_RESPONSE: 图片处理失败", ex);
         }
     }
 
@@ -564,6 +598,30 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         } catch (JsonProcessingException ex) {
             log.warn("Kimi 综合判断结果解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
             throw new ApiCallException("INVALID_RESPONSE: Kimi 综合判断内容不是合法 JSON", ex);
+        }
+    }
+
+    /**
+     * 下载图片
+     */
+    private byte[] downloadImage(String url) {
+        try {
+            RestTemplate restTemplate = new RestTemplate();
+            ResponseEntity<byte[]> response = restTemplate.getForEntity(url, byte[].class);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("下载图片失败");
+            }
+
+            byte[] body = response.getBody();
+            if (body == null || body.length == 0) {
+                throw new RuntimeException("图片为空");
+            }
+
+            return body;
+
+        } catch (Exception e) {
+            throw new RuntimeException("图片下载失败: " + url, e);
         }
     }
 

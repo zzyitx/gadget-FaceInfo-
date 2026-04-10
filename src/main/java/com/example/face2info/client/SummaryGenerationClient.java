@@ -18,9 +18,9 @@ public interface SummaryGenerationClient {
     PageSummary summarizePage(String fallbackName, PageContent page);
 
     /**
-     * 对上传的人脸图像做高清化处理，供后续识别主流程使用。
+     * 基于图床 URL 对人脸图像做高清化处理。
      */
-    MultipartFile enhanceFaceImage(MultipartFile image);
+    MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType);
 
     /**
      * 基于人脸图像进行人物识别，返回候选名称列表。

@@ -8,6 +8,7 @@ public class DetectionSession {
 
     private String detectionId;
     private String previewImage;
+    private String enhancedImageUrl;
     private List<DetectedFace> faces = new ArrayList<>();
     private Instant expiresAt;
 
@@ -26,6 +27,15 @@ public class DetectionSession {
 
     public DetectionSession setPreviewImage(String previewImage) {
         this.previewImage = previewImage;
+        return this;
+    }
+
+    public String getEnhancedImageUrl() {
+        return enhancedImageUrl;
+    }
+
+    public DetectionSession setEnhancedImageUrl(String enhancedImageUrl) {
+        this.enhancedImageUrl = enhancedImageUrl;
         return this;
     }
 

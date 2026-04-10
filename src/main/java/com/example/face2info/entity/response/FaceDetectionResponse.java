@@ -14,8 +14,12 @@ public class FaceDetectionResponse {
     private String detectionId;
 
     @JsonProperty("preview_image")
-    @Schema(description = "带人脸框的预览图")
+    @Schema(description = "人脸框预览图")
     private String previewImage;
+
+    @JsonProperty("enhanced_image_url")
+    @Schema(description = "高清化图片的 MinIO 链接")
+    private String enhancedImageUrl;
 
     @Schema(description = "检测到的人脸列表")
     private List<DetectedFaceResponse> faces = new ArrayList<>();
@@ -35,6 +39,15 @@ public class FaceDetectionResponse {
 
     public FaceDetectionResponse setPreviewImage(String previewImage) {
         this.previewImage = previewImage;
+        return this;
+    }
+
+    public String getEnhancedImageUrl() {
+        return enhancedImageUrl;
+    }
+
+    public FaceDetectionResponse setEnhancedImageUrl(String enhancedImageUrl) {
+        this.enhancedImageUrl = enhancedImageUrl;
         return this;
     }
 

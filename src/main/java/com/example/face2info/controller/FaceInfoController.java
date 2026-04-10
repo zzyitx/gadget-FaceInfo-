@@ -97,7 +97,8 @@ public class FaceInfoController {
     private FaceDetectionResponse mapDetectionSession(DetectionSession session) {
         FaceDetectionResponse response = new FaceDetectionResponse()
                 .setDetectionId(session.getDetectionId())
-                .setPreviewImage(session.getPreviewImage());
+                .setPreviewImage(session.getPreviewImage())
+                .setEnhancedImageUrl(session.getEnhancedImageUrl());
         if (session.getFaces() != null) {
             for (DetectedFace detectedFace : session.getFaces()) {
                 response.getFaces().add(mapDetectedFace(detectedFace));
