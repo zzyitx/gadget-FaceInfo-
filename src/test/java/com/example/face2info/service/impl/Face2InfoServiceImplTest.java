@@ -210,6 +210,7 @@ class Face2InfoServiceImplTest {
                 .setPerson(new PersonAggregate()
                         .setName("Jay Chou")
                         .setDescription("Short description")
+                        .setImageUrl("https://example.com/avatar.jpg")
                         .setSummary("Long summary")
                         .setWikipedia("https://example.com/wiki")
                         .setOfficialWebsite("https://example.com")
@@ -221,6 +222,7 @@ class Face2InfoServiceImplTest {
 
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
+        assertThat(response.getPerson().getImageUrl()).isEqualTo("https://example.com/avatar.jpg");
         assertThat(response.getPerson().getBasicInfo().getBirthDate()).isEqualTo("1979-01-18");
         assertThat(response.getPerson().getBasicInfo().getEducation()).containsExactly("Tamkang Senior High School");
         assertThat(response.getPerson().getBasicInfo().getOccupations()).containsExactly("Singer", "Producer");

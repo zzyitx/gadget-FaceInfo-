@@ -127,6 +127,34 @@
       margin-bottom: 14px;
     }
 
+    .person-intro {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .person-copy {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .person-avatar-wrap {
+      width: 120px;
+      height: 120px;
+      border-radius: 16px;
+      border: 1px solid rgba(41, 28, 20, 0.12);
+      overflow: hidden;
+      background: #fff;
+      flex: 0 0 120px;
+    }
+
+    .person-avatar-wrap img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
     .image-item,
     .item,
     .info-box,
@@ -261,6 +289,16 @@
         padding: 18px;
         border-radius: 20px;
       }
+
+      .person-intro {
+        flex-direction: column-reverse;
+      }
+
+      .person-avatar-wrap {
+        width: 96px;
+        height: 96px;
+        flex-basis: 96px;
+      }
     }
   </style>
 </head>
@@ -282,7 +320,14 @@
         <h2 id="personTitle">等待加载结果</h2>
       </div>
     </div>
-    <p class="description" id="personDescription">请在首页完成上传与选脸后再查看本页。</p>
+    <div class="person-intro">
+      <div class="person-copy">
+        <p class="description" id="personDescription">请在首页完成上传与选脸后再查看本页。</p>
+      </div>
+      <div class="person-avatar-wrap" id="personAvatarWrap" hidden>
+        <img id="personAvatar" alt="人物头像" loading="lazy" referrerpolicy="no-referrer">
+      </div>
+    </div>
     <div id="personDetails"></div>
   </section>
 
@@ -333,6 +378,8 @@
   const rawResponseEl = document.getElementById("rawResponse");
   const personTitle = document.getElementById("personTitle");
   const personDescription = document.getElementById("personDescription");
+  const personAvatarWrap = document.getElementById("personAvatarWrap");
+  const personAvatar = document.getElementById("personAvatar");
   const personDetails = document.getElementById("personDetails");
   const matchesCard = document.getElementById("matchesCard");
   const matchesBody = document.getElementById("matchesBody");
@@ -372,6 +419,15 @@
       ? person.description || person.summary
       : "暂无人物简介。";
 
+    const avatarUrl = person && person.image_url ? person.image_url : "";
+    if (avatarUrl) {
+      personAvatar.src = avatarUrl;
+      personAvatarWrap.hidden = false;
+    } else {
+      personAvatar.removeAttribute("src");
+      personAvatarWrap.hidden = true;
+    }
+
     const tags = Array.isArray(person && person.tags) ? person.tags.filter(Boolean) : [];
     const info = person && person.basic_info ? person.basic_info : {};
     const links = [];
@@ -380,7 +436,6 @@
 
     const personMeta = [];
     if (info.birth_date) personMeta.push(["出生日期", info.birth_date]);
-    if (info.education) personMeta.push(["教育背景", info.education]);
     if (info.occupations) personMeta.push(["职业", info.occupations]);
     if (info.biographies) personMeta.push(["简介", info.biographies]);
 
@@ -469,6 +524,8 @@
   function renderError(message) {
     personTitle.textContent = "加载失败";
     personDescription.textContent = message || "请求失败。";
+    personAvatar.removeAttribute("src");
+    personAvatarWrap.hidden = true;
     personDetails.innerHTML = "";
     matchesBody.innerHTML = '<p class="empty">当前未生成图片匹配结果。</p>';
     socialBody.innerHTML = '<p class="empty">当前未生成社交账号结果。</p>';
@@ -499,6 +556,7 @@
       person: data && data.person ? {
         name: data.person.name || null,
         description: data.person.description || null,
+        image_url: data.person.image_url || null,
         summary: data.person.summary || null,
         tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],
         wikipedia: data.person.wikipedia || null,

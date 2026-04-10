@@ -12,7 +12,9 @@ import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -23,13 +25,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class InformationAggregationServiceImplTest {
@@ -275,7 +277,6 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getWikipedia()).isEqualTo("https://example.com/wiki");
         assertThat(result.getPerson().getOfficialWebsite()).isEqualTo("https://example.com");
         assertThat(result.getPerson().getBasicInfo().getBirthDate()).isEqualTo("1979-01-18");
-        verifyNoInteractions(googleSearchClient);
     }
 
     @Test
@@ -319,6 +320,91 @@ class InformationAggregationServiceImplTest {
                 List.of("Jay Chou", "周杰伦"),
                 List.of(pageSummary),
                 draftProfile);
+    }
+
+    @Test
+    void shouldRunSecondarySerperSearchWithResolvedNameAndUseKnowledgeGraphAvatar() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent initialPage = new PageContent().setUrl("https://example.com/seed").setTitle("Seed").setContent("seed body");
+        PageSummary initialSummary = new PageSummary().setSourceUrl("https://example.com/seed").setTitle("Seed").setSummary("seed summary");
+        when(jinaReaderClient.readPages(List.of("https://example.com/seed"))).thenReturn(List.of(initialPage));
+        when(summaryGenerationClient.summarizePage("Lei Jun", initialPage)).thenReturn(initialSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Lei Jun", List.of(initialSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Lei Jun")
+                        .setSummary("initial summary")
+                        .setEvidenceUrls(List.of("https://example.com/seed")));
+
+        ObjectMapper mapper = new ObjectMapper();
+        SerpApiResponse textSearch = new SerpApiResponse().setRoot(mapper.readTree("""
+                {
+                  "knowledgeGraph": {
+                    "imageUrl": "https://img.example.com/lei-jun.jpg",
+                    "descriptionLink": "https://zh.wikipedia.org/wiki/%E9%9B%B7%E5%86%9B"
+                  },
+                  "organic": [
+                    {
+                      "title": "雷军_百度百科",
+                      "link": "https://baike.baidu.com/item/%E9%9B%B7%E5%86%9B/1968",
+                      "snippet": "百度百科简介"
+                    },
+                    {
+                      "title": "雷军 - 维基百科",
+                      "link": "https://zh.wikipedia.org/wiki/%E9%9B%B7%E5%86%9B",
+                      "snippet": "维基百科简介"
+                    },
+                    {
+                      "title": "Xiaomi 官方介绍",
+                      "link": "https://ir.mi.com/zh-hans/board-member-management/leijun/",
+                      "snippet": "官方简介"
+                    }
+                  ]
+                }
+                """));
+        when(googleSearchClient.googleSearch("Lei Jun")).thenReturn(textSearch);
+
+        List<String> secondaryUrls = List.of(
+                "https://zh.wikipedia.org/wiki/%E9%9B%B7%E5%86%9B",
+                "https://baike.baidu.com/item/%E9%9B%B7%E5%86%9B/1968",
+                "https://ir.mi.com/zh-hans/board-member-management/leijun/"
+        );
+        PageContent wikiPage = new PageContent().setUrl(secondaryUrls.get(0)).setTitle("Wiki").setContent("wiki body");
+        PageContent baikePage = new PageContent().setUrl(secondaryUrls.get(1)).setTitle("Baike").setContent("baike body");
+        PageContent officialPage = new PageContent().setUrl(secondaryUrls.get(2)).setTitle("Official").setContent("official body");
+        when(jinaReaderClient.readPages(secondaryUrls)).thenReturn(List.of(wikiPage, baikePage, officialPage));
+
+        PageSummary wikiSummary = new PageSummary().setSourceUrl(secondaryUrls.get(0)).setTitle("Wiki").setSummary("wiki summary");
+        PageSummary baikeSummary = new PageSummary().setSourceUrl(secondaryUrls.get(1)).setTitle("Baike").setSummary("baike summary");
+        PageSummary officialSummary = new PageSummary().setSourceUrl(secondaryUrls.get(2)).setTitle("Official").setSummary("official summary");
+        when(summaryGenerationClient.summarizePage("Lei Jun", wikiPage)).thenReturn(wikiSummary);
+        when(summaryGenerationClient.summarizePage("Lei Jun", baikePage)).thenReturn(baikeSummary);
+        when(summaryGenerationClient.summarizePage("Lei Jun", officialPage)).thenReturn(officialSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Lei Jun", List.of(wikiSummary, baikeSummary, officialSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Lei Jun")
+                        .setSummary("secondary detailed summary")
+                        .setDescription("secondary short description")
+                        .setEvidenceUrls(secondaryUrls));
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(3));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
+        );
+
+        AggregationResult result = service.aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Lei Jun"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/seed"))));
+
+        assertThat(result.getPerson().getImageUrl()).isEqualTo("https://img.example.com/lei-jun.jpg");
+        assertThat(result.getPerson().getDescription()).isEqualTo("secondary short description (由 Kimi 总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("secondary detailed summary (由 Kimi 总结)");
+        assertThat(result.getPerson().getEvidenceUrls()).contains("https://zh.wikipedia.org/wiki/%E9%9B%B7%E5%86%9B");
+        assertThat(result.getPerson().getEvidenceUrls()).contains("https://baike.baidu.com/item/%E9%9B%B7%E5%86%9B/1968");
+        assertThat(result.getWarnings()).doesNotContain("secondary_profile_search_unavailable");
     }
 
     @Test

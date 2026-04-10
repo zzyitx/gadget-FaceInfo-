@@ -14,6 +14,9 @@ public class PersonAggregate {
     @Schema(description = "人物简介")
     private String description;
 
+    @Schema(description = "人物头像链接")
+    private String imageUrl;
+
     @Schema(description = "聚合后的摘要")
     private String summary;
 
@@ -47,6 +50,15 @@ public class PersonAggregate {
 
     public PersonAggregate setDescription(String description) {
         this.description = description;
+        return this;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public PersonAggregate setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
         return this;
     }
 

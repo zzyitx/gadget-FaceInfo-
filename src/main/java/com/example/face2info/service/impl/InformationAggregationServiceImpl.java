@@ -12,6 +12,7 @@ import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.service.InformationAggregationService;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,6 +44,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String SOCIAL_PLACEHOLDER_PLATFORM = "pending";
     private static final String SOCIAL_PLACEHOLDER_URL = "#";
     private static final String SOCIAL_PLACEHOLDER_USERNAME = "功能正在开发中";
+    private static final String SECONDARY_SEARCH_WARNING = "secondary_profile_search_unavailable";
+    private static final String SECONDARY_SEARCH_SOURCE = "serper_google_search";
 
     @SuppressWarnings("unused")
     private final GoogleSearchClient googleSearchClient;
@@ -96,22 +100,32 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 result.getWarnings()
         );
         String resolvedName = resolveNameOrFallback(profile, evidence);
+        EnrichedProfile enrichedProfile = enrichProfileByResolvedName(
+                profile,
+                resolvedName,
+                safeList(evidence.getSeedQueries()),
+                result.getWarnings()
+        );
+        profile = enrichedProfile.profile();
+        resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
             result.setPerson(new PersonAggregate()
                     .setDescription(appendSuffix(cleanText(profile.getDescription()), KIMI_SUFFIX))
                     .setSummary(appendSuffix(cleanText(profile.getSummary()), KIMI_SUFFIX))
+                    .setImageUrl(cleanText(enrichedProfile.imageUrl()))
                     .setBasicInfo(profile.getBasicInfo())
                     .setOfficialWebsite(profile.getOfficialWebsite())
                     .setWikipedia(profile.getWikipedia()));
             return result;
         }
 
+        String finalResolvedName = resolvedName;
         CompletableFuture<List<SocialAccount>> socialFuture = CompletableFuture
-                .supplyAsync(() -> collectSocialAccounts(resolvedName), executor)
+                .supplyAsync(() -> collectSocialAccounts(finalResolvedName), executor)
                 .orTimeout(10, TimeUnit.SECONDS);
 
-        result.setPerson(buildPersonFromProfile(profile, resolvedName));
+        result.setPerson(buildPersonFromProfile(profile, finalResolvedName, enrichedProfile.imageUrl()));
         result.setSocialAccounts(deduplicateSocialAccounts(joinTask("社交账号", socialFuture, List.of(), result.getErrors())));
         result.setNews(List.of());
         return result;
@@ -214,13 +228,14 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
     }
 
-    private PersonAggregate buildPersonFromProfile(ResolvedPersonProfile profile, String resolvedName) {
+    private PersonAggregate buildPersonFromProfile(ResolvedPersonProfile profile, String resolvedName, String imageUrl) {
         String shortDescription = cleanText(profile.getDescription());
         String longSummary = cleanText(profile.getSummary());
         return new PersonAggregate()
                 .setName(resolvedName)
                 .setDescription(appendSuffix(StringUtils.hasText(shortDescription) ? shortDescription : longSummary, KIMI_SUFFIX))
                 .setSummary(appendSuffix(longSummary, KIMI_SUFFIX))
+                .setImageUrl(cleanText(imageUrl))
                 .setWikipedia(cleanText(profile.getWikipedia()))
                 .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
                 .setTags(profile.getTags() == null ? List.of() : profile.getTags())
@@ -256,6 +271,273 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
         }
         return pageSummaries;
+    }
+
+    private EnrichedProfile enrichProfileByResolvedName(ResolvedPersonProfile profile,
+                                                        String resolvedName,
+                                                        List<String> candidateNames,
+                                                        List<String> warnings) {
+        if (!shouldRunSecondarySearch(profile, resolvedName)) {
+            return new EnrichedProfile(profile, null);
+        }
+
+        SerpApiResponse searchResponse;
+        try {
+            searchResponse = googleSearchClient.googleSearch(resolvedName);
+        } catch (RuntimeException ex) {
+            log.warn("secondary search failed resolvedName={} error={}", resolvedName, ex.getMessage(), ex);
+            warnings.add(SECONDARY_SEARCH_WARNING);
+            return new EnrichedProfile(profile, null);
+        }
+
+        if (searchResponse == null || searchResponse.getRoot() == null) {
+            return new EnrichedProfile(profile, null);
+        }
+
+        String imageUrl = extractKnowledgeGraphImageUrl(searchResponse.getRoot());
+        List<WebEvidence> webEvidences = extractSearchOrganicWebEvidence(searchResponse.getRoot());
+        if (webEvidences.isEmpty()) {
+            return new EnrichedProfile(profile, imageUrl);
+        }
+
+        ResolvedPersonProfile mergedProfile = summarizeSecondaryEvidence(
+                resolvedName,
+                safeList(candidateNames),
+                webEvidences,
+                profile,
+                warnings
+        );
+        return new EnrichedProfile(mergedProfile, imageUrl);
+    }
+
+    private boolean shouldRunSecondarySearch(ResolvedPersonProfile profile, String resolvedName) {
+        return StringUtils.hasText(resolvedName)
+                && profile != null
+                && (StringUtils.hasText(profile.getDescription()) || StringUtils.hasText(profile.getSummary()));
+    }
+
+    private String extractKnowledgeGraphImageUrl(com.fasterxml.jackson.databind.JsonNode root) {
+        return cleanText(firstNonBlank(root.path("knowledgeGraph"), "imageUrl"));
+    }
+
+    private List<WebEvidence> extractSearchOrganicWebEvidence(com.fasterxml.jackson.databind.JsonNode root) {
+        List<WebEvidence> evidences = new ArrayList<>();
+        collectKnowledgeGraphEvidence(evidences, root.path("knowledgeGraph"));
+        collectOrganicEvidence(evidences, root.path("organic"));
+        return deduplicateWebEvidencePrioritized(evidences);
+    }
+
+    private void collectKnowledgeGraphEvidence(List<WebEvidence> evidences, com.fasterxml.jackson.databind.JsonNode knowledgeGraph) {
+        if (knowledgeGraph == null || knowledgeGraph.isMissingNode()) {
+            return;
+        }
+        String url = cleanText(firstNonBlank(knowledgeGraph, "descriptionLink"));
+        if (!StringUtils.hasText(url)) {
+            return;
+        }
+        evidences.add(new WebEvidence()
+                .setUrl(url)
+                .setTitle(cleanText(firstNonBlank(knowledgeGraph, "title")))
+                .setSource(cleanText(firstNonBlank(knowledgeGraph, "descriptionSource")))
+                .setSnippet(cleanText(firstNonBlank(knowledgeGraph, "description")))
+                .setSourceEngine(SECONDARY_SEARCH_SOURCE));
+    }
+
+    private void collectOrganicEvidence(List<WebEvidence> evidences, com.fasterxml.jackson.databind.JsonNode organicNodes) {
+        if (organicNodes == null || !organicNodes.isArray()) {
+            return;
+        }
+        for (com.fasterxml.jackson.databind.JsonNode node : organicNodes) {
+            String url = cleanText(firstNonBlank(node, "link"));
+            if (!StringUtils.hasText(url)) {
+                continue;
+            }
+            evidences.add(new WebEvidence()
+                    .setUrl(url)
+                    .setTitle(cleanText(firstNonBlank(node, "title")))
+                    .setSource(cleanText(firstNonBlank(node, "source")))
+                    .setSnippet(cleanText(firstNonBlank(node, "snippet")))
+                    .setSourceEngine(SECONDARY_SEARCH_SOURCE));
+        }
+    }
+
+    private List<WebEvidence> deduplicateWebEvidencePrioritized(List<WebEvidence> evidences) {
+        if (evidences == null || evidences.isEmpty()) {
+            return List.of();
+        }
+        List<WebEvidence> sorted = new ArrayList<>(evidences);
+        sorted.sort(Comparator.comparingInt(this::searchEvidencePriority));
+        Set<String> seen = new LinkedHashSet<>();
+        List<WebEvidence> deduplicated = new ArrayList<>();
+        for (WebEvidence evidence : sorted) {
+            String key = StringUtils.hasText(evidence.getUrl())
+                    ? evidence.getUrl()
+                    : (evidence.getSourceEngine() + "|" + evidence.getTitle());
+            if (seen.add(key)) {
+                deduplicated.add(evidence);
+            }
+        }
+        return deduplicated;
+    }
+
+    private int searchEvidencePriority(WebEvidence evidence) {
+        String normalized = normalizeSearchText((evidence == null ? null : evidence.getUrl()) + " " + (evidence == null ? null : evidence.getTitle()));
+        if (normalized.contains("wikipedia.org") || normalized.contains("维基百科")) {
+            return 0;
+        }
+        if (normalized.contains("baike.baidu.com") || normalized.contains("百度百科")) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private String normalizeSearchText(String text) {
+        return text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private ResolvedPersonProfile summarizeSecondaryEvidence(String resolvedName,
+                                                             List<String> candidateNames,
+                                                             List<WebEvidence> evidences,
+                                                             ResolvedPersonProfile baseProfile,
+                                                             List<String> warnings) {
+        List<String> urls = selectTopUrls(evidences);
+        if (urls.isEmpty()) {
+            return baseProfile;
+        }
+
+        List<PageContent> pages = List.of();
+        try {
+            pages = jinaReaderClient.readPages(urls);
+        } catch (RuntimeException ex) {
+            log.warn("secondary jina read failed resolvedName={} urlCount={} error={}", resolvedName, urls.size(), ex.getMessage(), ex);
+        }
+        if (pages == null || pages.isEmpty()) {
+            pages = buildFallbackPages(evidences, urls);
+        }
+        if (pages.isEmpty()) {
+            warnings.add(SECONDARY_SEARCH_WARNING);
+            return baseProfile;
+        }
+
+        List<PageSummary> pageSummaries = collectPageSummaries(resolvedName, pages);
+        if (pageSummaries.isEmpty()) {
+            warnings.add(SECONDARY_SEARCH_WARNING);
+            return baseProfile;
+        }
+
+        ResolvedPersonProfile secondaryProfile;
+        try {
+            secondaryProfile = summaryGenerationClient.summarizePersonFromPageSummaries(resolvedName, pageSummaries);
+            if (secondaryProfile == null) {
+                warnings.add(SECONDARY_SEARCH_WARNING);
+                return baseProfile;
+            }
+            if (secondaryProfile.getEvidenceUrls() == null || secondaryProfile.getEvidenceUrls().isEmpty()) {
+                secondaryProfile.setEvidenceUrls(pageSummaries.stream()
+                        .map(PageSummary::getSourceUrl)
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .toList());
+            }
+        } catch (RuntimeException ex) {
+            log.warn("secondary final summary failed resolvedName={} pageSummaryCount={} category={} error={}",
+                    resolvedName, pageSummaries.size(), classifySummaryFailure(ex), ex.getMessage(), ex);
+            warnings.add(SECONDARY_SEARCH_WARNING);
+            return baseProfile;
+        }
+
+        ResolvedPersonProfile judgedSecondaryProfile = applyComprehensiveJudgement(
+                resolvedName,
+                candidateNames,
+                pageSummaries,
+                secondaryProfile,
+                warnings
+        );
+        return mergeProfiles(baseProfile, judgedSecondaryProfile, resolvedName);
+    }
+
+    private ResolvedPersonProfile mergeProfiles(ResolvedPersonProfile baseProfile,
+                                                ResolvedPersonProfile secondaryProfile,
+                                                String fallbackName) {
+        if (baseProfile == null) {
+            return secondaryProfile == null ? new ResolvedPersonProfile().setResolvedName(fallbackName) : secondaryProfile;
+        }
+        if (secondaryProfile == null) {
+            return baseProfile;
+        }
+
+        return new ResolvedPersonProfile()
+                .setResolvedName(firstNonBlankText(secondaryProfile.getResolvedName(), baseProfile.getResolvedName(), fallbackName))
+                .setDescription(firstNonBlankText(secondaryProfile.getDescription(), baseProfile.getDescription()))
+                .setSummary(firstNonBlankText(secondaryProfile.getSummary(), baseProfile.getSummary()))
+                .setWikipedia(firstNonBlankText(secondaryProfile.getWikipedia(), baseProfile.getWikipedia()))
+                .setOfficialWebsite(firstNonBlankText(secondaryProfile.getOfficialWebsite(), baseProfile.getOfficialWebsite()))
+                .setTags(pickList(secondaryProfile.getTags(), baseProfile.getTags()))
+                .setKeyFacts(pickList(secondaryProfile.getKeyFacts(), baseProfile.getKeyFacts()))
+                .setBasicInfo(mergeBasicInfo(baseProfile.getBasicInfo(), secondaryProfile.getBasicInfo()))
+                .setEvidenceUrls(mergeEvidenceUrls(baseProfile.getEvidenceUrls(), secondaryProfile.getEvidenceUrls()));
+    }
+
+    private com.example.face2info.entity.internal.PersonBasicInfo mergeBasicInfo(com.example.face2info.entity.internal.PersonBasicInfo baseInfo,
+                                                                                  com.example.face2info.entity.internal.PersonBasicInfo secondaryInfo) {
+        if (baseInfo == null && secondaryInfo == null) {
+            return null;
+        }
+        if (baseInfo == null) {
+            return secondaryInfo;
+        }
+        if (secondaryInfo == null) {
+            return baseInfo;
+        }
+        return new com.example.face2info.entity.internal.PersonBasicInfo()
+                .setBirthDate(firstNonBlankText(secondaryInfo.getBirthDate(), baseInfo.getBirthDate()))
+                .setEducation(pickList(secondaryInfo.getEducation(), baseInfo.getEducation()))
+                .setOccupations(pickList(secondaryInfo.getOccupations(), baseInfo.getOccupations()))
+                .setBiographies(pickList(secondaryInfo.getBiographies(), baseInfo.getBiographies()));
+    }
+
+    private List<String> mergeEvidenceUrls(List<String> primary, List<String> secondary) {
+        Set<String> merged = new LinkedHashSet<>();
+        if (secondary != null) {
+            secondary.stream().filter(StringUtils::hasText).forEach(merged::add);
+        }
+        if (primary != null) {
+            primary.stream().filter(StringUtils::hasText).forEach(merged::add);
+        }
+        return new ArrayList<>(merged);
+    }
+
+    private List<String> pickList(List<String> preferred, List<String> fallback) {
+        List<String> preferredCleaned = preferred == null ? List.of() : preferred.stream().filter(StringUtils::hasText).toList();
+        if (!preferredCleaned.isEmpty()) {
+            return preferredCleaned;
+        }
+        return fallback == null ? List.of() : fallback.stream().filter(StringUtils::hasText).toList();
+    }
+
+    private String firstNonBlankText(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String firstNonBlank(com.fasterxml.jackson.databind.JsonNode node, String... fields) {
+        if (node == null || fields == null) {
+            return null;
+        }
+        for (String field : fields) {
+            String value = node.path(field).asText(null);
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private String classifySummaryFailure(RuntimeException ex) {
@@ -344,6 +626,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private List<String> safeList(List<String> values) {
         return values == null ? List.of() : values;
+    }
+
+    private record EnrichedProfile(ResolvedPersonProfile profile, String imageUrl) {
     }
 
     private List<SocialAccount> collectSocialAccounts(String name) {
