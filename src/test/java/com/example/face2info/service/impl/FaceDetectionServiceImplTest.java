@@ -1,7 +1,7 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.client.FaceDetectionClient;
-import com.example.face2info.client.SummaryGenerationClient;
+import com.example.face2info.client.FaceEnhancementClient;
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.FaceDetectionProperties;
@@ -30,7 +30,7 @@ class FaceDetectionServiceImplTest {
     @Test
     void shouldEnhanceImageByUploadedUrlBeforeDetection() {
         FaceDetectionClient client = mock(FaceDetectionClient.class);
-        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        FaceEnhancementClient faceEnhancementClient = mock(FaceEnhancementClient.class);
         TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
         MinioService minioService = mock(MinioService.class);
         MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
@@ -49,14 +49,14 @@ class FaceDetectionServiceImplTest {
                                 .setBytes(new byte[]{9, 9, 9}))));
 
         when(tmpfilesClient.uploadImage(image)).thenReturn("https://tmpfiles.org/image.jpg");
-        when(summaryGenerationClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", "group.jpg", "image/jpeg"))
+        when(faceEnhancementClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", image))
                 .thenReturn(enhancedImage);
         when(minioService.upload(any(byte[].class), any(String.class), any(String.class)))
                 .thenReturn("http://192.168.216.133:9000/face-bucket/face-enhance/demo.jpg");
         when(client.detect(enhancedImage)).thenReturn(session);
 
         FaceDetectionServiceImpl service = new FaceDetectionServiceImpl(
-                client, summaryGenerationClient, tmpfilesClient, minioService, createProperties());
+                client, faceEnhancementClient, tmpfilesClient, minioService, createProperties());
         DetectionSession stored = service.detect(image);
 
         assertThat(stored.getDetectionId()).isEqualTo("det-1");
@@ -65,7 +65,7 @@ class FaceDetectionServiceImplTest {
         assertThat(service.getSelectedFaceCrop("det-1", "face-1").getFilename()).isEqualTo("face-1.jpg");
 
         verify(tmpfilesClient).uploadImage(image);
-        verify(summaryGenerationClient).enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", "group.jpg", "image/jpeg");
+        verify(faceEnhancementClient).enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", image);
         verify(minioService).upload(any(byte[].class), any(String.class), any(String.class));
         verify(client).detect(enhancedImage);
     }
@@ -73,7 +73,7 @@ class FaceDetectionServiceImplTest {
     @Test
     void shouldFallbackToOriginalImageWhenEnhanceFails() {
         FaceDetectionClient client = mock(FaceDetectionClient.class);
-        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        FaceEnhancementClient faceEnhancementClient = mock(FaceEnhancementClient.class);
         TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
         MinioService minioService = mock(MinioService.class);
         MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
@@ -87,12 +87,12 @@ class FaceDetectionServiceImplTest {
                                 .setBytes(new byte[]{9, 9, 9}))));
 
         when(tmpfilesClient.uploadImage(image)).thenReturn("https://tmpfiles.org/image.jpg");
-        when(summaryGenerationClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", "group.jpg", "image/jpeg"))
+        when(faceEnhancementClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", image))
                 .thenThrow(new RuntimeException("enhance timeout"));
         when(client.detect(image)).thenReturn(session);
 
         FaceDetectionServiceImpl service = new FaceDetectionServiceImpl(
-                client, summaryGenerationClient, tmpfilesClient, minioService, createProperties());
+                client, faceEnhancementClient, tmpfilesClient, minioService, createProperties());
         DetectionSession stored = service.detect(image);
 
         assertThat(stored.getDetectionId()).isEqualTo("det-1");
@@ -104,7 +104,7 @@ class FaceDetectionServiceImplTest {
     @Test
     void shouldFailWhenSelectedFaceDoesNotExist() {
         FaceDetectionClient client = mock(FaceDetectionClient.class);
-        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        FaceEnhancementClient faceEnhancementClient = mock(FaceEnhancementClient.class);
         TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
         MinioService minioService = mock(MinioService.class);
         MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
@@ -118,14 +118,14 @@ class FaceDetectionServiceImplTest {
                                 .setBytes(new byte[]{9, 9, 9}))));
 
         when(tmpfilesClient.uploadImage(image)).thenReturn("https://tmpfiles.org/image.jpg");
-        when(summaryGenerationClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", "group.jpg", "image/jpeg"))
+        when(faceEnhancementClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", image))
                 .thenReturn(image);
         when(minioService.upload(any(byte[].class), any(String.class), any(String.class)))
                 .thenReturn("http://192.168.216.133:9000/face-bucket/face-enhance/demo.jpg");
         when(client.detect(image)).thenReturn(session);
 
         FaceDetectionServiceImpl service = new FaceDetectionServiceImpl(
-                client, summaryGenerationClient, tmpfilesClient, minioService, createProperties());
+                client, faceEnhancementClient, tmpfilesClient, minioService, createProperties());
         service.detect(image);
 
         assertThatThrownBy(() -> service.getSelectedFaceCrop("det-1", "face-x"))
@@ -135,7 +135,7 @@ class FaceDetectionServiceImplTest {
     @Test
     void shouldFailWhenSessionExpired() {
         FaceDetectionClient client = mock(FaceDetectionClient.class);
-        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        FaceEnhancementClient faceEnhancementClient = mock(FaceEnhancementClient.class);
         TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
         MinioService minioService = mock(MinioService.class);
         MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
@@ -149,14 +149,14 @@ class FaceDetectionServiceImplTest {
                                 .setBytes(new byte[]{9, 9, 9}))));
 
         when(tmpfilesClient.uploadImage(image)).thenReturn("https://tmpfiles.org/image.jpg");
-        when(summaryGenerationClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", "group.jpg", "image/jpeg"))
+        when(faceEnhancementClient.enhanceFaceImageByUrl("https://tmpfiles.org/image.jpg", image))
                 .thenReturn(image);
         when(minioService.upload(any(byte[].class), any(String.class), any(String.class)))
                 .thenReturn("http://192.168.216.133:9000/face-bucket/face-enhance/demo.jpg");
         when(client.detect(image)).thenReturn(session);
 
         FaceDetectionServiceImpl service = new FaceDetectionServiceImpl(
-                client, summaryGenerationClient, tmpfilesClient, minioService, createProperties());
+                client, faceEnhancementClient, tmpfilesClient, minioService, createProperties());
         DetectionSession stored = service.detect(image);
         stored.setExpiresAt(Instant.now().minusSeconds(1));
 

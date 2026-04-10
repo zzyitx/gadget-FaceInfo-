@@ -1,7 +1,7 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.client.FaceDetectionClient;
-import com.example.face2info.client.SummaryGenerationClient;
+import com.example.face2info.client.FaceEnhancementClient;
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.DetectedFace;
@@ -27,19 +27,19 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
     private static final String MISSING_DETECTION_ID_ERROR = "人脸检测响应缺少 detection_id。";
 
     private final FaceDetectionClient faceDetectionClient;
-    private final SummaryGenerationClient summaryGenerationClient;
+    private final FaceEnhancementClient faceEnhancementClient;
     private final TmpfilesClient tmpfilesClient;
     private final MinioService minioService;
     private final ApiProperties properties;
     private final Map<String, DetectionSession> sessions = new ConcurrentHashMap<>();
 
     public FaceDetectionServiceImpl(FaceDetectionClient faceDetectionClient,
-                                    SummaryGenerationClient summaryGenerationClient,
+                                    FaceEnhancementClient faceEnhancementClient,
                                     TmpfilesClient tmpfilesClient,
                                     MinioService minioService,
                                     ApiProperties properties) {
         this.faceDetectionClient = faceDetectionClient;
-        this.summaryGenerationClient = summaryGenerationClient;
+        this.faceEnhancementClient = faceEnhancementClient;
         this.tmpfilesClient = tmpfilesClient;
         this.minioService = minioService;
         this.properties = properties;
@@ -86,10 +86,7 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
     private EnhancedImageResult enhanceImageSafely(MultipartFile image) {
         try {
             String imageUrl = tmpfilesClient.uploadImage(image);
-            MultipartFile enhanced = summaryGenerationClient.enhanceFaceImageByUrl(
-                    imageUrl,
-                    image.getOriginalFilename(),
-                    image.getContentType());
+            MultipartFile enhanced = faceEnhancementClient.enhanceFaceImageByUrl(imageUrl, image);
             if (enhanced == null || enhanced.isEmpty()) {
                 throw new IllegalStateException("enhanced image is empty");
             }
