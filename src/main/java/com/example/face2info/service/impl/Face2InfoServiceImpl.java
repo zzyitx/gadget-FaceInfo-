@@ -132,7 +132,9 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         log.info("总流程开始 fileName={} size={}", image.getOriginalFilename(), image.getSize());
         imageUtils.validateImage(image);
 
+        // 识别阶段负责生成候选人物、图片匹配与网页证据。
         RecognitionEvidence evidence = faceRecognitionService.recognize(image);
+        // 聚合阶段将识别证据转换为统一人物画像与公开信息集合。
         AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
 
         List<String> combinedErrors = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getErrors()));
@@ -150,12 +152,14 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                     .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
         }
 
+        // 仅对外暴露稳定响应模型字段，不透出第三方原始结构。
         PersonInfo person = new PersonInfo()
                 .setName(aggregationResult.getPerson().getName())
                 .setDescription(aggregationResult.getPerson().getDescription())
                 .setImageUrl(aggregationResult.getPerson().getImageUrl())
                 .setSummary(aggregationResult.getPerson().getSummary())
                 .setTags(aggregationResult.getPerson().getTags())
+                .setEvidenceUrls(aggregationResult.getPerson().getEvidenceUrls())
                 .setWikipedia(aggregationResult.getPerson().getWikipedia())
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
                 .setBasicInfo(toResponseBasicInfo(aggregationResult.getPerson().getBasicInfo()))
