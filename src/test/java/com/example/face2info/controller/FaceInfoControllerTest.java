@@ -4,9 +4,9 @@ import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.FaceBoundingBox;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
+import com.example.face2info.entity.response.DetectedFaceResponse;
 import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
-import com.example.face2info.entity.response.DetectedFaceResponse;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.exception.FaceDetectionException;
 import com.example.face2info.exception.GlobalExceptionHandler;
@@ -24,7 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.http.MediaType.IMAGE_JPEG_VALUE;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -47,8 +47,7 @@ class FaceInfoControllerTest {
     void shouldReturnSuccessfulPayload() throws Exception {
         face2InfoService.setProcessResponse(new FaceInfoResponse().setStatus("success"));
 
-        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        mockMvc.perform(multipart("/api/face2info").file(image))
+        mockMvc.perform(multipart("/api/face2info").file(sampleImage()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
     }
@@ -64,8 +63,7 @@ class FaceInfoControllerTest {
                                 .setFaceId("face-1")
                                 .setConfidence(0.98)))));
 
-        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        mockMvc.perform(multipart("/api/face2info").file(image))
+        mockMvc.perform(multipart("/api/face2info").file(sampleImage()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("selection_required"))
                 .andExpect(jsonPath("$.selection.detection_id").value("det-1"))
@@ -90,8 +88,7 @@ class FaceInfoControllerTest {
                 .setPreviewImage("data:image/jpeg;base64,preview")
                 .setFaces(java.util.List.of(face)));
 
-        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        mockMvc.perform(multipart("/api/face2info/detect").file(image))
+        mockMvc.perform(multipart("/api/face2info/detect").file(sampleImage()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.detection_id").value("det-1"))
                 .andExpect(jsonPath("$.preview_image").value("data:image/jpeg;base64,preview"))
@@ -107,7 +104,7 @@ class FaceInfoControllerTest {
         face2InfoService.setProcessSelectedResponse(new FaceInfoResponse().setStatus("success"));
 
         mockMvc.perform(post("/api/face2info/process-selected")
-                        .contentType(APPLICATION_JSON)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content("""
                                 {"detection_id":"det-1","face_id":"face-1"}
                                 """))
@@ -122,8 +119,7 @@ class FaceInfoControllerTest {
     void shouldMapFaceDetectionExceptionToBadRequest() throws Exception {
         faceDetectionService.setDetectException(new FaceDetectionException("no face detected"));
 
-        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        mockMvc.perform(multipart("/api/face2info/detect").file(image))
+        mockMvc.perform(multipart("/api/face2info/detect").file(sampleImage()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value("failed"))
                 .andExpect(jsonPath("$.error").value("no face detected"));
@@ -131,13 +127,24 @@ class FaceInfoControllerTest {
 
     @Test
     void shouldMapDetectorUnavailableToServiceUnavailable() throws Exception {
-        faceDetectionService.setDetectException(new ApiCallException("人脸检测服务不可用：http://127.0.0.1:8091/detect，请先启动本地检测服务后重试。"));
+        String message = "face detector unavailable";
+        faceDetectionService.setDetectException(new ApiCallException(message));
 
-        MockMultipartFile image = new MockMultipartFile("image", "group.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        mockMvc.perform(multipart("/api/face2info/detect").file(image))
+        mockMvc.perform(multipart("/api/face2info/detect").file(sampleImage()))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.status").value("failed"))
-                .andExpect(jsonPath("$.error").value("人脸检测服务不可用：http://127.0.0.1:8091/detect，请先启动本地检测服务后重试。"));
+                .andExpect(jsonPath("$.error").value(message));
+    }
+
+    @Test
+    void shouldRejectMissingImage() throws Exception {
+        mockMvc.perform(multipart("/api/face2info"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("failed"));
+    }
+
+    private MockMultipartFile sampleImage() {
+        return new MockMultipartFile("image", "face.jpg", IMAGE_JPEG_VALUE, "fake-image".getBytes(StandardCharsets.UTF_8));
     }
 
     @TestConfiguration
