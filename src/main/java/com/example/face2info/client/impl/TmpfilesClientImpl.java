@@ -42,28 +42,14 @@ public class TmpfilesClientImpl implements TmpfilesClient {
 
     @Override
     public String uploadImage(File image) {
-        // 优先走自有 MinIO，失败后回退到外部临时图床，保证流程可用性。
-        try {
-            return uploadToMinio(image);
-        } catch (IOException e) {
-            throw new ApiCallException("图片上传失败：" + e.getMessage(), e);
-        } catch (RuntimeException ex) {
-            log.warn("MinIO 上传失败，回退外部临时图床 fileName={} error={}", image.getName(), ex.getMessage());
-            return uploadFileToTempfile(image);
-        }
+        // 当前默认策略：统一走 tempfile，产出可公开访问的 URL 供下游外部服务使用。
+        return uploadFileToTempfile(image);
     }
 
     @Override
     public String uploadImage(MultipartFile image) {
-        // MultipartFile 入口与 File 入口保持同样的“主备上传”策略。
-        try {
-            return uploadToMinio(image);
-        } catch (IOException e) {
-            throw new ApiCallException("图片上传失败：" + e.getMessage(), e);
-        } catch (RuntimeException ex) {
-            log.warn("MinIO 上传失败，回退外部临时图床 fileName={} error={}", image.getOriginalFilename(), ex.getMessage());
-            return uploadMultipartToTempfile(image);
-        }
+        // MultipartFile 与 File 入口保持一致行为，避免两条上传链路语义不一致。
+        return uploadMultipartToTempfile(image);
     }
 
     private String uploadToMinio(File image) throws IOException {
