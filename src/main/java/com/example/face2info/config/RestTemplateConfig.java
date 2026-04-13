@@ -26,32 +26,38 @@ public class RestTemplateConfig {
 
     @Bean
     public RestTemplate restTemplate(ApiProperties properties) {
-        int connectTimeout = max(
+        int connectTimeout = resolveConnectTimeout(properties);
+        int readTimeout = resolveReadTimeout(properties);
+        ClientHttpRequestFactory requestFactory = requestFactory(connectTimeout, readTimeout, properties);
+        RestTemplate restTemplate = new RestTemplate(new BufferingClientHttpRequestFactory(requestFactory));
+        restTemplate.getInterceptors().add(new LoggingInterceptor());
+        return restTemplate;
+    }
+
+    int resolveConnectTimeout(ApiProperties properties) {
+        return max(
                 properties.getApi().getSerp().getConnectTimeoutMs(),
                 properties.getApi().getGoogle().getConnectTimeoutMs(),
                 properties.getApi().getNews().getConnectTimeoutMs(),
                 properties.getApi().getJina().getConnectTimeoutMs(),
                 properties.getApi().getKimi().getConnectTimeoutMs(),
                 properties.getApi().getSummary().getConnectTimeoutMs(),
-                properties.getApi().getFacecheck().getConnectTimeoutMs(),
                 properties.getApi().getFaceDetection().getConnectTimeoutMs(),
                 properties.getApi().getFaceEnhance().getConnectTimeoutMs()
         );
-        int readTimeout = max(
+    }
+
+    int resolveReadTimeout(ApiProperties properties) {
+        return max(
                 properties.getApi().getSerp().getReadTimeoutMs(),
                 properties.getApi().getGoogle().getReadTimeoutMs(),
                 properties.getApi().getNews().getReadTimeoutMs(),
                 properties.getApi().getJina().getReadTimeoutMs(),
                 properties.getApi().getKimi().getReadTimeoutMs(),
                 properties.getApi().getSummary().getReadTimeoutMs(),
-                properties.getApi().getFacecheck().getReadTimeoutMs(),
                 properties.getApi().getFaceDetection().getReadTimeoutMs(),
                 properties.getApi().getFaceEnhance().getReadTimeoutMs()
         );
-        ClientHttpRequestFactory requestFactory = requestFactory(connectTimeout, readTimeout, properties);
-        RestTemplate restTemplate = new RestTemplate(new BufferingClientHttpRequestFactory(requestFactory));
-        restTemplate.getInterceptors().add(new LoggingInterceptor());
-        return restTemplate;
     }
 
     private int max(int... values) {

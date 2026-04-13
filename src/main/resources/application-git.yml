@@ -6,6 +6,13 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 2000ms
 
 face2info:
   api:
@@ -102,6 +109,11 @@ face2info:
       access-key: ${MINIO_ACCESS_KEY:minioadmin}
       secret-key: ${MINIO_SECRET_KEY:minioadmin}
       bucket: ${MINIO_BUCKET:face-bucket}
+    redis-cache:
+      enabled: ${REDIS_CACHE_ENABLED:false}
+      key-prefix: ${REDIS_CACHE_KEY_PREFIX:face2info}
+      recognition-ttl-seconds: ${REDIS_RECOGNITION_TTL_SECONDS:86400}
+      final-response-ttl-seconds: ${REDIS_FINAL_RESPONSE_TTL_SECONDS:21600}
     proxy:
       enabled: false
       host:

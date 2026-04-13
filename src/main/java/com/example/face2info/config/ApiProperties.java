@@ -33,6 +33,7 @@ public class ApiProperties {
         private FaceDetectionProperties faceDetection = new FaceDetectionProperties();
         private FaceEnhanceProperties faceEnhance = new FaceEnhanceProperties();
         private MinioProperties minio = new MinioProperties();
+        private RedisCacheProperties redisCache = new RedisCacheProperties();
         private Proxy proxy = new Proxy();
 
     }
