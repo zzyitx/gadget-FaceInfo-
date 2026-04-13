@@ -110,19 +110,33 @@
     }
 
     .dropzone {
+      display: grid;
+      gap: 12px;
       padding: 16px;
       background: rgba(255, 255, 255, 0.74);
+    }
+
+    .upload-actions {
+      display: grid;
+      gap: 12px;
+    }
+
+    .action-slot {
+      display: contents;
     }
 
     input[type="file"] { width: 100%; }
 
     .preview {
       display: none;
-      margin-top: 12px;
       overflow: hidden;
       border-radius: 18px;
       padding: 8px;
       background: rgba(255, 255, 255, 0.92);
+    }
+
+    .preview.preview-visible {
+      display: block;
     }
 
     .preview img {
@@ -319,8 +333,7 @@
     <div class="eyebrow">Face2Info</div>
     <h1>上传图片并选择目标人脸</h1>
     <p class="hero-copy">
-      先点击 <code>开始上传</code> 完成人脸检测，勾选目标人像框后再点击 <code>开始检索</code>，
-      页面会跳转到详情页展示人物聚合结果。
+      上传图片后点击 <code>启动程序</code> 直接进入主流程。单脸会直接检索并跳转详情页，多脸会先展示候选人脸供继续选择。
     </p>
   </section>
 
@@ -328,22 +341,26 @@
     <form id="faceForm">
       <div class="section-title">
         <span class="eyebrow">上传</span>
-        <h2>选择图片文件</h2>
-        <p class="section-summary">支持 jpg、jpeg、png 格式。检测完成后需要先勾选人脸框。</p>
+        <h2>上传待识别图片</h2>
+        <p class="section-summary">系统会先将上传图片转换为图床 URL，再进入检测与识别流程。检测到单脸时直接继续主流程，多脸时再进入选脸步骤。</p>
       </div>
 
       <div style="display:grid; gap:12px; margin-top:14px;">
         <div>
-          <label for="image">选择图片文件</label>
+          <label for="imageInput">待识别图片</label>
           <div class="dropzone">
-            <input id="image" name="image" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required>
-            <div class="tip">上传后会先调用检测接口，生成候选人脸。</div>
-            <div class="preview" id="preview">
-              <img id="previewImage" alt="图片预览">
+            <input id="imageInput" name="image" type="file" accept="image/*" required>
+            <div class="tip">提交后会先进入主流程：单脸直接检索，多脸返回候选人脸供继续选择。</div>
+            <div class="upload-actions">
+              <div class="preview" id="preview">
+                <img id="previewImage" alt="图片预览">
+              </div>
+              <div class="action-slot" id="uploadActionSlot">
+                <button id="submitButton" type="submit">启动程序</button>
+              </div>
             </div>
           </div>
         </div>
-        <button id="submitButton" type="submit">开始上传</button>
       </div>
     </form>
   </section>
@@ -376,6 +393,9 @@
 
     <div class="selection-progress" id="selectionProgress" hidden>正在继续识别所选人脸，请稍候。</div>
     <div class="face-grid" id="selectionFaceGrid"></div>
+    <div class="upload-actions" id="selectionActionContainer" hidden>
+      <div class="action-slot" id="selectionActionSlot"></div>
+    </div>
   </section>
 
   <section class="card status-card" id="statusCard">
@@ -383,17 +403,20 @@
       <span class="eyebrow">状态</span>
       <h2 id="statusTitle">等待上传图片</h2>
     </div>
-    <p class="meta-line" id="statusText">上传图片后会在本页展示候选人脸，详情结果将在新页面显示。</p>
+    <p class="meta-line" id="statusText">提交图片后会在本页展示候选人脸，详情结果将在新页面显示。</p>
   </section>
 </div>
 
 <script>
   const SEARCH_RESULT_KEY = "face2info:lastResult";
   const form = document.getElementById("faceForm");
-  const imageInput = document.getElementById("image");
+  const imageInput = document.getElementById("imageInput");
   const preview = document.getElementById("preview");
   const previewImage = document.getElementById("previewImage");
   const submitButton = document.getElementById("submitButton");
+  const uploadActionSlot = document.getElementById("uploadActionSlot");
+  const selectionActionContainer = document.getElementById("selectionActionContainer");
+  const selectionActionSlot = document.getElementById("selectionActionSlot");
   const selectionCard = document.getElementById("selectionCard");
   const selectionNote = document.getElementById("selectionNote");
   const selectionCount = document.getElementById("selectionCount");
@@ -408,54 +431,19 @@
     phase: "upload",
     selection: null,
     selectedFaceId: "",
-    objectUrl: "",
   };
-
-  imageInput.addEventListener("change", handleImageChange);
   form.addEventListener("submit", handleSubmit);
   selectionFaceGrid.addEventListener("click", handleSelectionClick);
+  imageInput.addEventListener("change", handleImagePreview);
 
   refreshActionButton();
-
-  function handleImageChange() {
-    const [file] = imageInput.files;
-    if (state.objectUrl) {
-      URL.revokeObjectURL(state.objectUrl);
-      state.objectUrl = "";
-    }
-
-    if (!file) {
-      preview.style.display = "none";
-      previewImage.removeAttribute("src");
-      clearSelection();
-      state.phase = "upload";
-      setStatus("等待上传图片", "上传图片后会在本页展示候选人脸，详情结果将在新页面显示。");
-      refreshActionButton();
-      return;
-    }
-
-    const objectUrl = URL.createObjectURL(file);
-    state.objectUrl = objectUrl;
-    previewImage.src = objectUrl;
-    preview.style.display = "block";
-    previewImage.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      if (state.objectUrl === objectUrl) {
-        state.objectUrl = "";
-      }
-    };
-
-    clearSelection();
-    state.phase = "upload";
-    setStatus("图片已准备", "点击“开始上传”后将调用检测接口并展示候选人脸。");
-    refreshActionButton();
-  }
+  moveActionButtonToUpload();
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const [file] = imageInput.files;
+    const file = imageInput.files && imageInput.files[0];
     if (!file) {
-      setStatus("未选择图片", "请先选择一张图片后再继续。");
+      setStatus("未选择图片", "请先选择要识别的图片。");
       return;
     }
 
@@ -465,28 +453,40 @@
     }
 
     clearSelection();
-    setBusy(true, "正在上传并检测...");
-    setStatus("检测中", "正在上传图片并检测人脸，请稍候。");
+    setBusy(true, "启动中...");
+    setStatus("处理中", "正在上传图片并进入主流程，请稍候。");
 
     try {
-      const { response, data } = await requestMultipart("/api/face2info/detect", file);
+      const formData = new FormData();
+      formData.append("image", file);
+      const { response, data } = await requestMultipart("/api/face2info", formData);
       if (!response.ok) {
-        setStatus("检测失败", (data && data.error) || "检测失败，请稍后重试。");
+        setStatus("处理失败", (data && data.error) || "处理失败，请稍后重试。");
         return;
       }
 
-      const selection = normalizeDetectionResponse(data);
-      if (!selection.faces.length) {
-        setStatus("未检测到人脸", "请更换图片后重试。");
+      if (data && data.status === "selection_required" && data.selection) {
+        const selection = normalizeSelectionResponse(data.selection);
+        if (!selection.faces.length) {
+          setStatus("未检测到人脸", "请更换图片后重试。");
+          return;
+        }
+        renderSelection(selection);
+        state.phase = "search";
+        setStatus("检测完成", "当前图片存在多张人脸，请先选择目标人脸，再点击“开始检索”。");
+        refreshActionButton();
         return;
       }
 
-      renderSelection(selection);
-      state.phase = "search";
-      setStatus("检测完成", "请选择要分析的人脸，然后点击“开始检索”。");
-      refreshActionButton();
+      if (data && (data.status === "success" || data.status === "partial")) {
+        sessionStorage.setItem(SEARCH_RESULT_KEY, JSON.stringify(data || {}));
+        window.location.href = "/result.html";
+        return;
+      }
+
+      setStatus("处理失败", (data && data.error) || "未获得可用结果，请稍后重试。");
     } catch (error) {
-      setStatus("上传失败", error.message || "上传或检测失败。");
+      setStatus("处理失败", error.message || "上传图片或处理失败。");
     } finally {
       setBusy(false);
     }
@@ -558,6 +558,7 @@
     selectionFaceGrid.innerHTML = faces.map((face, index) => renderFaceCard(face, selection.detection_id, index)).join("");
     selectionProgress.hidden = true;
     setSelectionButtonsDisabled(false);
+    moveActionButtonToSelection();
   }
 
   function clearSelection() {
@@ -570,6 +571,7 @@
     selectionCount.textContent = "0 个候选";
     selectionDetectionId.textContent = "-";
     selectionProgress.hidden = true;
+    moveActionButtonToUpload();
   }
 
   function markSelected(faceId) {
@@ -600,8 +602,35 @@
       submitButton.disabled = !state.selectedFaceId;
       return;
     }
-    submitButton.textContent = "开始上传";
+    submitButton.textContent = "启动程序";
     submitButton.disabled = false;
+  }
+
+  function moveActionButtonToUpload() {
+    selectionActionContainer.hidden = true;
+    if (submitButton.parentElement !== uploadActionSlot) {
+      uploadActionSlot.appendChild(submitButton);
+    }
+  }
+
+  function moveActionButtonToSelection() {
+    selectionActionContainer.hidden = false;
+    if (submitButton.parentElement !== selectionActionSlot) {
+      selectionActionSlot.appendChild(submitButton);
+    }
+  }
+
+  function handleImagePreview() {
+    const file = imageInput.files && imageInput.files[0];
+    if (!file) {
+      previewImage.removeAttribute("src");
+      preview.classList.remove("preview-visible");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    previewImage.onload = () => URL.revokeObjectURL(objectUrl);
+    previewImage.src = objectUrl;
+    preview.classList.add("preview-visible");
   }
 
   function setStatus(title, text) {
@@ -609,12 +638,12 @@
     statusText.textContent = text;
   }
 
-  function normalizeDetectionResponse(data) {
-    const faces = Array.isArray(data && data.faces) ? data.faces.filter(Boolean) : [];
+  function normalizeSelectionResponse(selection) {
+    const faces = Array.isArray(selection && selection.faces) ? selection.faces.filter(Boolean) : [];
     return {
-      detection_id: (data && data.detection_id) || "",
-      preview_image: (data && data.preview_image) || "",
-      enhanced_image_url: (data && data.enhanced_image_url) || "",
+      detection_id: (selection && selection.detection_id) || "",
+      preview_image: (selection && selection.preview_image) || "",
+      enhanced_image_url: (selection && selection.enhanced_image_url) || "",
       faces: faces.map(face => ({
         face_id: face.face_id || "",
         confidence: face.confidence,
@@ -670,18 +699,19 @@
       .replace(/'/g, "&#39;");
   }
 
-  async function requestMultipart(url, file) {
-    const formData = new FormData();
-    formData.append("image", file);
-    const response = await fetch(url, { method: "POST", body: formData });
-    return readJson(response);
-  }
-
   async function requestJson(url, payload) {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
+    });
+    return readJson(response);
+  }
+
+  async function requestMultipart(url, formData) {
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData
     });
     return readJson(response);
   }

@@ -24,9 +24,14 @@ class StaticPageTest {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("id=\"faceForm\"")))
+                .andExpect(content().string(containsString("id=\"imageInput\"")))
+                .andExpect(content().string(containsString("class=\"upload-actions\"")))
+                .andExpect(content().string(containsString("id=\"uploadActionSlot\"")))
+                .andExpect(content().string(containsString("id=\"selectionActionSlot\"")))
+                .andExpect(content().string(containsString("id=\"submitButton\"")))
                 .andExpect(content().string(containsString("id=\"selectionCard\"")))
                 .andExpect(content().string(containsString("id=\"selectionFaceGrid\"")))
-                .andExpect(content().string(containsString("requestMultipart(\"/api/face2info/detect\"")))
+                .andExpect(content().string(containsString("requestMultipart(\"/api/face2info\"")))
                 .andExpect(content().string(containsString("requestJson(\"/api/face2info/process-selected\"")))
                 .andExpect(content().string(containsString("sessionStorage.setItem(SEARCH_RESULT_KEY")))
                 .andExpect(content().string(containsString("window.location.href = \"/result.html\"")));
@@ -40,7 +45,12 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("id=\"statusCard\"")))
                 .andExpect(content().string(containsString("id=\"statusTitle\"")))
                 .andExpect(content().string(containsString("setStatus(")))
-                .andExpect(content().string(containsString("id=\"selectionPreview\"")));
+                .andExpect(content().string(containsString("id=\"selectionPreview\"")))
+                .andExpect(content().string(containsString(".upload-actions")))
+                .andExpect(content().string(containsString("moveActionButtonToUpload()")))
+                .andExpect(content().string(containsString("moveActionButtonToSelection()")))
+                .andExpect(content().string(containsString(".preview-visible")))
+                .andExpect(content().string(containsString("const imageInput = document.getElementById(\"imageInput\")")));
     }
 
     @Test
