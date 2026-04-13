@@ -169,6 +169,11 @@
       gap: 12px;
     }
 
+    .image-list {
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
     .image-item {
       overflow: hidden;
       cursor: pointer;
@@ -176,7 +181,7 @@
     }
 
     .image-frame {
-      min-height: 220px;
+      min-height: 130px;
       display: grid;
       place-items: center;
       background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(242, 225, 210, 0.82));
@@ -185,7 +190,7 @@
     .image-item img {
       display: block;
       width: 100%;
-      aspect-ratio: 1 / 1;
+      aspect-ratio: 4 / 3;
       object-fit: cover;
     }
 
@@ -244,6 +249,15 @@
       word-break: break-word;
     }
 
+    .info-box strong a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    .info-box strong a:hover {
+      text-decoration: underline;
+    }
+
     .item {
       padding: 14px 16px;
       background: rgba(242, 225, 210, 0.34);
@@ -298,6 +312,14 @@
         width: 96px;
         height: 96px;
         flex-basis: 96px;
+      }
+
+      .image-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .image-frame {
+        min-height: 100px;
       }
     }
   </style>
@@ -430,18 +452,25 @@
 
     const tags = Array.isArray(person && person.tags) ? person.tags.filter(Boolean) : [];
     const info = person && person.basic_info ? person.basic_info : {};
+    // evidence_urls 由后端聚合证据输出，前端用于补充百科入口展示。
+    const evidenceUrls = Array.isArray(person && person.evidence_urls) ? person.evidence_urls : [];
+    const wikipediaUrl = person && person.wikipedia ? person.wikipedia : "";
+    const baikeUrl = evidenceUrls.find(url => typeof url === "string" && url.includes("baike.baidu.com")) || "";
+
     const links = [];
-    if (person && person.wikipedia) links.push({ label: "Wikipedia", url: person.wikipedia });
     if (person && person.official_website) links.push({ label: "官方网站", url: person.official_website });
 
     const personMeta = [];
-    if (info.birth_date) personMeta.push(["出生日期", info.birth_date]);
+    const wikiLinks = [
+      wikipediaUrl ? `<a href="${escapeHtml(wikipediaUrl)}" target="_blank" rel="noreferrer">Wikipedia</a>` : "",
+      baikeUrl ? `<a href="${escapeHtml(baikeUrl)}" target="_blank" rel="noreferrer">百度百科</a>` : ""
+    ].filter(Boolean).join(" / ");
+    if (wikiLinks) personMeta.push(["Wiki链接", wikiLinks, true]);
     if (info.occupations) personMeta.push(["职业", info.occupations]);
-    if (info.biographies) personMeta.push(["简介", info.biographies]);
 
     personDetails.innerHTML = [
       tags.length ? `<div class="tags">${tags.slice(0, 8).map(tag => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}</div>` : "",
-      personMeta.length ? `<div class="info-grid">${personMeta.map(([label, value]) => `<div class="info-box"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>` : "",
+      personMeta.length ? `<div class="info-grid">${personMeta.map(([label, value, isHtml]) => `<div class="info-box"><span>${escapeHtml(label)}</span><strong>${isHtml ? value : escapeHtml(value)}</strong></div>`).join("")}</div>` : "",
       links.length ? `<div class="link-row">${links.map(link => `<a href="${escapeHtml(link.url)}" target="_blank" rel="noreferrer">${escapeHtml(link.label)}</a>`).join("")}</div>` : ""
     ].join("");
 
@@ -457,16 +486,20 @@
       return;
     }
 
+    // 图片标题、来源和跳转链接都先做安全清洗，避免展示临时图床回环链接。
     const html = matches.slice(0, 20).map((item, index) => {
+      const safeTitle = sanitizeDisplayText(item.title, "未命名结果");
+      const safeSource = sanitizeDisplayText(item.source, "未知来源");
+      const safeLink = sanitizeLink(item.link || item.thumbnail_url || "#");
       const img = item.thumbnail_url
-        ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="${escapeHtml(item.title || "匹配结果")}" onerror="this.style.display='none'">`
+        ? `<img src="${escapeHtml(item.thumbnail_url)}" alt="${escapeHtml(safeTitle || "匹配结果")}" onerror="this.style.display='none'">`
         : '<div class="selection-empty">暂无缩略图</div>';
       return `
-        <div class="image-item" data-link="${escapeHtml(item.link || item.thumbnail_url || "#")}">
+        <div class="image-item" data-link="${escapeHtml(safeLink)}">
           <div class="image-frame">${img}</div>
           <div class="image-info">
-            <div class="image-title">#${escapeHtml(item.position || index + 1)} ${escapeHtml(item.title || "未命名结果")}</div>
-            <div class="image-source">${escapeHtml(item.source || "未知来源")}</div>
+            <div class="image-title">#${escapeHtml(item.position || index + 1)} ${escapeHtml(safeTitle)}</div>
+            <div class="image-source">${escapeHtml(safeSource)}</div>
             <div class="image-score">相似度 ${formatPercent(item.similarity_score)}</div>
           </div>
         </div>
@@ -501,20 +534,26 @@
       newsBody.innerHTML = '<p class="empty">暂无相关文章。</p>';
       return;
     }
+    // 新闻列表与图片候选做关联展示，便于按图像线索理解上下文。
     const newsHtml = newsList.length
-      ? `<div class="list">${newsList.slice(0, 20).map(item => `
-          <article class="item">
-            <a href="${escapeHtml(item.url || "#")}" target="_blank" rel="noreferrer">${escapeHtml(item.title || "未命名文章")}</a>
-            <p>${escapeHtml(item.source || "未知来源")} | ${escapeHtml(item.published_at || "-")}</p>
-            <p>${escapeHtml(item.summary || "暂无摘要。")}</p>
-            ${item.url ? `<p><a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">查看原文</a></p>` : ""}
-          </article>
-        `).join("")}</div>`
+      ? `<div class="list">${newsList.slice(0, 20).map(item => {
+          const safeTitle = sanitizeDisplayText(item.title, "未命名文章");
+          const safeSource = sanitizeDisplayText(item.source, "未知来源");
+          const safeUrl = sanitizeLink(item.url || "#");
+          return `
+            <article class="item">
+              <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">${escapeHtml(safeTitle)}</a>
+              <p>${escapeHtml(safeSource)} | ${escapeHtml(item.published_at || "-")}</p>
+              <p>${escapeHtml(item.summary || "暂无摘要。")}</p>
+              ${safeUrl && safeUrl !== "#" ? `<p><a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">查看原文</a></p>` : ""}
+            </article>
+          `;
+        }).join("")}</div>`
       : '<p class="empty">该图片结果暂时没有相关文章。</p>';
     const groups = imageMatches.slice(0, 20).map(item => `
       <section class="item">
-        <div class="match-group-title">${escapeHtml(item.title || "未命名结果")}</div>
-        <div class="meta-line">来源：${escapeHtml(item.source || "未知来源")}</div>
+        <div class="match-group-title">${escapeHtml(sanitizeDisplayText(item.title, "未命名结果"))}</div>
+        <div class="meta-line">来源：${escapeHtml(sanitizeDisplayText(item.source, "未知来源"))}</div>
         ${newsHtml}
       </section>
     `).join("");
@@ -548,6 +587,23 @@
       .replace(/'/g, "&#39;");
   }
 
+  function isTempHostUrl(value) {
+    if (!value || typeof value !== "string") return false;
+    return /https?:\/\/[^\s]*(tempfile|tmpfiles)/i.test(value);
+  }
+
+  function sanitizeDisplayText(value, fallback) {
+    // 临时图床字段不直接展示，统一回退为可读占位文本。
+    if (isTempHostUrl(value)) return fallback;
+    return value || fallback;
+  }
+
+  function sanitizeLink(value) {
+    // 临时图床和空链接统一禁止跳转，避免点开回传源或无效地址。
+    if (!value || isTempHostUrl(value)) return "#";
+    return value;
+  }
+
   function compactJson(data) {
     return {
       status: data && data.status ? data.status : null,
@@ -559,21 +615,20 @@
         image_url: data.person.image_url || null,
         summary: data.person.summary || null,
         tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],
+        evidence_urls: Array.isArray(data.person.evidence_urls) ? data.person.evidence_urls.slice(0, 12) : [],
         wikipedia: data.person.wikipedia || null,
         official_website: data.person.official_website || null
       } : null,
       image_matches: Array.isArray(data && data.image_matches) ? data.image_matches.slice(0, 20).map(item => ({
         position: item.position || null,
-        title: item.title || null,
-        source: item.source || null,
-        link: item.link || null,
+        title: sanitizeDisplayText(item.title, null),
+        source: sanitizeDisplayText(item.source, null),
         thumbnail_url: item.thumbnail_url ? shorten(item.thumbnail_url) : null,
         similarity_score: item.similarity_score || null
       })) : [],
       news: Array.isArray(data && data.news) ? data.news.slice(0, 20).map(item => ({
-        title: item.title || null,
-        source: item.source || null,
-        url: item.url || null,
+        title: sanitizeDisplayText(item.title, null),
+        source: sanitizeDisplayText(item.source, null),
         published_at: item.published_at || null,
         summary: item.summary || null
       })) : []
