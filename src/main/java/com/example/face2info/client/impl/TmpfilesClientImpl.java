@@ -2,6 +2,7 @@ package com.example.face2info.client.impl;
 
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.service.MinioService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.UUID;
 
 @Slf4j
@@ -30,15 +32,54 @@ public class TmpfilesClientImpl implements TmpfilesClient {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final MinioService minioService;
 
-    public TmpfilesClientImpl(RestTemplate restTemplate, ObjectMapper objectMapper) {
+    public TmpfilesClientImpl(RestTemplate restTemplate, ObjectMapper objectMapper, MinioService minioService) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
+        this.minioService = minioService;
     }
 
     @Override
     public String uploadImage(File image) {
-        log.info("临时图床上传开始 fileName={} fileSize={}", image.getName(), image.length());
+        // 优先走自有 MinIO，失败后回退到外部临时图床，保证流程可用性。
+        try {
+            return uploadToMinio(image);
+        } catch (IOException e) {
+            throw new ApiCallException("图片上传失败：" + e.getMessage(), e);
+        } catch (RuntimeException ex) {
+            log.warn("MinIO 上传失败，回退外部临时图床 fileName={} error={}", image.getName(), ex.getMessage());
+            return uploadFileToTempfile(image);
+        }
+    }
+
+    @Override
+    public String uploadImage(MultipartFile image) {
+        // MultipartFile 入口与 File 入口保持同样的“主备上传”策略。
+        try {
+            return uploadToMinio(image);
+        } catch (IOException e) {
+            throw new ApiCallException("图片上传失败：" + e.getMessage(), e);
+        } catch (RuntimeException ex) {
+            log.warn("MinIO 上传失败，回退外部临时图床 fileName={} error={}", image.getOriginalFilename(), ex.getMessage());
+            return uploadMultipartToTempfile(image);
+        }
+    }
+
+    private String uploadToMinio(File image) throws IOException {
+        log.info("图片上传开始 provider=minio fileName={} fileSize={}", image.getName(), image.length());
+        String contentType = Files.probeContentType(image.toPath());
+        return minioService.upload(Files.readAllBytes(image.toPath()), image.getName(), contentType);
+    }
+
+    private String uploadToMinio(MultipartFile image) throws IOException {
+        log.info("图片上传开始 provider=minio fileName={} size={} contentType={}",
+                image.getOriginalFilename(), image.getSize(), image.getContentType());
+        return minioService.upload(image.getBytes(), resolveFilename(image.getOriginalFilename()), image.getContentType());
+    }
+
+    private String uploadFileToTempfile(File image) {
+        log.info("图片上传开始 provider=tempfile fileName={} fileSize={}", image.getName(), image.length());
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -55,9 +96,8 @@ public class TmpfilesClientImpl implements TmpfilesClient {
         }
     }
 
-    @Override
-    public String uploadImage(MultipartFile image) {
-        log.info("临时图床上传开始 fileName={} size={} contentType={}",
+    private String uploadMultipartToTempfile(MultipartFile image) {
+        log.info("图片上传开始 provider=tempfile fileName={} size={} contentType={}",
                 image.getOriginalFilename(), image.getSize(), image.getContentType());
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -91,13 +131,16 @@ public class TmpfilesClientImpl implements TmpfilesClient {
     }
 
     private Resource createResource(MultipartFile image) throws IOException {
-        String originalFilename = image.getOriginalFilename();
-        String filename = (originalFilename != null) ? originalFilename : "image-" + UUID.randomUUID() + ".jpg";
+        String filename = resolveFilename(image.getOriginalFilename());
         return new ByteArrayResource(image.getBytes()) {
             @Override
             public String getFilename() {
                 return filename;
             }
         };
+    }
+
+    private String resolveFilename(String originalFilename) {
+        return (originalFilename != null) ? originalFilename : "image-" + UUID.randomUUID() + ".jpg";
     }
 }
