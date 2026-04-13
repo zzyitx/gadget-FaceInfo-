@@ -17,8 +17,8 @@
 
 - `POST /api/face2info`
   - 请求方式：`multipart/form-data`
-  - 表单字段：`image`
-  - 用途：上传图片后默认先做人脸检测，再按检测结果分流
+  - 请求体字段：`image`
+  - 用途：上传图片后，系统会先转换为图床 URL，再默认做人脸检测并按检测结果分流
 
 主入口返回语义：
 
@@ -43,8 +43,8 @@
 
 - `POST /api/face2info/detect`
   - 请求方式：`multipart/form-data`
-  - 表单字段：`image`
-  - 用途：仅返回检测会话、带框总览图和检测到的人脸列表，便于独立调试检测链路
+  - 请求体字段：`image`
+  - 用途：上传图片后，系统会先转换为图床 URL，再仅返回检测会话、带框总览图和检测到的人脸列表，便于独立调试检测链路
 
 ## 外部依赖
 
@@ -54,7 +54,7 @@
 - `Jina Reader`：用于抓取网页正文
 - `Kimi`：用于正文篇级总结和最终人物总结
 - `Replicate (tencentarc/gfpgan)`：用于人脸图像增强（修复老照片/低清人脸）
-- `tempfile.org`：用于把上传图片转换成可公开访问的临时 URL
+- `tempfile.org`：用于把上传原图、内部裁剪图等图片转换成可公开访问的临时 URL
 
 检测相关说明：
 
@@ -154,6 +154,7 @@ uvicorn app:app --host 127.0.0.1 --port 8091 --reload
 
 默认静态页围绕 `POST /api/face2info` 工作：
 
+- 先上传图片，再调用检测接口生成候选人脸
 - 单脸时：直接展示人物、图片匹配、社交账号和相关文章
 - 多脸时：展示带框总览图和候选人脸卡片
 - 选中某张脸后：调用 `POST /api/face2info/process-selected` 继续后半段流程
