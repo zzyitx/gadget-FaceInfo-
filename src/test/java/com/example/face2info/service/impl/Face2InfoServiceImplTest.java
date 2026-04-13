@@ -84,7 +84,7 @@ class Face2InfoServiceImplTest {
         assertThat(response.getImageMatches().get(0).getSimilarityScore()).isEqualTo(96.4);
         verify(fixture.faceDetectionService).detect(fixture.image);
         verify(fixture.faceRecognitionService).recognize(argThat(file ->
-                "face-1.jpg".equals(file.getOriginalFilename()) && file.getSize() == 3));
+                "face.jpg".equals(file.getOriginalFilename()) && file.getSize() == 3));
     }
 
     @Test
@@ -105,8 +105,9 @@ class Face2InfoServiceImplTest {
     }
 
     @Test
-    void shouldFailWhenSingleFaceCropIsMissing() {
+    void shouldContinueWithOriginalImageWhenSingleFaceCropIsMissing() {
         ServiceFixture fixture = createFixture();
+        RecognitionEvidence evidence = new RecognitionEvidence();
         DetectionSession session = new DetectionSession()
                 .setDetectionId("det-1")
                 .setFaces(List.of(new DetectedFace()
@@ -114,18 +115,21 @@ class Face2InfoServiceImplTest {
                         .setSelectedFaceCrop(null)));
 
         when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(session);
+        when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
+        when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate().setName("Lei Jun")));
 
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
-        assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getError()).contains("人脸裁剪图");
-        verify(fixture.faceRecognitionService, never()).recognize(any());
-        verify(fixture.informationAggregationService, never()).aggregate(any());
+        assertThat(response.getStatus()).isEqualTo("success");
+        verify(fixture.faceRecognitionService).recognize(argThat(file ->
+                "face.jpg".equals(file.getOriginalFilename()) && file.getSize() == 3));
     }
 
     @Test
-    void shouldFailWhenSelectedFaceCropHasEmptyBytes() {
+    void shouldContinueWithOriginalImageWhenSingleFaceCropBytesAreEmpty() {
         ServiceFixture fixture = createFixture();
+        RecognitionEvidence evidence = new RecognitionEvidence();
         DetectionSession session = new DetectionSession()
                 .setDetectionId("det-1")
                 .setFaces(List.of(new DetectedFace()
@@ -136,13 +140,15 @@ class Face2InfoServiceImplTest {
                                 .setBytes(new byte[0]))));
 
         when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(session);
+        when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
+        when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate().setName("Lei Jun")));
 
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
-        assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getError()).contains("人脸裁剪图");
-        verify(fixture.faceRecognitionService, never()).recognize(any());
-        verify(fixture.informationAggregationService, never()).aggregate(any());
+        assertThat(response.getStatus()).isEqualTo("success");
+        verify(fixture.faceRecognitionService).recognize(argThat(file ->
+                "face.jpg".equals(file.getOriginalFilename()) && file.getSize() == 3));
     }
 
     @Test

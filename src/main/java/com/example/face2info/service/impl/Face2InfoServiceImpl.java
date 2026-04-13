@@ -19,6 +19,7 @@ import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.util.ImageUtils;
 import com.example.face2info.util.InMemoryMultipartFile;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -42,6 +43,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
     private final FaceDetectionService faceDetectionService;
     private final ImageResultCacheService imageResultCacheService;
 
+    @Autowired
     public Face2InfoServiceImpl(ImageUtils imageUtils,
                                 FaceRecognitionService faceRecognitionService,
                                 InformationAggregationService informationAggregationService,
@@ -56,20 +58,8 @@ public class Face2InfoServiceImpl implements Face2InfoService {
 
     @Override
     public FaceInfoResponse process(MultipartFile image) {
-        log.info("总流程开始 fileName={} size={}", image.getOriginalFilename(), image.getSize());
-        imageUtils.validateImage(image);
-
-        DetectionSession session = faceDetectionService.detect(image);
-        int faceCount = session == null || session.getFaces() == null ? 0 : session.getFaces().size();
-        if (faceCount == 0) {
-            return buildFailedResponse(NO_FACE_ERROR);
-        }
-        if (faceCount > 1) {
-            return buildSelectionRequiredResponse(session);
-        }
-
-        SelectedFaceCrop crop = session.getFaces().get(0) == null ? null : session.getFaces().get(0).getSelectedFaceCrop();
-        return processSelectedCrop(crop);
+        // 主入口：先做人脸检测，再按单脸/多脸分流后续流程。
+        return process(image, null);
     }
 
     @Override
@@ -85,11 +75,88 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return processSelectedCrop(crop);
     }
 
+    private FaceInfoResponse process(MultipartFile image, String imageUrl) {
+        log.info("总流程开始 fileName={} size={} sourceUrl={}", image.getOriginalFilename(), image.getSize(), imageUrl);
+        imageUtils.validateImage(image);
+
+        DetectionSession session = faceDetectionService.detect(image);
+        int faceCount = session == null || session.getFaces() == null ? 0 : session.getFaces().size();
+        if (faceCount == 0) {
+            return buildFailedResponse(NO_FACE_ERROR);
+        }
+        if (faceCount > 1) {
+            return buildSelectionRequiredResponse(session);
+        }
+
+        // 单脸场景直接沿用原图继续识别；不依赖裁剪图可减少空裁剪导致的失败。
+        return processRecognizedImage(image, imageUrl);
+    }
+
     private FaceInfoResponse processSelectedCrop(SelectedFaceCrop crop) {
+        return processSelectedCrop(crop, null);
+    }
+
+    private FaceInfoResponse processSelectedCrop(SelectedFaceCrop crop, String imageUrl) {
         if (!hasCropContent(crop)) {
             return buildFailedResponse(MISSING_CROP_ERROR);
         }
-        return processRecognizedImage(toMultipartFile(crop));
+        // 选脸接口使用裁剪图继续识别，保持与用户选择的人脸一致。
+        return processRecognizedImage(toMultipartFile(crop), imageUrl);
+    }
+
+    private FaceInfoResponse processRecognizedImage(MultipartFile image, String imageUrl) {
+        log.info("聚合流程开始 fileName={} size={} sourceUrl={}", image.getOriginalFilename(), image.getSize(), imageUrl);
+        imageUtils.validateImage(image);
+
+        // 命中最终响应缓存时直接返回，避免重复调用识别与聚合链路。
+        FaceInfoResponse cachedResponse = imageResultCacheService.getFaceInfoResponse(image);
+        if (cachedResponse != null) {
+            log.info("最终响应命中缓存 fileName={} status={}", image.getOriginalFilename(), cachedResponse.getStatus());
+            return cachedResponse;
+        }
+
+        RecognitionEvidence evidence = faceRecognitionService.recognize(image);
+        AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
+
+        List<String> combinedErrors = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getErrors()));
+        List<String> warnings = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getWarnings()));
+
+        if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
+            List<String> errors = normalizeMessages(safeCopy(evidence == null ? null : evidence.getErrors()));
+            errors.addAll(combinedErrors);
+            FaceInfoResponse response = new FaceInfoResponse()
+                    .setPerson(null)
+                    .setNews(aggregationResult == null ? null : aggregationResult.getNews())
+                    .setImageMatches(evidence == null ? null : evidence.getImageMatches())
+                    .setWarnings(warnings)
+                    .setStatus("failed")
+                    .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
+            imageResultCacheService.cacheFaceInfoResponse(image, response);
+            return response;
+        }
+
+        PersonInfo person = new PersonInfo()
+                .setName(aggregationResult.getPerson().getName())
+                .setDescription(aggregationResult.getPerson().getDescription())
+                .setImageUrl(aggregationResult.getPerson().getImageUrl())
+                .setSummary(aggregationResult.getPerson().getSummary())
+                .setTags(aggregationResult.getPerson().getTags())
+                .setEvidenceUrls(aggregationResult.getPerson().getEvidenceUrls())
+                .setWikipedia(aggregationResult.getPerson().getWikipedia())
+                .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
+                .setBasicInfo(toResponseBasicInfo(aggregationResult.getPerson().getBasicInfo()))
+                .setSocialAccounts(aggregationResult.getSocialAccounts());
+
+        String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
+        FaceInfoResponse response = new FaceInfoResponse()
+                .setPerson(person)
+                .setNews(aggregationResult.getNews())
+                .setWarnings(warnings)
+                .setImageMatches(evidence == null ? null : evidence.getImageMatches())
+                .setStatus(status)
+                .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
+        imageResultCacheService.cacheFaceInfoResponse(image, response);
+        return response;
     }
 
     private boolean hasCropContent(SelectedFaceCrop crop) {
@@ -130,66 +197,6 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return new FaceInfoResponse()
                 .setStatus("failed")
                 .setError(normalizeUserMessage(error));
-    }
-
-    private FaceInfoResponse processRecognizedImage(MultipartFile image) {
-        log.info("总流程开始 fileName={} size={}", image.getOriginalFilename(), image.getSize());
-        imageUtils.validateImage(image);
-
-        // 最终响应缓存命中时可直接返回，减少识别与聚合开销。
-        FaceInfoResponse cachedResponse = imageResultCacheService.getFaceInfoResponse(image);
-        if (cachedResponse != null) {
-            log.info("最终响应命中缓存 fileName={} status={}", image.getOriginalFilename(), cachedResponse.getStatus());
-            return cachedResponse;
-        }
-
-        // 识别阶段负责生成候选人物、图片匹配与网页证据。
-        RecognitionEvidence evidence = faceRecognitionService.recognize(image);
-        // 聚合阶段将识别证据转换为统一人物画像与公开信息集合。
-        AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
-
-        List<String> combinedErrors = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getErrors()));
-        List<String> warnings = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getWarnings()));
-
-        if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
-            List<String> errors = normalizeMessages(safeCopy(evidence == null ? null : evidence.getErrors()));
-            errors.addAll(combinedErrors);
-            FaceInfoResponse response = new FaceInfoResponse()
-                    .setPerson(null)
-                    .setNews(aggregationResult == null ? null : aggregationResult.getNews())
-                    .setImageMatches(evidence == null ? null : evidence.getImageMatches())
-                    .setWarnings(warnings)
-                    .setStatus("failed")
-                    .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
-            // 失败态也缓存，避免同一输入反复触发高成本外部调用。
-            imageResultCacheService.cacheFaceInfoResponse(image, response);
-            return response;
-        }
-
-        // 仅对外暴露稳定响应模型字段，不透出第三方原始结构。
-        PersonInfo person = new PersonInfo()
-                .setName(aggregationResult.getPerson().getName())
-                .setDescription(aggregationResult.getPerson().getDescription())
-                .setImageUrl(aggregationResult.getPerson().getImageUrl())
-                .setSummary(aggregationResult.getPerson().getSummary())
-                .setTags(aggregationResult.getPerson().getTags())
-                .setEvidenceUrls(aggregationResult.getPerson().getEvidenceUrls())
-                .setWikipedia(aggregationResult.getPerson().getWikipedia())
-                .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
-                .setBasicInfo(toResponseBasicInfo(aggregationResult.getPerson().getBasicInfo()))
-                .setSocialAccounts(aggregationResult.getSocialAccounts());
-
-        String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
-        FaceInfoResponse response = new FaceInfoResponse()
-                .setPerson(person)
-                .setNews(aggregationResult.getNews())
-                .setWarnings(warnings)
-                .setImageMatches(evidence == null ? null : evidence.getImageMatches())
-                .setStatus(status)
-                .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
-        // 成功/部分成功结果统一缓存，缩短后续重复请求时延。
-        imageResultCacheService.cacheFaceInfoResponse(image, response);
-        return response;
     }
 
     private List<String> safeCopy(List<String> values) {

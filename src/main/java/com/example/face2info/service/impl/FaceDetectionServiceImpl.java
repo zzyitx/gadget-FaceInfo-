@@ -44,18 +44,7 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
 
     @Override
     public DetectionSession detect(MultipartFile image) {
-        purgeExpiredSessions();
-        EnhancedImageResult enhancedImageResult = enhanceImageSafely(image);
-        DetectionSession session = faceDetectionClient.detect(enhancedImageResult.imageForDetection());
-        if (session == null || !StringUtils.hasText(session.getDetectionId())) {
-            throw new FaceDetectionException(MISSING_DETECTION_ID_ERROR);
-        }
-        if (StringUtils.hasText(enhancedImageResult.enhancedImageUrl())) {
-            session.setEnhancedImageUrl(enhancedImageResult.enhancedImageUrl());
-        }
-        session.setExpiresAt(Instant.now().plusSeconds(getSessionTtlSeconds()));
-        sessions.put(session.getDetectionId(), session);
-        return session;
+        return detectInternal(image);
     }
 
     @Override
@@ -80,10 +69,27 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
         throw new FaceDetectionException("未找到所选人脸：detection_id=" + detectionId + "，face_id=" + faceId);
     }
 
+    private DetectionSession detectInternal(MultipartFile image) {
+        // 检测前先清理过期会话，避免内存会话长期堆积。
+        purgeExpiredSessions();
+        EnhancedImageResult enhancedImageResult = enhanceImageSafely(image);
+        DetectionSession session = faceDetectionClient.detect(enhancedImageResult.imageForDetection());
+        if (session == null || !StringUtils.hasText(session.getDetectionId())) {
+            throw new FaceDetectionException(MISSING_DETECTION_ID_ERROR);
+        }
+        if (StringUtils.hasText(enhancedImageResult.enhancedImageUrl())) {
+            session.setEnhancedImageUrl(enhancedImageResult.enhancedImageUrl());
+        }
+        session.setExpiresAt(Instant.now().plusSeconds(getSessionTtlSeconds()));
+        sessions.put(session.getDetectionId(), session);
+        return session;
+    }
+
     private EnhancedImageResult enhanceImageSafely(MultipartFile image) {
         try {
-            String imageUrl = tmpfilesClient.uploadImage(image);
-            MultipartFile enhanced = faceEnhancementClient.enhanceFaceImageByUrl(imageUrl, image);
+            // 增强流程依赖外部可访问 URL，因此先把图片上传到临时图床。
+            String enhancementSourceUrl = tmpfilesClient.uploadImage(image);
+            MultipartFile enhanced = faceEnhancementClient.enhanceFaceImageByUrl(enhancementSourceUrl, image);
             if (enhanced == null || enhanced.isEmpty()) {
                 throw new IllegalStateException("enhanced image is empty");
             }

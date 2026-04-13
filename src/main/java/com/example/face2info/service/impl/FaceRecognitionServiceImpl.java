@@ -75,10 +75,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
     @Override
     public RecognitionEvidence recognize(MultipartFile image) {
-        log.info("人脸识别模块开始 fileName={} size={} contentType={}",
-                image.getOriginalFilename(), image.getSize(), image.getContentType());
-
-        // 命中识别缓存时直接返回，避免重复调用外部搜图接口。
         RecognitionEvidence cachedEvidence = imageResultCacheService.getRecognitionEvidence(image);
         if (cachedEvidence != null) {
             log.info("人脸识别命中缓存 fileName={} seedQueryCount={} webEvidenceCount={}",
@@ -87,9 +83,10 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                     cachedEvidence.getWebEvidences() == null ? 0 : cachedEvidence.getWebEvidences().size());
             return cachedEvidence;
         }
-
         String imageUrl = tmpfilesClient.uploadImage(image);
         log.info("人脸识别模块已获得临时图片地址 imageUrl={}", imageUrl);
+        log.info("人脸识别模块开始 fileName={} size={} contentType={}",
+                image.getOriginalFilename(), image.getSize(), image.getContentType());
 
         RecognitionEvidence searchEvidence = searchByImageUrl(imageUrl, image);
         searchEvidence.setSeedQueries(recognizeCandidateNames(image, searchEvidence));
@@ -99,7 +96,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 searchEvidence.getSeedQueries().size(),
                 searchEvidence.getWebEvidences().size(),
                 searchEvidence.getErrors().size());
-        // 识别结果写入缓存，供聚合流程和后续请求复用。
         imageResultCacheService.cacheRecognitionEvidence(image, searchEvidence);
         return searchEvidence;
     }
