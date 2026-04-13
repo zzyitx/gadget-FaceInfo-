@@ -5,6 +5,7 @@ import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.service.ImageSimilarityService;
+import com.example.face2info.service.ImageResultCacheService;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
@@ -36,6 +37,7 @@ class FaceRecognitionServiceImplTest {
     private final TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
     private final SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
     private final ImageSimilarityService imageSimilarityService = mock(ImageSimilarityService.class);
+    private final ImageResultCacheService imageResultCacheService = mock(ImageResultCacheService.class);
     private final NameExtractor nameExtractor = new NameExtractor();
 
     @Test
@@ -412,6 +414,44 @@ class FaceRecognitionServiceImplTest {
         assertThat(maxActiveCalls.get()).isGreaterThan(1);
     }
 
+    @Test
+    void shouldReturnRecognitionEvidenceFromCacheBeforeCallingProviders() {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        RecognitionEvidence cached = new RecognitionEvidence().setSeedQueries(List.of("Cached Person"));
+        when(imageResultCacheService.getRecognitionEvidence(image)).thenReturn(cached);
+
+        FaceRecognitionServiceImpl service = createService();
+
+        RecognitionEvidence result = service.recognize(image);
+
+        assertThat(result).isSameAs(cached);
+        verify(tmpfilesClient, never()).uploadImage(image);
+        verify(googleSearchClient, never()).reverseImageSearchByUrl(anyString());
+        verify(serpApiClient, never()).reverseImageSearchByUrlBing(anyString());
+    }
+
+    @Test
+    void shouldCacheRecognitionEvidenceAfterProviderCalls() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(imageResultCacheService.getRecognitionEvidence(image)).thenReturn(null);
+        when(summaryGenerationClient.recognizeFaceCandidateNames(image)).thenReturn(List.of("Lei Jun"));
+        when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"knowledgeGraph\":{\"title\":\"Lei Jun\"}}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+
+        FaceRecognitionServiceImpl service = createService();
+
+        RecognitionEvidence result = service.recognize(image);
+
+        verify(imageResultCacheService).cacheRecognitionEvidence(image, result);
+    }
+
     private String buildOrganicPayload(int count) {
         StringBuilder builder = new StringBuilder();
         builder.append("{\"knowledgeGraph\":{\"title\":\"Lei Jun\"},\"organic\":[");
@@ -452,7 +492,7 @@ class FaceRecognitionServiceImplTest {
         executor.setQueueCapacity(8);
         executor.initialize();
         return new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient, imageSimilarityService, executor);
+                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, summaryGenerationClient, imageSimilarityService, imageResultCacheService, executor);
     }
 }
 

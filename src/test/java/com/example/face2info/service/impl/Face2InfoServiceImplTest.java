@@ -12,6 +12,7 @@ import com.example.face2info.entity.response.FaceSelectionPayload;
 import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
+import com.example.face2info.service.ImageResultCacheService;
 import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.util.ImageUtils;
 import org.junit.jupiter.api.Test;
@@ -277,6 +278,35 @@ class Face2InfoServiceImplTest {
     }
 
     @Test
+    void shouldReturnCachedFinalResponseBeforeRecognitionAndAggregation() {
+        ServiceFixture fixture = createFixture();
+        FaceInfoResponse cached = new FaceInfoResponse().setStatus("success");
+        when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
+        when(fixture.imageResultCacheService.getFaceInfoResponse(any())).thenReturn(cached);
+
+        FaceInfoResponse response = fixture.service.process(fixture.image);
+
+        assertThat(response).isSameAs(cached);
+        verify(fixture.faceRecognitionService, never()).recognize(any());
+        verify(fixture.informationAggregationService, never()).aggregate(any());
+    }
+
+    @Test
+    void shouldCacheFinalResponseAfterRecognitionAndAggregation() {
+        ServiceFixture fixture = createFixture();
+        RecognitionEvidence evidence = new RecognitionEvidence();
+        when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
+        when(fixture.imageResultCacheService.getFaceInfoResponse(any())).thenReturn(null);
+        when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
+        when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate().setName("Jay Chou")));
+
+        FaceInfoResponse response = fixture.service.process(fixture.image);
+
+        verify(fixture.imageResultCacheService).cacheFaceInfoResponse(any(), org.mockito.ArgumentMatchers.same(response));
+    }
+
+    @Test
     void shouldTreatNullAggregationErrorsAndWarningsAsEmptyLists() {
         ServiceFixture fixture = createFixture();
         RecognitionEvidence evidence = new RecognitionEvidence();
@@ -300,6 +330,7 @@ class Face2InfoServiceImplTest {
         FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
         InformationAggregationService aggregationService = mock(InformationAggregationService.class);
         FaceDetectionService faceDetectionService = mock(FaceDetectionService.class);
+        ImageResultCacheService imageResultCacheService = mock(ImageResultCacheService.class);
         SelectedFaceCrop crop = new SelectedFaceCrop()
                 .setFilename("face-1.jpg")
                 .setContentType("image/jpeg")
@@ -311,7 +342,7 @@ class Face2InfoServiceImplTest {
                 .setPerson(new PersonAggregate().setName("Jay Chou")));
 
         Face2InfoServiceImpl service = new Face2InfoServiceImpl(
-                imageUtils, recognitionService, aggregationService, faceDetectionService);
+                imageUtils, recognitionService, aggregationService, faceDetectionService, imageResultCacheService);
 
         FaceInfoResponse response = service.processSelectedFace("det-1", "face-1");
 
@@ -348,15 +379,17 @@ class Face2InfoServiceImplTest {
         FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
         InformationAggregationService aggregationService = mock(InformationAggregationService.class);
         FaceDetectionService faceDetectionService = mock(FaceDetectionService.class);
+        ImageResultCacheService imageResultCacheService = mock(ImageResultCacheService.class);
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         doNothing().when(imageUtils).validateImage(image);
         return new ServiceFixture(
-                new Face2InfoServiceImpl(imageUtils, recognitionService, aggregationService, faceDetectionService),
+                new Face2InfoServiceImpl(imageUtils, recognitionService, aggregationService, faceDetectionService, imageResultCacheService),
                 image,
                 imageUtils,
                 recognitionService,
                 aggregationService,
-                faceDetectionService);
+                faceDetectionService,
+                imageResultCacheService);
     }
 
     private DetectionSession singleFaceSession() {
@@ -383,6 +416,7 @@ class Face2InfoServiceImplTest {
             ImageUtils imageUtils,
             FaceRecognitionService faceRecognitionService,
             InformationAggregationService informationAggregationService,
-            FaceDetectionService faceDetectionService) {
+            FaceDetectionService faceDetectionService,
+            ImageResultCacheService imageResultCacheService) {
     }
 }

@@ -14,6 +14,7 @@ import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.service.Face2InfoService;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
+import com.example.face2info.service.ImageResultCacheService;
 import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.util.ImageUtils;
 import com.example.face2info.util.InMemoryMultipartFile;
@@ -39,15 +40,18 @@ public class Face2InfoServiceImpl implements Face2InfoService {
     private final FaceRecognitionService faceRecognitionService;
     private final InformationAggregationService informationAggregationService;
     private final FaceDetectionService faceDetectionService;
+    private final ImageResultCacheService imageResultCacheService;
 
     public Face2InfoServiceImpl(ImageUtils imageUtils,
                                 FaceRecognitionService faceRecognitionService,
                                 InformationAggregationService informationAggregationService,
-                                FaceDetectionService faceDetectionService) {
+                                FaceDetectionService faceDetectionService,
+                                ImageResultCacheService imageResultCacheService) {
         this.imageUtils = imageUtils;
         this.faceRecognitionService = faceRecognitionService;
         this.informationAggregationService = informationAggregationService;
         this.faceDetectionService = faceDetectionService;
+        this.imageResultCacheService = imageResultCacheService;
     }
 
     @Override
@@ -132,6 +136,13 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         log.info("总流程开始 fileName={} size={}", image.getOriginalFilename(), image.getSize());
         imageUtils.validateImage(image);
 
+        // 最终响应缓存命中时可直接返回，减少识别与聚合开销。
+        FaceInfoResponse cachedResponse = imageResultCacheService.getFaceInfoResponse(image);
+        if (cachedResponse != null) {
+            log.info("最终响应命中缓存 fileName={} status={}", image.getOriginalFilename(), cachedResponse.getStatus());
+            return cachedResponse;
+        }
+
         // 识别阶段负责生成候选人物、图片匹配与网页证据。
         RecognitionEvidence evidence = faceRecognitionService.recognize(image);
         // 聚合阶段将识别证据转换为统一人物画像与公开信息集合。
@@ -143,13 +154,16 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
             List<String> errors = normalizeMessages(safeCopy(evidence == null ? null : evidence.getErrors()));
             errors.addAll(combinedErrors);
-            return new FaceInfoResponse()
+            FaceInfoResponse response = new FaceInfoResponse()
                     .setPerson(null)
                     .setNews(aggregationResult == null ? null : aggregationResult.getNews())
                     .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                     .setWarnings(warnings)
                     .setStatus("failed")
                     .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
+            // 失败态也缓存，避免同一输入反复触发高成本外部调用。
+            imageResultCacheService.cacheFaceInfoResponse(image, response);
+            return response;
         }
 
         // 仅对外暴露稳定响应模型字段，不透出第三方原始结构。
@@ -166,13 +180,16 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setSocialAccounts(aggregationResult.getSocialAccounts());
 
         String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
-        return new FaceInfoResponse()
+        FaceInfoResponse response = new FaceInfoResponse()
                 .setPerson(person)
                 .setNews(aggregationResult.getNews())
                 .setWarnings(warnings)
                 .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                 .setStatus(status)
                 .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
+        // 成功/部分成功结果统一缓存，缩短后续重复请求时延。
+        imageResultCacheService.cacheFaceInfoResponse(image, response);
+        return response;
     }
 
     private List<String> safeCopy(List<String> values) {

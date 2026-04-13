@@ -10,6 +10,7 @@ import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.service.FaceRecognitionService;
 import com.example.face2info.service.ImageSimilarityService;
+import com.example.face2info.service.ImageResultCacheService;
 import com.example.face2info.util.NameExtractor;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
@@ -50,6 +51,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     private final TmpfilesClient tmpfilesClient;
     private final SummaryGenerationClient summaryGenerationClient;
     private final ImageSimilarityService imageSimilarityService;
+    private final ImageResultCacheService imageResultCacheService;
     private final ThreadPoolTaskExecutor executor;
 
     @Autowired
@@ -59,6 +61,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                                       TmpfilesClient tmpfilesClient,
                                       SummaryGenerationClient summaryGenerationClient,
                                       ImageSimilarityService imageSimilarityService,
+                                      ImageResultCacheService imageResultCacheService,
                                       @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
@@ -66,6 +69,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         this.tmpfilesClient = tmpfilesClient;
         this.summaryGenerationClient = summaryGenerationClient;
         this.imageSimilarityService = imageSimilarityService;
+        this.imageResultCacheService = imageResultCacheService;
         this.executor = executor;
     }
 
@@ -73,6 +77,16 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     public RecognitionEvidence recognize(MultipartFile image) {
         log.info("人脸识别模块开始 fileName={} size={} contentType={}",
                 image.getOriginalFilename(), image.getSize(), image.getContentType());
+
+        // 命中识别缓存时直接返回，避免重复调用外部搜图接口。
+        RecognitionEvidence cachedEvidence = imageResultCacheService.getRecognitionEvidence(image);
+        if (cachedEvidence != null) {
+            log.info("人脸识别命中缓存 fileName={} seedQueryCount={} webEvidenceCount={}",
+                    image.getOriginalFilename(),
+                    cachedEvidence.getSeedQueries() == null ? 0 : cachedEvidence.getSeedQueries().size(),
+                    cachedEvidence.getWebEvidences() == null ? 0 : cachedEvidence.getWebEvidences().size());
+            return cachedEvidence;
+        }
 
         String imageUrl = tmpfilesClient.uploadImage(image);
         log.info("人脸识别模块已获得临时图片地址 imageUrl={}", imageUrl);
@@ -85,6 +99,8 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 searchEvidence.getSeedQueries().size(),
                 searchEvidence.getWebEvidences().size(),
                 searchEvidence.getErrors().size());
+        // 识别结果写入缓存，供聚合流程和后续请求复用。
+        imageResultCacheService.cacheRecognitionEvidence(image, searchEvidence);
         return searchEvidence;
     }
 
