@@ -118,11 +118,12 @@ class Face2InfoServiceImplTest {
         when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(session);
         when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
         when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
-                .setPerson(new PersonAggregate().setName("Lei Jun").setDescription("Lei Jun is a technology entrepreneur.")));
+                .setPerson(new PersonAggregate().setName("Lei Jun").setSummary("Lei Jun is a technology entrepreneur.")));
 
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
         assertThat(response.getStatus()).isEqualTo("success");
+        assertThat(response.getPerson().getSummary()).isEqualTo("Lei Jun is a technology entrepreneur.");
         assertThat(response.getImageMatches()).hasSize(1);
         assertThat(response.getImageMatches().get(0).getThumbnailUrl()).isEqualTo("https://thumb.example.com/official.jpg");
         assertThat(response.getImageMatches().get(0).getSimilarityScore()).isEqualTo(96.4);
@@ -239,7 +240,6 @@ class Face2InfoServiceImplTest {
         when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate()
                         .setName("Jay Chou")
-                        .setDescription("Mandopop singer")
                         .setSummary("Jay Chou is a major Mandopop artist.")
                         .setTags(List.of("Singer", "Producer")))
                 .setWarnings(List.of("Summary provider unavailable")));
@@ -260,7 +260,6 @@ class Face2InfoServiceImplTest {
         when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate()
                         .setName("Jay Chou")
-                        .setDescription("Short description")
                         .setImageUrl("https://example.com/avatar.jpg")
                         .setSummary("Long summary")
                         .setWikipedia("https://example.com/wiki")
@@ -287,7 +286,7 @@ class Face2InfoServiceImplTest {
         when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
         when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
         when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
-                .setPerson(new PersonAggregate().setName("Jay Chou").setDescription("Jay Chou is a singer."))
+                .setPerson(new PersonAggregate().setName("Jay Chou").setSummary("Jay Chou is a singer."))
                 .setErrors(List.of("news fetch failed: timeout")));
 
         FaceInfoResponse response = fixture.service.process(fixture.image);

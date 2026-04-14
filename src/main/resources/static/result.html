@@ -96,7 +96,8 @@
     .empty,
     .item p,
     .meta-line,
-    .image-source {
+    .image-source,
+    .person-summary {
       color: var(--muted);
       line-height: 1.7;
     }
@@ -136,6 +137,13 @@
     .person-copy {
       flex: 1;
       min-width: 0;
+    }
+
+    .person-summary {
+      margin: 0;
+      font-size: 15px;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .person-avatar-wrap {
@@ -344,7 +352,7 @@
     </div>
     <div class="person-intro">
       <div class="person-copy">
-        <p class="description" id="personDescription">请在首页完成上传与选脸后再查看本页。</p>
+        <p class="person-summary" id="personSummary">请在首页完成上传与选脸后再查看本页。</p>
       </div>
       <div class="person-avatar-wrap" id="personAvatarWrap" hidden>
         <img id="personAvatar" alt="人物头像" loading="lazy" referrerpolicy="no-referrer">
@@ -399,7 +407,7 @@
   const SEARCH_RESULT_KEY = "face2info:lastResult";
   const rawResponseEl = document.getElementById("rawResponse");
   const personTitle = document.getElementById("personTitle");
-  const personDescription = document.getElementById("personDescription");
+  const personSummary = document.getElementById("personSummary");
   const personAvatarWrap = document.getElementById("personAvatarWrap");
   const personAvatar = document.getElementById("personAvatar");
   const personDetails = document.getElementById("personDetails");
@@ -437,8 +445,8 @@
   function renderFinal(data) {
     const person = data.person || null;
     personTitle.textContent = person && person.name ? person.name : "未知人物";
-    personDescription.textContent = person && (person.description || person.summary)
-      ? person.description || person.summary
+    personSummary.textContent = person && person.summary
+      ? person.summary
       : "暂无人物简介。";
 
     const avatarUrl = person && person.image_url ? person.image_url : "";
@@ -562,7 +570,7 @@
 
   function renderError(message) {
     personTitle.textContent = "加载失败";
-    personDescription.textContent = message || "请求失败。";
+    personSummary.textContent = message || "请求失败。";
     personAvatar.removeAttribute("src");
     personAvatarWrap.hidden = true;
     personDetails.innerHTML = "";
@@ -611,7 +619,6 @@
       warnings: Array.isArray(data && data.warnings) ? data.warnings.slice(0, 8) : [],
       person: data && data.person ? {
         name: data.person.name || null,
-        description: data.person.description || null,
         image_url: data.person.image_url || null,
         summary: data.person.summary || null,
         tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],

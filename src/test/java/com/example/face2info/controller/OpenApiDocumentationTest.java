@@ -28,6 +28,7 @@ class OpenApiDocumentationTest {
                         .value("候选人物相关的新闻列表"))
                 .andExpect(jsonPath("$.components.schemas.PersonInfo.properties.name.description")
                         .value("识别或聚合后得到的人物姓名"))
+                .andExpect(jsonPath("$.components.schemas.PersonInfo.properties.description").doesNotExist())
                 .andExpect(jsonPath("$.components.schemas.ErrorResponse.properties.timestamp.description")
                         .value("错误发生时间，使用 ISO-8601 时间格式"));
     }

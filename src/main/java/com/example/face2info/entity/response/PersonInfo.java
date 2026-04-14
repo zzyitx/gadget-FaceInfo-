@@ -12,9 +12,6 @@ public class PersonInfo {
     @Schema(description = "识别或聚合后得到的人物姓名", example = "周杰伦")
     private String name;
 
-    @Schema(description = "人物的简要介绍，通常来自公开资料", example = "华语流行音乐男歌手、音乐人、导演。")
-    private String description;
-
     @JsonProperty("image_url")
     @Schema(description = "人物头像图片链接", example = "https://example.com/avatar.jpg")
     private String imageUrl;
@@ -50,15 +47,6 @@ public class PersonInfo {
 
     public PersonInfo setName(String name) {
         this.name = name;
-        return this;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public PersonInfo setDescription(String description) {
-        this.description = description;
         return this;
     }
 

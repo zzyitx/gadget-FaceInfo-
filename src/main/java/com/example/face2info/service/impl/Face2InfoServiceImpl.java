@@ -208,7 +208,6 @@ public class Face2InfoServiceImpl implements Face2InfoService {
 
         PersonInfo person = new PersonInfo()
                 .setName(aggregationResult.getPerson().getName())
-                .setDescription(aggregationResult.getPerson().getDescription())
                 .setImageUrl(aggregationResult.getPerson().getImageUrl())
                 .setSummary(aggregationResult.getPerson().getSummary())
                 .setTags(aggregationResult.getPerson().getTags())
