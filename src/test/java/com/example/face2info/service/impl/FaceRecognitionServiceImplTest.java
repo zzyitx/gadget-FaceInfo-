@@ -41,6 +41,29 @@ class FaceRecognitionServiceImplTest {
     private final NameExtractor nameExtractor = new NameExtractor();
 
     @Test
+    void shouldUsePreparedUploadedImageUrlWithoutUploadingAgain() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(summaryGenerationClient.recognizeFaceCandidateNames(image)).thenReturn(List.of("Lei Jun"));
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        { "knowledgeGraph": { "title": "Lei Jun" } }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+
+        FaceRecognitionServiceImpl service = createService();
+
+        service.recognize(image, PREVIEW_URL);
+
+        verify(tmpfilesClient, never()).uploadImage(image);
+        verify(googleSearchClient).reverseImageSearchByUrl(PREVIEW_URL);
+    }
+
+    @Test
     void shouldUseBingAndYandexSourcesWhenCollectingEvidence() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(summaryGenerationClient.recognizeFaceCandidateNames(image)).thenReturn(List.of("Jay Chou"));

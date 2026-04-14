@@ -5,6 +5,7 @@ import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.FaceBoundingBox;
 import com.example.face2info.entity.internal.PersonAggregate;
+import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.entity.response.FaceInfoResponse;
@@ -12,6 +13,7 @@ import com.example.face2info.entity.response.FaceSelectionPayload;
 import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
+import com.example.face2info.service.EnhancedImagePreparationService;
 import com.example.face2info.service.ImageResultCacheService;
 import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.util.ImageUtils;
@@ -30,6 +32,48 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class Face2InfoServiceImplTest {
+
+    @Test
+    void shouldAppendEnhancementWarningWhenPreparationFallsBack() {
+        ImageUtils imageUtils = mock(ImageUtils.class);
+        FaceRecognitionService recognitionService = mock(FaceRecognitionService.class);
+        InformationAggregationService aggregationService = mock(InformationAggregationService.class);
+        FaceDetectionService faceDetectionService = mock(FaceDetectionService.class);
+        ImageResultCacheService imageResultCacheService = mock(ImageResultCacheService.class);
+        EnhancedImagePreparationService enhancedImagePreparationService = mock(EnhancedImagePreparationService.class);
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        PreparedImageResult prepared = new PreparedImageResult()
+                .setOriginalImage(image)
+                .setWorkingImage(image)
+                .setUploadedImageUrl("https://tempfile.org/original/preview")
+                .setEnhancementApplied(false)
+                .setWarning("图片高清化失败，已自动回退原图继续处理。");
+        RecognitionEvidence evidence = new RecognitionEvidence();
+        DetectionSession session = new DetectionSession()
+                .setDetectionId("det-1")
+                .setUploadedImageUrl("https://tempfile.org/original/preview")
+                .setEnhancementWarning("图片高清化失败，已自动回退原图继续处理。")
+                .setFaces(List.of(buildDetectedFace("face-1", "face-1.jpg")));
+        doNothing().when(imageUtils).validateImage(image);
+        when(enhancedImagePreparationService.prepare(image)).thenReturn(prepared);
+        when(faceDetectionService.detect(prepared)).thenReturn(session);
+        when(recognitionService.recognize(image, "https://tempfile.org/original/preview")).thenReturn(evidence);
+        when(aggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate().setName("Lei Jun")));
+
+        Face2InfoServiceImpl service = new Face2InfoServiceImpl(
+                imageUtils,
+                recognitionService,
+                aggregationService,
+                faceDetectionService,
+                imageResultCacheService,
+                enhancedImagePreparationService
+        );
+
+        FaceInfoResponse response = service.process(image);
+
+        assertThat(response.getWarnings()).contains("图片高清化失败，已自动回退原图继续处理。");
+    }
 
     @Test
     void shouldReturnSelectionRequiredWhenMultipleFacesDetected() {
