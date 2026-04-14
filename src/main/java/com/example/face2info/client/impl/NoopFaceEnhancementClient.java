@@ -12,8 +12,13 @@ import org.springframework.web.multipart.MultipartFile;
 public class NoopFaceEnhancementClient implements FaceEnhancementClient {
 
     @Override
-    public MultipartFile enhanceFaceImageByUrl(String imageUrl, MultipartFile originalImage) {
+    public MultipartFile enhanceFaceImage(MultipartFile originalImage) {
         log.warn("当前使用 NoopFaceEnhancementClient，未调用任何高清化模型");
         return originalImage;
+    }
+
+    @Override
+    public MultipartFile enhanceFaceImageByUrl(String imageUrl, MultipartFile originalImage) {
+        return enhanceFaceImage(originalImage);
     }
 }

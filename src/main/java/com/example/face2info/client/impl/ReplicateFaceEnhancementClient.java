@@ -43,6 +43,11 @@ public class ReplicateFaceEnhancementClient implements FaceEnhancementClient {
     }
 
     @Override
+    public MultipartFile enhanceFaceImage(MultipartFile originalImage) {
+        throw new ApiCallException("Replicate 人脸增强失败：需要可访问的 imageUrl");
+    }
+
+    @Override
     public MultipartFile enhanceFaceImageByUrl(String imageUrl, MultipartFile originalImage) {
         FaceEnhanceProperties faceEnhance = properties.getApi().getFaceEnhance();
         if (!faceEnhance.isEnabled()) {
