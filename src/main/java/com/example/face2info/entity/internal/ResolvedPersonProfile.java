@@ -17,6 +17,15 @@ public class ResolvedPersonProfile {
     @Schema(description = "解析后的人物摘要")
     private String summary;
 
+    @Schema(description = "解析后的教育经历摘要")
+    private String educationSummary;
+
+    @Schema(description = "解析后的家庭背景摘要")
+    private String familyBackgroundSummary;
+
+    @Schema(description = "解析后的职业经历摘要")
+    private String careerSummary;
+
     @Schema(description = "解析出的关键事实")
     private List<String> keyFacts = new ArrayList<>();
 
@@ -59,6 +68,33 @@ public class ResolvedPersonProfile {
 
     public ResolvedPersonProfile setSummary(String summary) {
         this.summary = summary;
+        return this;
+    }
+
+    public String getEducationSummary() {
+        return educationSummary;
+    }
+
+    public ResolvedPersonProfile setEducationSummary(String educationSummary) {
+        this.educationSummary = educationSummary;
+        return this;
+    }
+
+    public String getFamilyBackgroundSummary() {
+        return familyBackgroundSummary;
+    }
+
+    public ResolvedPersonProfile setFamilyBackgroundSummary(String familyBackgroundSummary) {
+        this.familyBackgroundSummary = familyBackgroundSummary;
+        return this;
+    }
+
+    public String getCareerSummary() {
+        return careerSummary;
+    }
+
+    public ResolvedPersonProfile setCareerSummary(String careerSummary) {
+        this.careerSummary = careerSummary;
         return this;
     }
 

@@ -5,6 +5,7 @@ import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
+import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.PageContent;
@@ -14,6 +15,7 @@ import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
+import com.example.face2info.exception.ApiCallException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -99,6 +102,117 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldUseDeepSeekForLongContentPageSummary() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setPageRoutingEnabled(true);
+        properties.getApi().getSummary().setLongContentThreshold(20);
+
+        PageContent longPage = new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("Long article")
+                .setContent("This is a very long page body used for deepseek routing.");
+        PageSummary deepSeekSummary = new PageSummary()
+                .setSourceUrl("https://example.com/a")
+                .setTitle("Long article")
+                .setSummary("DeepSeek summary");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(longPage));
+        when(deepSeekClient.summarizePage("unknown", longPage)).thenReturn(deepSeekSummary);
+        when(deepSeekClient.summarizePersonFromPageSummaries("unknown", List.of(deepSeekSummary)))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("DeepSeek final"));
+        when(deepSeekClient.applyComprehensiveJudgement(eq("unknown"), eq(List.of()), eq(List.of(deepSeekSummary)), any(ResolvedPersonProfile.class)))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("DeepSeek final"));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, kimiClient, deepSeekClient, executor, properties
+        );
+
+        service.resolveProfileFromEvidence(List.of(new WebEvidence().setUrl("https://example.com/a")), "unknown", List.of(), new ArrayList<>());
+
+        verify(deepSeekClient).summarizePage("unknown", longPage);
+        verify(kimiClient, never()).summarizePage("unknown", longPage);
+    }
+
+    @Test
+    void shouldFallbackToKimiWhenDeepSeekSectionSummaryFails() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/education").setTitle("Education").setContent("education body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/education").setTitle("Education").setSummary("education page");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(
+                new PageContent().setUrl("https://example.com/a").setTitle("Seed").setContent("seed body")
+        ));
+        when(kimiClient.summarizePage(anyString(), any(PageContent.class))).thenReturn(
+                new PageSummary().setSourceUrl("https://example.com/a").setTitle("Seed").setSummary("seed summary")
+        );
+        when(kimiClient.summarizePersonFromPageSummaries(anyString(), anyList()))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("base summary"));
+        when(kimiClient.applyComprehensiveJudgement(anyString(), anyList(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(3));
+
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            when(googleSearchClient.googleSearch("Jay Chou的教育经历"))
+                    .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                            {"organic":[{"title":"Education","link":"https://example.com/education","snippet":"education snippet"}]}
+                            """)));
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+        when(jinaReaderClient.readPages(List.of("https://example.com/education"))).thenReturn(List.of(page));
+        when(deepSeekClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(kimiClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(deepSeekClient.summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(pageSummary)))
+                .thenThrow(new ApiCallException("TIMEOUT: deepseek timeout"));
+        when(kimiClient.summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(pageSummary)))
+                .thenReturn("education summary");
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, kimiClient, deepSeekClient, executor, createApiProperties(null)
+        );
+
+        String summary = service.summarizeSection("Jay Chou", "education", "Jay Chou的教育经历");
+
+        assertThat(summary).isEqualTo("education summary");
+        verify(kimiClient).summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(pageSummary));
+    }
+
+    @Test
+    void shouldReturnModelExtractionFailureWhenBothDeepSeekAndKimiFail() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("page summary");
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(kimiClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(deepSeekClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(deepSeekClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary)))
+                .thenThrow(new ApiCallException("TIMEOUT: deepseek timeout"));
+        when(kimiClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary)))
+                .thenThrow(new ApiCallException("INVALID_RESPONSE: kimi invalid"));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, kimiClient, deepSeekClient, executor, createApiProperties(null)
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getErrors()).contains("大模型提取人物信息失败");
+    }
+
+    @Test
     void shouldSkipFailedPageSummariesAndStillBuildFinalProfileWhenAtLeastOnePageSucceeds() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -127,6 +241,43 @@ class InformationAggregationServiceImplTest {
         assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
         assertThat(profile.getSummary()).isEqualTo("Final Summary");
         verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", List.of(summaryB));
+    }
+
+    @Test
+    void shouldSkipVideoUrlsWhenCollectingPageSummaries() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent articlePage = new PageContent()
+                .setUrl("https://example.com/article")
+                .setTitle("Article")
+                .setContent("Article body");
+        PageSummary articleSummary = new PageSummary()
+                .setSourceUrl("https://example.com/article")
+                .setTitle("Article")
+                .setSummary("Article summary");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/article")))
+                .thenReturn(List.of(articlePage));
+        when(summaryGenerationClient.summarizePage("unknown", articlePage)).thenReturn(articleSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", List.of(articleSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("雷军")
+                        .setSummary("Final Summary")
+                        .setEvidenceUrls(List.of("https://example.com/article")));
+
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        ).resolveProfileFromEvidence(List.of(
+                new WebEvidence().setUrl("https://www.youtube.com/watch?v=phV5czDmlDc").setTitle("Video"),
+                new WebEvidence().setUrl("https://example.com/article").setTitle("Article")
+        ), "unknown");
+
+        assertThat(profile.getResolvedName()).isEqualTo("雷军");
+        assertThat(profile.getSummary()).isEqualTo("Final Summary");
+        verify(jinaReaderClient).readPages(List.of("https://example.com/article"));
+        verify(summaryGenerationClient).summarizePage("unknown", articlePage);
     }
 
     @Test
@@ -234,8 +385,8 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("周杰伦"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getPerson().getSummary()).isEqualTo("周杰伦是华语流行音乐代表人物。 (由 Kimi 总结)");
-        assertThat(result.getPerson().getDescription()).isEqualTo("周杰伦是华语流行音乐代表人物。 (由 Kimi 总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("周杰伦是华语流行音乐代表人物。 (由大模型总结)");
+        assertThat(result.getPerson().getDescription()).isEqualTo("周杰伦是华语流行音乐代表人物。 (由大模型总结)");
         assertThat(result.getPerson().getTags()).containsExactly("歌手", "音乐制作人");
         assertThat(result.getWarnings()).isEmpty();
     }
@@ -272,11 +423,180 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jay Chou"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getPerson().getDescription()).isEqualTo("Short description (由 Kimi 总结)");
-        assertThat(result.getPerson().getSummary()).isEqualTo("Long summary (由 Kimi 总结)");
+        assertThat(result.getPerson().getDescription()).isEqualTo("Short description (由大模型总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("Long summary (由大模型总结)");
         assertThat(result.getPerson().getWikipedia()).isEqualTo("https://example.com/wiki");
         assertThat(result.getPerson().getOfficialWebsite()).isEqualTo("https://example.com");
         assertThat(result.getPerson().getBasicInfo().getBirthDate()).isEqualTo("1979-01-18");
+    }
+
+    @Test
+    void shouldJoinBaseSummaryWithThreeSectionSummariesInOrder() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("page summary");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(summaryGenerationClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setDescription("short intro")
+                        .setSummary("base summary")
+                        .setEducationSummary("education summary")
+                        .setFamilyBackgroundSummary("family summary")
+                        .setCareerSummary("career summary")
+                        .setEvidenceUrls(List.of("https://example.com/a")));
+        when(summaryGenerationClient.applyComprehensiveJudgement(
+                eq("Jay Chou"),
+                eq(List.of("Jay Chou")),
+                eq(List.of(pageSummary)),
+                any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(3));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getSummary()).isEqualTo(
+                "base summary\n\neducation summary\n\nfamily summary\n\ncareer summary (由大模型总结)"
+        );
+    }
+
+    @Test
+    void shouldSkipFailedSectionAndKeepRemainingOrder() {
+        ResolvedPersonProfile profile = new ResolvedPersonProfile()
+                .setResolvedName("Jay Chou")
+                .setDescription("short intro")
+                .setSummary("base summary")
+                .setEducationSummary("education summary")
+                .setCareerSummary("career summary");
+
+        assertThat(new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(JinaReaderClient.class), mock(SummaryGenerationClient.class), executor
+        ).buildFinalSummary(profile)).isEqualTo("base summary\n\neducation summary\n\ncareer summary");
+    }
+
+    @Test
+    void shouldFallbackToBaseSummaryWhenAllSectionsMissing() {
+        ResolvedPersonProfile profile = new ResolvedPersonProfile()
+                .setResolvedName("Jay Chou")
+                .setDescription("short intro")
+                .setSummary("base summary");
+
+        assertThat(new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(JinaReaderClient.class), mock(SummaryGenerationClient.class), executor
+        ).buildFinalSummary(profile)).isEqualTo("base summary");
+    }
+
+    @Test
+    void shouldEnrichSummaryWithSectionQueriesByResolvedName() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent seedPage = new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("body");
+        PageSummary seedSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("page summary");
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(seedPage));
+        when(summaryGenerationClient.summarizePage("Jay Chou", seedPage)).thenReturn(seedSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(seedSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setDescription("short intro")
+                        .setSummary("base summary")
+                        .setEvidenceUrls(List.of("https://example.com/a")));
+        when(summaryGenerationClient.applyComprehensiveJudgement(
+                eq("Jay Chou"),
+                eq(List.of("Jay Chou")),
+                eq(List.of(seedSummary)),
+                any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(3));
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou的教育经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"Education","link":"https://example.com/education","snippet":"education snippet"}]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou的家庭背景")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"Family","link":"https://example.com/family","snippet":"family snippet"}]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou的职业经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"Career","link":"https://example.com/career","snippet":"career snippet"}]}
+                """)));
+
+        PageContent educationPage = new PageContent().setUrl("https://example.com/education").setTitle("Education").setContent("education body");
+        PageContent familyPage = new PageContent().setUrl("https://example.com/family").setTitle("Family").setContent("family body");
+        PageContent careerPage = new PageContent().setUrl("https://example.com/career").setTitle("Career").setContent("career body");
+        when(jinaReaderClient.readPages(List.of("https://example.com/education"))).thenReturn(List.of(educationPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/family"))).thenReturn(List.of(familyPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/career"))).thenReturn(List.of(careerPage));
+
+        PageSummary educationSummary = new PageSummary().setSourceUrl("https://example.com/education").setTitle("Education").setSummary("education page");
+        PageSummary familySummary = new PageSummary().setSourceUrl("https://example.com/family").setTitle("Family").setSummary("family page");
+        PageSummary careerSummary = new PageSummary().setSourceUrl("https://example.com/career").setTitle("Career").setSummary("career page");
+        when(summaryGenerationClient.summarizePage("Jay Chou", educationPage)).thenReturn(educationSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", familyPage)).thenReturn(familySummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", careerPage)).thenReturn(careerSummary);
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(educationSummary)))
+                .thenReturn("education summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "family", List.of(familySummary)))
+                .thenReturn("family summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "career", List.of(careerSummary)))
+                .thenReturn("career summary");
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getDescription()).isEqualTo("short intro (由大模型总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo(
+                "base summary\n\neducation summary\n\nfamily summary\n\ncareer summary (由大模型总结)"
+        );
+    }
+
+    @Test
+    void shouldKeepBaseSummaryWhenSectionSearchThrows() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("page summary");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(summaryGenerationClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setDescription("short")
+                        .setSummary("base summary"));
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(3));
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou的教育经历")).thenThrow(new RuntimeException("search failed"));
+        when(googleSearchClient.googleSearch("Jay Chou的家庭背景")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou的职业经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getPerson().getSummary()).isEqualTo("base summary (由大模型总结)");
     }
 
     @Test
@@ -314,7 +634,7 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
         assertThat(result.getPerson().getName()).isEqualTo("Jay Chou");
-        assertThat(result.getPerson().getSummary()).isEqualTo("judged summary (由 Kimi 总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("judged summary (由大模型总结)");
         verify(summaryGenerationClient).applyComprehensiveJudgement(
                 "Jay Chou",
                 List.of("Jay Chou", "周杰伦"),
@@ -400,8 +720,8 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/seed"))));
 
         assertThat(result.getPerson().getImageUrl()).isEqualTo("https://img.example.com/lei-jun.jpg");
-        assertThat(result.getPerson().getDescription()).isEqualTo("secondary short description (由 Kimi 总结)");
-        assertThat(result.getPerson().getSummary()).isEqualTo("secondary detailed summary (由 Kimi 总结)");
+        assertThat(result.getPerson().getDescription()).isEqualTo("secondary short description (由大模型总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("secondary detailed summary (由大模型总结)");
         assertThat(result.getPerson().getEvidenceUrls()).contains("https://zh.wikipedia.org/wiki/%E9%9B%B7%E5%86%9B");
         assertThat(result.getPerson().getEvidenceUrls()).contains("https://baike.baidu.com/item/%E9%9B%B7%E5%86%9B/1968");
         assertThat(result.getWarnings()).doesNotContain("secondary_profile_search_unavailable");
@@ -448,7 +768,7 @@ class InformationAggregationServiceImplTest {
                         .setSource("Example News")
                         .setSourceEngine("google"))));
 
-        assertThat(result.getPerson().getDescription()).isEqualTo("Jay Chou is a singer. (由 Kimi 总结)");
+        assertThat(result.getPerson().getDescription()).isEqualTo("Jay Chou is a singer. (由大模型总结)");
         assertThat(result.getWarnings()).isEmpty();
     }
 

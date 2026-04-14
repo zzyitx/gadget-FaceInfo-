@@ -5,6 +5,7 @@ import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
+import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.PageContent;
@@ -15,14 +16,17 @@ import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.SocialAccount;
+import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.service.InformationAggregationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.lang.Nullable;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -40,12 +44,25 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private static final String SUMMARY_WARNING = "正文智能处理暂时不可用";
     private static final String JUDGEMENT_WARNING = "综合判断暂时不可用";
-    private static final String KIMI_SUFFIX = " (由 Kimi 总结)";
+    private static final String LLM_FAILURE_MESSAGE = "大模型提取人物信息失败";
+    private static final String LLM_SUFFIX = " (由大模型总结)";
     private static final String SOCIAL_PLACEHOLDER_PLATFORM = "pending";
     private static final String SOCIAL_PLACEHOLDER_URL = "#";
     private static final String SOCIAL_PLACEHOLDER_USERNAME = "功能正在开发中";
     private static final String SECONDARY_SEARCH_WARNING = "secondary_profile_search_unavailable";
     private static final String SECONDARY_SEARCH_SOURCE = "serper_google_search";
+    private static final String EDUCATION_SECTION = "education";
+    private static final String FAMILY_SECTION = "family";
+    private static final String CAREER_SECTION = "career";
+    private static final Set<String> VIDEO_PLATFORM_HOSTS = Set.of(
+            "youtube.com",
+            "youtu.be",
+            "bilibili.com",
+            "b23.tv",
+            "v.qq.com",
+            "youku.com",
+            "ixigua.com"
+    );
 
     @SuppressWarnings("unused")
     private final GoogleSearchClient googleSearchClient;
@@ -55,6 +72,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final NewsApiClient newsApiClient;
     private final JinaReaderClient jinaReaderClient;
     private final SummaryGenerationClient summaryGenerationClient;
+    private final DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient;
     private final ThreadPoolTaskExecutor executor;
     private final ApiProperties properties;
 
@@ -64,6 +82,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              NewsApiClient newsApiClient,
                                              JinaReaderClient jinaReaderClient,
                                              SummaryGenerationClient summaryGenerationClient,
+                                             @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                              @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor,
                                              ApiProperties properties) {
         this.googleSearchClient = googleSearchClient;
@@ -71,6 +90,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.newsApiClient = newsApiClient;
         this.jinaReaderClient = jinaReaderClient;
         this.summaryGenerationClient = summaryGenerationClient;
+        this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
         this.executor = executor;
         this.properties = properties;
     }
@@ -80,8 +100,28 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       NewsApiClient newsApiClient,
                                       JinaReaderClient jinaReaderClient,
                                       SummaryGenerationClient summaryGenerationClient,
+                                      @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, executor, new ApiProperties());
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, deepSeekSummaryGenerationClient, executor, new ApiProperties());
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      NewsApiClient newsApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor,
+                                      ApiProperties properties) {
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, null, executor, properties);
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      NewsApiClient newsApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor) {
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, null, executor, new ApiProperties());
     }
 
     @Override
@@ -93,12 +133,22 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
 
         result.getErrors().addAll(evidence.getErrors());
-        ResolvedPersonProfile profile = resolveProfileFromEvidence(
-                evidence.getWebEvidences(),
-                firstSeedQuery(evidence),
-                safeList(evidence.getSeedQueries()),
-                result.getWarnings()
-        );
+        ResolvedPersonProfile profile;
+        try {
+            profile = resolveProfileFromEvidence(
+                    evidence.getWebEvidences(),
+                    firstSeedQuery(evidence),
+                    safeList(evidence.getSeedQueries()),
+                    result.getWarnings()
+            );
+        } catch (ApiCallException ex) {
+            if (isLlmProfileFailure(ex)) {
+                result.getErrors().add(LLM_FAILURE_MESSAGE);
+                log.error("人物信息大模型提取失败 seed={} error={}", firstSeedQuery(evidence), ex.getMessage(), ex);
+                return result;
+            }
+            throw ex;
+        }
         String resolvedName = resolveNameOrFallback(profile, evidence);
         EnrichedProfile enrichedProfile = enrichProfileByResolvedName(
                 profile,
@@ -107,12 +157,14 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 result.getWarnings()
         );
         profile = enrichedProfile.profile();
+        profile = enrichProfileSectionsByResolvedName(profile, resolvedName);
         resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
+            String finalSummary = buildFinalSummary(profile);
             result.setPerson(new PersonAggregate()
-                    .setDescription(appendSuffix(cleanText(profile.getDescription()), KIMI_SUFFIX))
-                    .setSummary(appendSuffix(cleanText(profile.getSummary()), KIMI_SUFFIX))
+                    .setDescription(appendSuffix(cleanText(profile.getDescription()), LLM_SUFFIX))
+                    .setSummary(appendSuffix(finalSummary, LLM_SUFFIX))
                     .setImageUrl(cleanText(enrichedProfile.imageUrl()))
                     .setBasicInfo(profile.getBasicInfo())
                     .setOfficialWebsite(profile.getOfficialWebsite())
@@ -173,7 +225,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         ResolvedPersonProfile profile;
         try {
-            profile = summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+            profile = summarizePersonFromPageSummariesWithFallback(fallbackName, pageSummaries, true);
             if (profile == null) {
                 warnings.add(SUMMARY_WARNING);
                 return new ResolvedPersonProfile().setResolvedName(fallbackName).setEvidenceUrls(urls);
@@ -186,6 +238,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         .toList());
             }
         } catch (RuntimeException ex) {
+            if (isLlmProfileFailure(ex)) {
+                throw ex;
+            }
             log.error("Kimi 最终总结失败 fallbackName={} pageSummaryCount={} category={} error={}",
                     fallbackName, pageSummaries.size(), classifySummaryFailure(ex), ex.getMessage(), ex);
             warnings.add(SUMMARY_WARNING);
@@ -202,45 +257,140 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                                               List<PageSummary> pageSummaries,
                                                               ResolvedPersonProfile profile,
                                                               List<String> warnings) {
+        if (deepSeekSummaryGenerationClient == null) {
+            return applyComprehensiveJudgementWithSingleProvider(fallbackName, candidateNames, pageSummaries, profile, warnings);
+        }
         try {
-            ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
+            ResolvedPersonProfile judged = deepSeekSummaryGenerationClient.applyComprehensiveJudgement(
                     fallbackName,
                     candidateNames,
                     pageSummaries,
                     profile
             );
-            if (judged == null) {
-                warnings.add(JUDGEMENT_WARNING);
-                return profile;
+            return completeJudgedProfile(judged, profile, warnings);
+        } catch (RuntimeException deepSeekEx) {
+            log.error("综合判断DeepSeek失败 fallbackName={} candidateCount={} pageSummaryCount={} category={} error={}",
+                    fallbackName, candidateNames.size(), pageSummaries.size(),
+                    classifySummaryFailure(deepSeekEx), deepSeekEx.getMessage(), deepSeekEx);
+            try {
+                ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
+                        fallbackName,
+                        candidateNames,
+                        pageSummaries,
+                        profile
+                );
+                return completeJudgedProfile(judged, profile, warnings);
+            } catch (RuntimeException kimiEx) {
+                log.error("综合判断Kimi兜底失败 fallbackName={} candidateCount={} pageSummaryCount={} category={} error={}",
+                        fallbackName, candidateNames.size(), pageSummaries.size(),
+                        classifySummaryFailure(kimiEx), kimiEx.getMessage(), kimiEx);
+                throw new ApiCallException("LLM_PROFILE_FAILED: " + LLM_FAILURE_MESSAGE, kimiEx);
             }
-            if (!StringUtils.hasText(judged.getResolvedName()) && StringUtils.hasText(profile.getResolvedName())) {
-                judged.setResolvedName(profile.getResolvedName());
-            }
-            if ((judged.getEvidenceUrls() == null || judged.getEvidenceUrls().isEmpty()) && profile.getEvidenceUrls() != null) {
-                judged.setEvidenceUrls(profile.getEvidenceUrls());
-            }
-            return judged;
-        } catch (RuntimeException ex) {
-            log.warn("综合判断失败 fallbackName={} candidateCount={} pageSummaryCount={} error={}",
-                    fallbackName, candidateNames.size(), pageSummaries.size(), ex.getMessage(), ex);
-            warnings.add(JUDGEMENT_WARNING);
-            return profile;
         }
     }
 
     private PersonAggregate buildPersonFromProfile(ResolvedPersonProfile profile, String resolvedName, String imageUrl) {
         String shortDescription = cleanText(profile.getDescription());
-        String longSummary = cleanText(profile.getSummary());
+        String longSummary = buildFinalSummary(profile);
         return new PersonAggregate()
                 .setName(resolvedName)
-                .setDescription(appendSuffix(StringUtils.hasText(shortDescription) ? shortDescription : longSummary, KIMI_SUFFIX))
-                .setSummary(appendSuffix(longSummary, KIMI_SUFFIX))
+                .setDescription(appendSuffix(StringUtils.hasText(shortDescription) ? shortDescription : longSummary, LLM_SUFFIX))
+                .setSummary(appendSuffix(longSummary, LLM_SUFFIX))
                 .setImageUrl(cleanText(imageUrl))
                 .setWikipedia(cleanText(profile.getWikipedia()))
                 .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
                 .setTags(profile.getTags() == null ? List.of() : profile.getTags())
                 .setBasicInfo(profile.getBasicInfo())
                 .setEvidenceUrls(profile.getEvidenceUrls());
+    }
+
+    String buildFinalSummary(ResolvedPersonProfile profile) {
+        if (profile == null) {
+            return null;
+        }
+        List<String> sections = new ArrayList<>();
+        addSummarySection(sections, profile.getSummary());
+        addSummarySection(sections, profile.getEducationSummary());
+        addSummarySection(sections, profile.getFamilyBackgroundSummary());
+        addSummarySection(sections, profile.getCareerSummary());
+        if (sections.isEmpty()) {
+            return null;
+        }
+        return String.join("\n\n", sections);
+    }
+
+    private void addSummarySection(List<String> sections, String value) {
+        String cleaned = cleanText(value);
+        if (StringUtils.hasText(cleaned)) {
+            sections.add(cleaned);
+        }
+    }
+
+    private ResolvedPersonProfile copyProfile(ResolvedPersonProfile profile) {
+        if (profile == null) {
+            return null;
+        }
+        return new ResolvedPersonProfile()
+                .setResolvedName(profile.getResolvedName())
+                .setDescription(profile.getDescription())
+                .setSummary(profile.getSummary())
+                .setEducationSummary(profile.getEducationSummary())
+                .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
+                .setCareerSummary(profile.getCareerSummary())
+                .setKeyFacts(profile.getKeyFacts())
+                .setTags(profile.getTags())
+                .setEvidenceUrls(profile.getEvidenceUrls())
+                .setWikipedia(profile.getWikipedia())
+                .setOfficialWebsite(profile.getOfficialWebsite())
+                .setBasicInfo(profile.getBasicInfo());
+    }
+
+    String summarizeSection(String resolvedName, String sectionType, String query) {
+        try {
+            SerpApiResponse searchResponse = googleSearchClient.googleSearch(query);
+            if (searchResponse == null || searchResponse.getRoot() == null) {
+                return null;
+            }
+            List<WebEvidence> evidences = extractSearchOrganicWebEvidence(searchResponse.getRoot());
+            List<String> urls = selectTopUrls(evidences);
+            if (urls.isEmpty()) {
+                return null;
+            }
+
+            List<PageContent> pages = List.of();
+            try {
+                pages = jinaReaderClient.readPages(urls);
+            } catch (RuntimeException ex) {
+                log.warn("section jina read failed resolvedName={} sectionType={} urlCount={} error={}",
+                        resolvedName, sectionType, urls.size(), ex.getMessage(), ex);
+            }
+            if (pages == null || pages.isEmpty()) {
+                pages = buildFallbackPages(evidences, urls);
+            }
+            if (pages.isEmpty()) {
+                return null;
+            }
+
+            List<PageSummary> pageSummaries = collectPageSummaries(resolvedName, pages);
+            if (pageSummaries.isEmpty()) {
+                return null;
+            }
+            return summarizeSectionWithFallback(resolvedName, sectionType, pageSummaries);
+        } catch (RuntimeException ex) {
+            log.warn("section summary failed resolvedName={} sectionType={} query={} error={}",
+                    resolvedName, sectionType, query, ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    private String joinSectionFuture(CompletableFuture<String> future) {
+        try {
+            return future.join();
+        } catch (CompletionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            log.warn("section future failed error={}", cause.getMessage(), cause);
+            return null;
+        }
     }
 
     private List<PageSummary> collectPageSummaries(String fallbackName, List<PageContent> pages) {
@@ -253,8 +403,12 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             if (page == null || !StringUtils.hasText(page.getContent())) {
                 continue;
             }
+            if (shouldSkipSummaryUrl(page.getUrl())) {
+                log.info("跳过非正文页面 fallbackName={} url={}", fallbackName, page.getUrl());
+                continue;
+            }
             try {
-                PageSummary pageSummary = summaryGenerationClient.summarizePage(fallbackName, page);
+                PageSummary pageSummary = summarizePageWithRouting(fallbackName, page);
                 if (pageSummary == null || !StringUtils.hasText(pageSummary.getSummary())) {
                     continue;
                 }
@@ -308,6 +462,25 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 warnings
         );
         return new EnrichedProfile(mergedProfile, imageUrl);
+    }
+
+    private ResolvedPersonProfile enrichProfileSectionsByResolvedName(ResolvedPersonProfile profile, String resolvedName) {
+        if (profile == null || !StringUtils.hasText(resolvedName) || !StringUtils.hasText(profile.getSummary())) {
+            return profile;
+        }
+
+        CompletableFuture<String> educationFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, EDUCATION_SECTION, resolvedName + "的教育经历"), executor);
+        CompletableFuture<String> familyFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, FAMILY_SECTION, resolvedName + "的家庭背景"), executor);
+        CompletableFuture<String> careerFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, CAREER_SECTION, resolvedName + "的职业经历"), executor);
+
+        ResolvedPersonProfile enriched = copyProfile(profile);
+        enriched.setEducationSummary(firstNonBlankText(joinSectionFuture(educationFuture), profile.getEducationSummary()));
+        enriched.setFamilyBackgroundSummary(firstNonBlankText(joinSectionFuture(familyFuture), profile.getFamilyBackgroundSummary()));
+        enriched.setCareerSummary(firstNonBlankText(joinSectionFuture(careerFuture), profile.getCareerSummary()));
+        return enriched;
     }
 
     private boolean shouldRunSecondarySearch(ResolvedPersonProfile profile, String resolvedName) {
@@ -427,7 +600,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         ResolvedPersonProfile secondaryProfile;
         try {
-            secondaryProfile = summaryGenerationClient.summarizePersonFromPageSummaries(resolvedName, pageSummaries);
+            secondaryProfile = summarizePersonFromPageSummariesWithFallback(resolvedName, pageSummaries, false);
             if (secondaryProfile == null) {
                 warnings.add(SECONDARY_SEARCH_WARNING);
                 return baseProfile;
@@ -470,6 +643,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setResolvedName(firstNonBlankText(secondaryProfile.getResolvedName(), baseProfile.getResolvedName(), fallbackName))
                 .setDescription(firstNonBlankText(secondaryProfile.getDescription(), baseProfile.getDescription()))
                 .setSummary(firstNonBlankText(secondaryProfile.getSummary(), baseProfile.getSummary()))
+                .setEducationSummary(firstNonBlankText(secondaryProfile.getEducationSummary(), baseProfile.getEducationSummary()))
+                .setFamilyBackgroundSummary(firstNonBlankText(secondaryProfile.getFamilyBackgroundSummary(), baseProfile.getFamilyBackgroundSummary()))
+                .setCareerSummary(firstNonBlankText(secondaryProfile.getCareerSummary(), baseProfile.getCareerSummary()))
                 .setWikipedia(firstNonBlankText(secondaryProfile.getWikipedia(), baseProfile.getWikipedia()))
                 .setOfficialWebsite(firstNonBlankText(secondaryProfile.getOfficialWebsite(), baseProfile.getOfficialWebsite()))
                 .setTags(pickList(secondaryProfile.getTags(), baseProfile.getTags()))
@@ -565,6 +741,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         Set<String> urls = new LinkedHashSet<>();
         evidences.stream()
                 .filter(item -> StringUtils.hasText(item.getUrl()))
+                .filter(item -> !shouldSkipSummaryUrl(item.getUrl()))
                 .forEach(item -> {
                     if (urls.size() < maxPageReads) {
                         urls.add(item.getUrl());
@@ -581,6 +758,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         List<PageContent> pages = new ArrayList<>();
         for (WebEvidence evidence : evidences) {
             if (evidence == null || !selected.contains(evidence.getUrl())) {
+                continue;
+            }
+            if (shouldSkipSummaryUrl(evidence.getUrl())) {
                 continue;
             }
             String content = buildFallbackContent(evidence);
@@ -608,6 +788,25 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return null;
         }
         return String.join("\n", parts);
+    }
+
+    private boolean shouldSkipSummaryUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(url.trim());
+            String host = uri.getHost();
+            if (!StringUtils.hasText(host)) {
+                return false;
+            }
+            String normalizedHost = host.toLowerCase();
+            return VIDEO_PLATFORM_HOSTS.stream()
+                    .anyMatch(platform -> normalizedHost.equals(platform) || normalizedHost.endsWith("." + platform));
+        } catch (IllegalArgumentException ex) {
+            log.debug("url parse failed while checking summary url url={} error={}", url, ex.getMessage());
+            return false;
+        }
     }
 
     private String resolveNameOrFallback(ResolvedPersonProfile profile, RecognitionEvidence evidence) {
@@ -656,6 +855,157 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return content + suffix;
     }
 
+    private PageSummary summarizePageWithRouting(String fallbackName, PageContent page) {
+        boolean preferDeepSeek = shouldUseDeepSeekForPage(page);
+        if (preferDeepSeek && deepSeekSummaryGenerationClient != null) {
+            try {
+                return deepSeekSummaryGenerationClient.summarizePage(fallbackName, page);
+            } catch (RuntimeException deepSeekEx) {
+                log.warn("篇级总结DeepSeek失败 fallbackName={} url={} category={} error={}",
+                        fallbackName,
+                        page == null ? null : page.getUrl(),
+                        classifySummaryFailure(deepSeekEx),
+                        deepSeekEx.getMessage(),
+                        deepSeekEx);
+                return summaryGenerationClient.summarizePage(fallbackName, page);
+            }
+        }
+        try {
+            return summaryGenerationClient.summarizePage(fallbackName, page);
+        } catch (RuntimeException kimiEx) {
+            if (deepSeekSummaryGenerationClient == null) {
+                throw kimiEx;
+            }
+            log.warn("篇级总结Kimi失败 fallbackName={} url={} category={} error={}",
+                    fallbackName,
+                    page == null ? null : page.getUrl(),
+                    classifySummaryFailure(kimiEx),
+                    kimiEx.getMessage(),
+                    kimiEx);
+            return deepSeekSummaryGenerationClient.summarizePage(fallbackName, page);
+        }
+    }
+
+    private boolean shouldUseDeepSeekForPage(PageContent page) {
+        if (deepSeekSummaryGenerationClient == null || !properties.getApi().getSummary().isPageRoutingEnabled()) {
+            return false;
+        }
+        String title = page == null ? null : page.getTitle();
+        String content = page == null ? null : page.getContent();
+        if (isStructuredPage(title, content)) {
+            return false;
+        }
+        return !StringUtils.hasText(content)
+                || content.length() >= properties.getApi().getSummary().getLongContentThreshold()
+                || !isStructuredPage(title, content);
+    }
+
+    private boolean isStructuredPage(String title, String content) {
+        List<String> keywords = properties.getApi().getSummary().getStructuredPageKeywords();
+        if (keywords == null || keywords.isEmpty()) {
+            return false;
+        }
+        String normalized = (title == null ? "" : title) + "\n" + (content == null ? "" : content);
+        for (String keyword : keywords) {
+            if (StringUtils.hasText(keyword) && normalized.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String summarizeSectionWithFallback(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        if (deepSeekSummaryGenerationClient == null) {
+            return cleanText(summaryGenerationClient.summarizeSectionFromPageSummaries(resolvedName, sectionType, pageSummaries));
+        }
+        try {
+            return cleanText(deepSeekSummaryGenerationClient.summarizeSectionFromPageSummaries(resolvedName, sectionType, pageSummaries));
+        } catch (RuntimeException deepSeekEx) {
+            log.warn("主题摘要DeepSeek失败 resolvedName={} sectionType={} category={} error={}",
+                    resolvedName, sectionType, classifySummaryFailure(deepSeekEx), deepSeekEx.getMessage(), deepSeekEx);
+            try {
+                return cleanText(summaryGenerationClient.summarizeSectionFromPageSummaries(resolvedName, sectionType, pageSummaries));
+            } catch (RuntimeException kimiEx) {
+                log.warn("主题摘要Kimi兜底失败 resolvedName={} sectionType={} category={} error={}",
+                        resolvedName, sectionType, classifySummaryFailure(kimiEx), kimiEx.getMessage(), kimiEx);
+                return null;
+            }
+        }
+    }
+
+    private ResolvedPersonProfile summarizePersonFromPageSummariesWithFallback(String fallbackName,
+                                                                               List<PageSummary> pageSummaries,
+                                                                               boolean failHard) {
+        if (deepSeekSummaryGenerationClient == null) {
+            return summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+        }
+        try {
+            return deepSeekSummaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+        } catch (RuntimeException deepSeekEx) {
+            log.error("最终画像DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    fallbackName,
+                    pageSummaries == null ? 0 : pageSummaries.size(),
+                    classifySummaryFailure(deepSeekEx),
+                    deepSeekEx.getMessage(),
+                    deepSeekEx);
+            try {
+                return summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+            } catch (RuntimeException kimiEx) {
+                log.error("最终画像Kimi兜底失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                        fallbackName,
+                        pageSummaries == null ? 0 : pageSummaries.size(),
+                        classifySummaryFailure(kimiEx),
+                        kimiEx.getMessage(),
+                        kimiEx);
+                if (failHard) {
+                    throw new ApiCallException("LLM_PROFILE_FAILED: " + LLM_FAILURE_MESSAGE, kimiEx);
+                }
+                throw kimiEx;
+            }
+        }
+    }
+
+    private ResolvedPersonProfile completeJudgedProfile(ResolvedPersonProfile judged,
+                                                        ResolvedPersonProfile profile,
+                                                        List<String> warnings) {
+        if (judged == null) {
+            warnings.add(JUDGEMENT_WARNING);
+            return profile;
+        }
+        if (!StringUtils.hasText(judged.getResolvedName()) && StringUtils.hasText(profile.getResolvedName())) {
+            judged.setResolvedName(profile.getResolvedName());
+        }
+        if ((judged.getEvidenceUrls() == null || judged.getEvidenceUrls().isEmpty()) && profile.getEvidenceUrls() != null) {
+            judged.setEvidenceUrls(profile.getEvidenceUrls());
+        }
+        return judged;
+    }
+
+    private ResolvedPersonProfile applyComprehensiveJudgementWithSingleProvider(String fallbackName,
+                                                                                List<String> candidateNames,
+                                                                                List<PageSummary> pageSummaries,
+                                                                                ResolvedPersonProfile profile,
+                                                                                List<String> warnings) {
+        try {
+            ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
+                    fallbackName,
+                    candidateNames,
+                    pageSummaries,
+                    profile
+            );
+            return completeJudgedProfile(judged, profile, warnings);
+        } catch (RuntimeException ex) {
+            log.warn("综合判断失败 fallbackName={} candidateCount={} pageSummaryCount={} error={}",
+                    fallbackName, candidateNames.size(), pageSummaries.size(), ex.getMessage(), ex);
+            warnings.add(JUDGEMENT_WARNING);
+            return profile;
+        }
+    }
+
+    private boolean isLlmProfileFailure(RuntimeException ex) {
+        return ex.getMessage() != null && ex.getMessage().contains("LLM_PROFILE_FAILED");
+    }
+
     private List<SocialAccount> deduplicateSocialAccounts(List<SocialAccount> accounts) {
         Map<String, SocialAccount> deduplicated = new LinkedHashMap<>();
         for (SocialAccount account : accounts) {
@@ -678,4 +1028,3 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
     }
 }
-
