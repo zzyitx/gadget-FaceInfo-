@@ -114,6 +114,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             return buildFailedResponse(BLANK_FACE_ID_ERROR);
         }
 
+        // 二次请求只依赖 detection session，不要求前端重复上传原图。
         SelectedFaceCrop crop = faceDetectionService.getSelectedFaceCrop(detectionId, faceId);
         return processSelectedCrop(crop);
     }
@@ -135,6 +136,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             return buildFailedResponse(NO_FACE_ERROR, preparationWarnings);
         }
         if (faceCount > 1) {
+            // 多脸不是失败场景，返回 selection_required 让前端显式选定目标人脸。
             return buildSelectionRequiredResponse(session, preparationWarnings);
         }
 
@@ -216,6 +218,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setBasicInfo(toResponseBasicInfo(aggregationResult.getPerson().getBasicInfo()))
                 .setSocialAccounts(aggregationResult.getSocialAccounts());
 
+        // 只要有 errors/warnings 就返回 partial，向调用方明确“结果可用但不完整”。
         String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
         FaceInfoResponse response = new FaceInfoResponse()
                 .setPerson(person)
