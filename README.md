@@ -53,7 +53,7 @@
 - `NewsAPI`：用于查询相关新闻
 - `Jina Reader`：用于抓取网页正文
 - `Kimi`：用于正文篇级总结和最终人物总结
-- `Replicate (tencentarc/gfpgan)`：用于人脸图像增强（修复老照片/低清人脸）
+- `GFPGAN` 本地仓库：用于人脸图像高清化（修复老照片/低清人脸）
 - `tempfile.org`：用于把上传原图、内部裁剪图等图片转换成可公开访问的临时 URL
 
 检测相关说明：
@@ -189,33 +189,21 @@ mvn clean verify
   - `biographies`
 - Kimi 调用失败时，接口仍返回最小可用聚合结果，并在顶层 `warnings` 中返回 `正文智能处理暂时不可用`
 
-## Replicate 人脸增强（GFPGAN）
+## GFPGAN 本地人脸高清化
 
-- 检测流程默认会先尝试调用 Replicate 的 `tencentarc/gfpgan` 做人脸增强，再进入 `face-detector` 检测
-- 当增强调用超时或失败时，会自动降级为原图继续检测，不阻断主流程
+- 检测流程默认会先尝试调用本地 `GFPGAN` 仓库执行 `inference_gfpgan.py`，再进入 `face-detector` 检测
+- 当 GFPGAN 推理超时、脚本不可用或输出缺失时，会自动降级为原图继续检测，不阻断主流程
 - 关键配置位于 `face2info.api.face-enhance`
-  - `provider=replicate`
-  - `replicate.api-key` 对应环境变量 `REPLICATE_API_TOKEN`
-  - `replicate.model-version` 对应环境变量 `REPLICATE_GFPGAN_VERSION`（建议固定版本，便于可重复）
-
-示例（直接调用 Replicate HTTP API）：
-
-```bash
-curl -s -X POST "https://api.replicate.com/v1/predictions" \
-  -H "Authorization: Bearer $REPLICATE_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "Prefer: wait=30" \
-  -d '{
-    "version": "'"$REPLICATE_GFPGAN_VERSION"'",
-    "input": {
-      "img": "https://example.com/face.jpg",
-      "version": "v1.4",
-      "scale": 2
-    }
-  }'
-```
-
-返回 `output` 为增强后图片 URL。项目内会自动下载该 URL，并把增强结果转为 `data URL` 后通过 `enhanced_image_url` 返回给前端。
+  - `provider=gfpgan`
+  - `gfpgan.project-path` 指向本地 GFPGAN 项目目录，默认示例为 `D:/ideaProject/GFPGAN`
+  - `gfpgan.python-command` 用于指定 Python 可执行文件；如使用虚拟环境，可改为 `D:/ideaProject/GFPGAN/venv/Scripts/python.exe`
+  - `gfpgan.model-version`、`gfpgan.upscale`、`gfpgan.output-extension` 分别对应官方脚本的 `-v`、`-s`、`--ext`
+- 按 GFPGAN 官方 README，首次使用前至少需要：
+  - 在 GFPGAN 项目目录安装 `basicsr`、`facexlib` 和 `requirements.txt`
+  - 执行 `python setup.py develop`
+  - 下载权重文件到 `experiments/pretrained_models` 或 `gfpgan/weights`
+- 当前默认关闭 `Real-ESRGAN` 背景增强，配置项为 `gfpgan.background-upsampler=none`，这样可以减少本地依赖和启动成本
+- 如需保留旧的 Replicate 方案，仍可把 `provider` 切回 `replicate`
 
 ## FaceCheck 图片匹配
 
