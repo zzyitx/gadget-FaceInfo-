@@ -187,7 +187,6 @@ mvn clean verify
   - `KIMI_API_KEY`
   - 如有必要可额外配置 `DEEPSEEK_API_BASE_URL`、`DEEPSEEK_SYSTEM_PROMPT`、`KIMI_API_BASE_URL`、`KIMI_MODEL` 和 `KIMI_SYSTEM_PROMPT`
 - 大模型处理成功时，接口会补充：
-  - `person.description`
   - `person.summary`
   - `person.tags`
   - `person.wikipedia`
