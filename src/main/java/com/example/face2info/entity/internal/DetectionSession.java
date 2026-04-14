@@ -9,6 +9,9 @@ public class DetectionSession {
     private String detectionId;
     private String previewImage;
     private String enhancedImageUrl;
+    private String uploadedImageUrl;
+    private boolean enhancementApplied;
+    private String enhancementWarning;
     private List<DetectedFace> faces = new ArrayList<>();
     private Instant expiresAt;
 
@@ -36,6 +39,33 @@ public class DetectionSession {
 
     public DetectionSession setEnhancedImageUrl(String enhancedImageUrl) {
         this.enhancedImageUrl = enhancedImageUrl;
+        return this;
+    }
+
+    public String getUploadedImageUrl() {
+        return uploadedImageUrl;
+    }
+
+    public DetectionSession setUploadedImageUrl(String uploadedImageUrl) {
+        this.uploadedImageUrl = uploadedImageUrl;
+        return this;
+    }
+
+    public boolean isEnhancementApplied() {
+        return enhancementApplied;
+    }
+
+    public DetectionSession setEnhancementApplied(boolean enhancementApplied) {
+        this.enhancementApplied = enhancementApplied;
+        return this;
+    }
+
+    public String getEnhancementWarning() {
+        return enhancementWarning;
+    }
+
+    public DetectionSession setEnhancementWarning(String enhancementWarning) {
+        this.enhancementWarning = enhancementWarning;
         return this;
     }
 

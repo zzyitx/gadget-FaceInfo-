@@ -6,10 +6,12 @@ import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
+import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.exception.FaceDetectionException;
 import com.example.face2info.service.FaceDetectionService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,6 +34,7 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
     private final ApiProperties properties;
     private final Map<String, DetectionSession> sessions = new ConcurrentHashMap<>();
 
+    @Autowired
     public FaceDetectionServiceImpl(FaceDetectionClient faceDetectionClient,
                                     FaceEnhancementClient faceEnhancementClient,
                                     TmpfilesClient tmpfilesClient,
@@ -42,9 +45,33 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
         this.properties = properties;
     }
 
+    FaceDetectionServiceImpl(FaceDetectionClient faceDetectionClient,
+                             ApiProperties properties) {
+        this(faceDetectionClient, null, null, properties);
+    }
+
     @Override
     public DetectionSession detect(MultipartFile image) {
         return detectInternal(image);
+    }
+
+    @Override
+    public DetectionSession detect(PreparedImageResult preparedImageResult) {
+        purgeExpiredSessions();
+        if (preparedImageResult == null || preparedImageResult.getWorkingImage() == null) {
+            throw new FaceDetectionException("检测输入不能为空");
+        }
+        // 新链路下检测阶段只消费已经准备好的最终工作图，并把上下文挂回会话供后续复用。
+        DetectionSession session = faceDetectionClient.detect(preparedImageResult.getWorkingImage());
+        if (session == null || !StringUtils.hasText(session.getDetectionId())) {
+            throw new FaceDetectionException(MISSING_DETECTION_ID_ERROR);
+        }
+        session.setUploadedImageUrl(preparedImageResult.getUploadedImageUrl());
+        session.setEnhancementApplied(preparedImageResult.isEnhancementApplied());
+        session.setEnhancementWarning(preparedImageResult.getWarning());
+        session.setExpiresAt(Instant.now().plusSeconds(getSessionTtlSeconds()));
+        sessions.put(session.getDetectionId(), session);
+        return session;
     }
 
     @Override

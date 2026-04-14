@@ -4,6 +4,7 @@ import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.PersonBasicInfo;
+import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.entity.response.DetectedFaceResponse;
@@ -14,6 +15,7 @@ import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.service.Face2InfoService;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
+import com.example.face2info.service.EnhancedImagePreparationService;
 import com.example.face2info.service.ImageResultCacheService;
 import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.util.ImageUtils;
@@ -42,18 +44,59 @@ public class Face2InfoServiceImpl implements Face2InfoService {
     private final InformationAggregationService informationAggregationService;
     private final FaceDetectionService faceDetectionService;
     private final ImageResultCacheService imageResultCacheService;
+    private final EnhancedImagePreparationService enhancedImagePreparationService;
+    private final boolean usePreparedPipeline;
 
     @Autowired
     public Face2InfoServiceImpl(ImageUtils imageUtils,
                                 FaceRecognitionService faceRecognitionService,
                                 InformationAggregationService informationAggregationService,
                                 FaceDetectionService faceDetectionService,
-                                ImageResultCacheService imageResultCacheService) {
+                                ImageResultCacheService imageResultCacheService,
+                                EnhancedImagePreparationService enhancedImagePreparationService) {
+        this(
+                imageUtils,
+                faceRecognitionService,
+                informationAggregationService,
+                faceDetectionService,
+                imageResultCacheService,
+                enhancedImagePreparationService,
+                true
+        );
+    }
+
+    private Face2InfoServiceImpl(ImageUtils imageUtils,
+                                 FaceRecognitionService faceRecognitionService,
+                                 InformationAggregationService informationAggregationService,
+                                 FaceDetectionService faceDetectionService,
+                                 ImageResultCacheService imageResultCacheService,
+                                 EnhancedImagePreparationService enhancedImagePreparationService,
+                                 boolean usePreparedPipeline) {
         this.imageUtils = imageUtils;
         this.faceRecognitionService = faceRecognitionService;
         this.informationAggregationService = informationAggregationService;
         this.faceDetectionService = faceDetectionService;
         this.imageResultCacheService = imageResultCacheService;
+        this.enhancedImagePreparationService = enhancedImagePreparationService;
+        this.usePreparedPipeline = usePreparedPipeline;
+    }
+
+    public Face2InfoServiceImpl(ImageUtils imageUtils,
+                                FaceRecognitionService faceRecognitionService,
+                                InformationAggregationService informationAggregationService,
+                                FaceDetectionService faceDetectionService,
+                                ImageResultCacheService imageResultCacheService) {
+        this(
+                imageUtils,
+                faceRecognitionService,
+                informationAggregationService,
+                faceDetectionService,
+                imageResultCacheService,
+                originalImage -> new PreparedImageResult()
+                        .setOriginalImage(originalImage)
+                        .setWorkingImage(originalImage),
+                false
+        );
     }
 
     @Override
@@ -79,17 +122,39 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         log.info("总流程开始 fileName={} size={} sourceUrl={}", image.getOriginalFilename(), image.getSize(), imageUrl);
         imageUtils.validateImage(image);
 
+        if (!usePreparedPipeline) {
+            return processLegacy(image, imageUrl);
+        }
+
+        // 新主流程先生成 preparedImageResult，保证整条链路不再混用原图和高清图。
+        PreparedImageResult preparedImageResult = enhancedImagePreparationService.prepare(image);
+        DetectionSession session = faceDetectionService.detect(preparedImageResult);
+        List<String> preparationWarnings = collectPreparationWarnings(preparedImageResult, session);
+        int faceCount = session == null || session.getFaces() == null ? 0 : session.getFaces().size();
+        if (faceCount == 0) {
+            return buildFailedResponse(NO_FACE_ERROR, preparationWarnings);
+        }
+        if (faceCount > 1) {
+            return buildSelectionRequiredResponse(session, preparationWarnings);
+        }
+
+        // 单脸场景直接沿用最终工作图继续识别；不依赖裁剪图可减少空裁剪导致的失败。
+        String uploadedImageUrl = StringUtils.hasText(preparedImageResult.getUploadedImageUrl())
+                ? preparedImageResult.getUploadedImageUrl()
+                : imageUrl;
+        return processRecognizedImage(preparedImageResult.getWorkingImage(), uploadedImageUrl, preparationWarnings);
+    }
+
+    private FaceInfoResponse processLegacy(MultipartFile image, String imageUrl) {
         DetectionSession session = faceDetectionService.detect(image);
         int faceCount = session == null || session.getFaces() == null ? 0 : session.getFaces().size();
         if (faceCount == 0) {
             return buildFailedResponse(NO_FACE_ERROR);
         }
         if (faceCount > 1) {
-            return buildSelectionRequiredResponse(session);
+            return buildSelectionRequiredResponse(session, List.of());
         }
-
-        // 单脸场景直接沿用原图继续识别；不依赖裁剪图可减少空裁剪导致的失败。
-        return processRecognizedImage(image, imageUrl);
+        return processRecognizedImage(image, imageUrl, List.of());
     }
 
     private FaceInfoResponse processSelectedCrop(SelectedFaceCrop crop) {
@@ -101,10 +166,10 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             return buildFailedResponse(MISSING_CROP_ERROR);
         }
         // 选脸接口使用裁剪图继续识别，保持与用户选择的人脸一致。
-        return processRecognizedImage(toMultipartFile(crop), imageUrl);
+        return processRecognizedImage(toMultipartFile(crop), imageUrl, List.of());
     }
 
-    private FaceInfoResponse processRecognizedImage(MultipartFile image, String imageUrl) {
+    private FaceInfoResponse processRecognizedImage(MultipartFile image, String imageUrl, List<String> preparationWarnings) {
         log.info("聚合流程开始 fileName={} size={} sourceUrl={}", image.getOriginalFilename(), image.getSize(), imageUrl);
         imageUtils.validateImage(image);
 
@@ -115,11 +180,15 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             return cachedResponse;
         }
 
-        RecognitionEvidence evidence = faceRecognitionService.recognize(image);
+        RecognitionEvidence evidence = StringUtils.hasText(imageUrl)
+                ? faceRecognitionService.recognize(image, imageUrl)
+                : faceRecognitionService.recognize(image);
         AggregationResult aggregationResult = informationAggregationService.aggregate(evidence);
 
         List<String> combinedErrors = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getErrors()));
         List<String> warnings = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getWarnings()));
+        // 把高清化降级 warning 合并到最终响应，保证前端能感知“已回退原图继续处理”。
+        warnings.addAll(normalizeMessages(safeCopy(preparationWarnings)));
 
         if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
             List<String> errors = normalizeMessages(safeCopy(evidence == null ? null : evidence.getErrors()));
@@ -167,7 +236,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return new InMemoryMultipartFile(crop.getFilename(), crop.getContentType(), crop.getBytes());
     }
 
-    private FaceInfoResponse buildSelectionRequiredResponse(DetectionSession session) {
+    private FaceInfoResponse buildSelectionRequiredResponse(DetectionSession session, List<String> preparationWarnings) {
         FaceSelectionPayload selection = new FaceSelectionPayload()
                 .setDetectionId(session.getDetectionId())
                 .setPreviewImage(session.getPreviewImage())
@@ -181,6 +250,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
 
         return new FaceInfoResponse()
                 .setStatus("selection_required")
+                .setWarnings(normalizeMessages(safeCopy(preparationWarnings)))
                 .setSelection(selection);
     }
 
@@ -197,6 +267,25 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return new FaceInfoResponse()
                 .setStatus("failed")
                 .setError(normalizeUserMessage(error));
+    }
+
+    private FaceInfoResponse buildFailedResponse(String error, List<String> warnings) {
+        return new FaceInfoResponse()
+                .setStatus("failed")
+                .setWarnings(normalizeMessages(safeCopy(warnings)))
+                .setError(normalizeUserMessage(error));
+    }
+
+    private List<String> collectPreparationWarnings(PreparedImageResult preparedImageResult, DetectionSession session) {
+        List<String> warnings = new ArrayList<>();
+        if (preparedImageResult != null && StringUtils.hasText(preparedImageResult.getWarning())) {
+            warnings.add(preparedImageResult.getWarning());
+        }
+        if (session != null && StringUtils.hasText(session.getEnhancementWarning())
+                && warnings.stream().noneMatch(session.getEnhancementWarning()::equals)) {
+            warnings.add(session.getEnhancementWarning());
+        }
+        return warnings;
     }
 
     private List<String> safeCopy(List<String> values) {

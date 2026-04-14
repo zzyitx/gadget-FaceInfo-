@@ -85,6 +85,27 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         }
         String imageUrl = tmpfilesClient.uploadImage(image);
         log.info("人脸识别模块已获得临时图片地址 imageUrl={}", imageUrl);
+        return recognizeInternal(image, imageUrl, null);
+    }
+
+    @Override
+    public RecognitionEvidence recognize(MultipartFile image, String uploadedImageUrl) {
+        RecognitionEvidence cachedEvidence = imageResultCacheService.getRecognitionEvidence(image);
+        if (cachedEvidence != null) {
+            log.info("人脸识别命中缓存 fileName={} seedQueryCount={} webEvidenceCount={}",
+                    image.getOriginalFilename(),
+                    cachedEvidence.getSeedQueries() == null ? 0 : cachedEvidence.getSeedQueries().size(),
+                    cachedEvidence.getWebEvidences() == null ? 0 : cachedEvidence.getWebEvidences().size());
+            return cachedEvidence;
+        }
+        // 复用预处理阶段已经上传好的图床地址，避免高清图再次上传并破坏链路一致性。
+        return recognizeInternal(image, uploadedImageUrl, uploadedImageUrl);
+    }
+
+    private RecognitionEvidence recognizeInternal(MultipartFile image, String imageUrl, String preparedImageUrl) {
+        if (preparedImageUrl != null) {
+            log.info("人脸识别模块复用已准备图片地址 imageUrl={}", preparedImageUrl);
+        }
         log.info("人脸识别模块开始 fileName={} size={} contentType={}",
                 image.getOriginalFilename(), image.getSize(), image.getContentType());
 
