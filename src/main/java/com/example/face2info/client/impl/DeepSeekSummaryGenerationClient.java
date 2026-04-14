@@ -526,6 +526,7 @@ public class DeepSeekSummaryGenerationClient {
         if (!StringUtils.hasText(content)) {
             throw new ApiCallException("EMPTY_RESPONSE: DeepSeek 返回内容为空");
         }
+        // SophNet DeepSeek 有时不会回标准 tool_calls，而是把函数调用序列化到 message.content 中。
         String xmlPayload = extractXmlInvokePayload(content, expectedFunctionName);
         if (StringUtils.hasText(xmlPayload)) {
             return xmlPayload;
@@ -602,6 +603,7 @@ public class DeepSeekSummaryGenerationClient {
         if (normalized.startsWith("{") || normalized.startsWith("[")) {
             return normalized;
         }
+        // 兼容“解释文本 + JSON”这类混合输出，优先裁出首个对象 JSON。
         String objectCandidate = findBalancedJsonSegment(normalized, '{', '}');
         if (StringUtils.hasText(objectCandidate)) {
             return objectCandidate;
@@ -678,6 +680,7 @@ public class DeepSeekSummaryGenerationClient {
                 if (!StringUtils.hasText(name)) {
                     continue;
                 }
+                // XML parameter 最终仍要回到统一 JSON 解析流程，所以这里先转成 JsonNode 映射。
                 parameters.put(name, toJsonValueNode(parameterMatcher.group(2)));
             }
             if (parameters.isEmpty()) {

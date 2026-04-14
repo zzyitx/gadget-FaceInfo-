@@ -923,6 +923,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         if (normalized.startsWith("{") || normalized.startsWith("[")) {
             return normalized;
         }
+        // 部分模型会在 JSON 前后包解释文本，这里优先从正文里截取首个平衡的 JSON 片段。
         String objectCandidate = findBalancedJsonSegment(normalized, '{', '}');
         if (StringUtils.hasText(objectCandidate)) {
             return objectCandidate;
@@ -957,6 +958,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             }
             if (current == openChar) {
                 if (depth == 0) {
+                    // 只记录最外层起点，避免把说明文字里的局部括号当成完整 JSON。
                     start = i;
                 }
                 depth++;

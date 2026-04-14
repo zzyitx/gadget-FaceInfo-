@@ -403,6 +403,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             if (page == null || !StringUtils.hasText(page.getContent())) {
                 continue;
             }
+            // 视频页通常只有播放器或字幕片段，送去做人物网页摘要只会放大模型拒答和噪声。
             if (shouldSkipSummaryUrl(page.getUrl())) {
                 log.info("跳过非正文页面 fallbackName={} url={}", fallbackName, page.getUrl());
                 continue;
@@ -741,6 +742,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         Set<String> urls = new LinkedHashSet<>();
         evidences.stream()
                 .filter(item -> StringUtils.hasText(item.getUrl()))
+                // 在读正文之前先过滤明显非文章类链接，避免浪费 Jina 和 LLM 配额。
                 .filter(item -> !shouldSkipSummaryUrl(item.getUrl()))
                 .forEach(item -> {
                     if (urls.size() < maxPageReads) {
@@ -801,6 +803,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 return false;
             }
             String normalizedHost = host.toLowerCase();
+            // 这里先按域名黑名单拦截主流视频平台；后续若接入更多来源，再扩展规则即可。
             return VIDEO_PLATFORM_HOSTS.stream()
                     .anyMatch(platform -> normalizedHost.equals(platform) || normalizedHost.endsWith("." + platform));
         } catch (IllegalArgumentException ex) {
