@@ -42,6 +42,7 @@ class StaticPageTest {
         mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("id=\"faceForm\"")))
+                .andExpect(content().string(containsString("id=\"submitButton\" type=\"submit\" form=\"faceForm\"")))
                 .andExpect(content().string(containsString("id=\"statusCard\"")))
                 .andExpect(content().string(containsString("id=\"statusTitle\"")))
                 .andExpect(content().string(containsString("setStatus(")))

@@ -356,7 +356,7 @@
                 <img id="previewImage" alt="图片预览">
               </div>
               <div class="action-slot" id="uploadActionSlot">
-                <button id="submitButton" type="submit">启动程序</button>
+                <button id="submitButton" type="submit" form="faceForm">启动程序</button>
               </div>
             </div>
           </div>
@@ -427,6 +427,7 @@
   const statusTitle = document.getElementById("statusTitle");
   const statusText = document.getElementById("statusText");
 
+  // 页面级状态机：upload=首次提交检测；search=多脸场景二次提交已选人脸。
   const state = {
     phase: "upload",
     selection: null,
@@ -448,6 +449,7 @@
     }
 
     if (state.phase === "search") {
+      // 多脸分支：复用同一个提交按钮，进入“按 face_id 继续流程”接口。
       await submitSelectedFace();
       return;
     }
@@ -466,6 +468,7 @@
       }
 
       if (data && data.status === "selection_required" && data.selection) {
+        // 主流程在多脸时不直接失败，而是切换到“先选脸再继续”的交互阶段。
         const selection = normalizeSelectionResponse(data.selection);
         if (!selection.faces.length) {
           setStatus("未检测到人脸", "请更换图片后重试。");
@@ -510,6 +513,7 @@
         detection_id: state.selection.detection_id,
         face_id: state.selectedFaceId
       };
+      // 选脸继续接口只传最小上下文，后端通过 detection_id 读取缓存会话与裁剪图。
       const { response, data } = await requestJson("/api/face2info/process-selected", payload);
       if (!response.ok || (data && data.status === "failed")) {
         const message = (data && data.error) || "选脸后继续识别失败。";
@@ -555,6 +559,7 @@
       ? `<img src="${escapeHtml(previewImageUrl)}" alt="检测总览图">`
       : '<div class="selection-empty">这里会展示检测总览图。</div>';
 
+    // face card 由后端会话返回，前端只负责渲染与回传 face_id，不在本地重算 bbox。
     selectionFaceGrid.innerHTML = faces.map((face, index) => renderFaceCard(face, selection.detection_id, index)).join("");
     selectionProgress.hidden = true;
     setSelectionButtonsDisabled(false);
@@ -723,6 +728,7 @@
       try {
         data = JSON.parse(text);
       } catch (error) {
+        // 非 JSON 场景统一折叠为 failed，保证状态展示逻辑始终可走同一分支。
         data = { status: "failed", error: text };
       }
     }
