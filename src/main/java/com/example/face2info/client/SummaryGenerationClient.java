@@ -33,6 +33,11 @@ public interface SummaryGenerationClient {
     ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries);
 
     /**
+     * 基于主题相关的篇级摘要集合生成单段主题摘要。
+     */
+    String summarizeSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries);
+
+    /**
      * 结合候选名称、篇级总结和最终总结进行综合判断。
      */
     ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,

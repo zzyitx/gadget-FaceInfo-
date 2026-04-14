@@ -8,6 +8,7 @@ import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpRequest;
@@ -28,10 +29,15 @@ public class RestTemplateConfig {
     public RestTemplate restTemplate(ApiProperties properties) {
         int connectTimeout = resolveConnectTimeout(properties);
         int readTimeout = resolveReadTimeout(properties);
-        ClientHttpRequestFactory requestFactory = requestFactory(connectTimeout, readTimeout, properties);
-        RestTemplate restTemplate = new RestTemplate(new BufferingClientHttpRequestFactory(requestFactory));
-        restTemplate.getInterceptors().add(new LoggingInterceptor());
-        return restTemplate;
+        return buildRestTemplate(connectTimeout, readTimeout, properties);
+    }
+
+    @Bean
+    @Qualifier("kimiRestTemplate")
+    public RestTemplate kimiRestTemplate(ApiProperties properties) {
+        int connectTimeout = resolveKimiConnectTimeout(properties);
+        int readTimeout = resolveKimiReadTimeout(properties);
+        return buildRestTemplate(connectTimeout, readTimeout, properties);
     }
 
     int resolveConnectTimeout(ApiProperties properties) {
@@ -60,6 +66,14 @@ public class RestTemplateConfig {
         );
     }
 
+    int resolveKimiConnectTimeout(ApiProperties properties) {
+        return properties.getApi().getKimi().getConnectTimeoutMs();
+    }
+
+    int resolveKimiReadTimeout(ApiProperties properties) {
+        return properties.getApi().getKimi().getReadTimeoutMs();
+    }
+
     private int max(int... values) {
         int max = values[0];
         for (int value : values) {
@@ -80,6 +94,13 @@ public class RestTemplateConfig {
                 .setDefaultRequestConfig(configBuilder.build())
                 .build();
         return new HttpComponentsClientHttpRequestFactory(httpClient);
+    }
+
+    private RestTemplate buildRestTemplate(int connectTimeout, int readTimeout, ApiProperties properties) {
+        ClientHttpRequestFactory requestFactory = requestFactory(connectTimeout, readTimeout, properties);
+        RestTemplate restTemplate = new RestTemplate(new BufferingClientHttpRequestFactory(requestFactory));
+        restTemplate.getInterceptors().add(new LoggingInterceptor());
+        return restTemplate;
     }
 
     private static final class LoggingInterceptor implements ClientHttpRequestInterceptor {

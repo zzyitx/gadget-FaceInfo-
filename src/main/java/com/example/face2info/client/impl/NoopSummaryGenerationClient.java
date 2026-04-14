@@ -78,6 +78,11 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
+    public String summarizeSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        throw new UnsupportedOperationException("noop summary provider does not support section summary generation");
+    }
+
+    @Override
     public ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
                                                              List<String> candidateNames,
                                                              List<PageSummary> pageSummaries,

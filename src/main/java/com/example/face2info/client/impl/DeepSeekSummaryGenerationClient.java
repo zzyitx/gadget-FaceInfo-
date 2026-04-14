@@ -1,22 +1,18 @@
 package com.example.face2info.client.impl;
 
-import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
-import com.example.face2info.config.KimiApiProperties;
+import com.example.face2info.config.DeepSeekApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.exception.ApiCallException;
-import com.example.face2info.util.InMemoryMultipartFile;
 import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -25,53 +21,56 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "face2info.api.summary", name = "provider", havingValue = "kimi")
-public class KimiSummaryGenerationClient implements SummaryGenerationClient {
+public class DeepSeekSummaryGenerationClient {
 
     private static final String PAGE_SUMMARY_FUNCTION_NAME = "submit_page_summary";
     private static final String PERSON_PROFILE_FUNCTION_NAME = "submit_person_profile";
     private static final String SECTION_SUMMARY_FUNCTION_NAME = "submit_section_summary";
-    private static final String FACE_ENHANCE_FUNCTION_NAME = "submit_enhanced_face_image";
-    private static final String FACE_CANDIDATE_FUNCTION_NAME = "submit_face_candidate_names";
     private static final String PROFILE_JUDGEMENT_FUNCTION_NAME = "submit_profile_judgement";
+    private static final Pattern XML_INVOKE_PATTERN = Pattern.compile(
+            "<invoke\\s+name\\s*=\\s*\"([^\"]+)\"\\s*>(.*?)</invoke>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
+    private static final Pattern XML_PARAMETER_PATTERN = Pattern.compile(
+            "<parameter\\s+name\\s*=\\s*\"([^\"]+)\"[^>]*>(.*?)</parameter>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
 
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
     private final ObjectMapper objectMapper;
 
-    public KimiSummaryGenerationClient(@Qualifier("kimiRestTemplate") RestTemplate restTemplate,
-                                       ApiProperties properties,
-                                       ObjectMapper objectMapper) {
+    public DeepSeekSummaryGenerationClient(RestTemplate restTemplate,
+                                           ApiProperties properties,
+                                           ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
         this.properties = properties;
         this.objectMapper = objectMapper;
     }
 
-    @Override
     public PageSummary summarizePage(String fallbackName, PageContent page) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        validateConfig(kimi);
-        log.info("Kimi 页面摘要开始 fallbackName={} url={} title={}",
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        log.info("DeepSeek 页面摘要开始 fallbackName={} url={} title={}",
                 fallbackName,
                 page == null ? null : page.getUrl(),
                 page == null ? null : page.getTitle());
-
-        return RetryUtils.execute("Kimi 页面摘要", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildPageRequest(kimi, fallbackName, page));
+        return RetryUtils.execute("DeepSeek 页面摘要", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildPageRequest(deepseek, fallbackName, page));
             PageSummary summary = parsePageSummary(page, body);
-            log.info("Kimi 页面摘要成功 url={} summaryLength={} tagCount={} factCount={}",
+            log.info("DeepSeek 页面摘要成功 url={} summaryLength={} tagCount={} factCount={}",
                     summary.getSourceUrl(),
                     summary.getSummary() == null ? 0 : summary.getSummary().length(),
                     summary.getTags() == null ? 0 : summary.getTags().size(),
@@ -80,121 +79,55 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         });
     }
 
-
-    @Override
-    public MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        validateConfig(kimi);
-
-        log.info("Kimi 人脸增强开始 imageUrl={} fileName={} contentType={}", imageUrl, filename, contentType);
-
-        return RetryUtils.execute("Kimi 人脸增强", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildFaceEnhanceRequestByUrl(kimi, imageUrl, filename, contentType));
-            MultipartFile enhanced = parseEnhancedImage(filename, contentType, body);
-
-            log.info("Kimi 人脸增强成功 originalName={} enhancedName={} enhancedSize={}",
-                    filename,
-                    enhanced.getOriginalFilename(),
-                    enhanced.getSize());
-
-            return enhanced;
-        });
-    }
-
-    @Override
-    public List<String> recognizeFaceCandidateNames(MultipartFile image) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        validateConfig(kimi);
-        log.info("Kimi 候选姓名识别开始 fileName={} size={}",
-                image == null ? null : image.getOriginalFilename(),
-                image == null ? 0 : image.getSize());
-
-        return RetryUtils.execute("Kimi 候选姓名识别", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildFaceCandidateRequest(kimi, image));
-            List<String> candidates = parseFaceCandidates(body);
-            log.info("Kimi 候选姓名识别成功 count={} candidates={}", candidates.size(), candidates);
-            return candidates;
-        });
-    }
-
-    @Override
     public ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        validateConfig(kimi);
-        int pageSummaryCount = pageSummaries == null ? 0 : pageSummaries.size();
-        log.info("Kimi 最终画像摘要开始 fallbackName={} pageSummaryCount={}", fallbackName, pageSummaryCount);
-
-        return RetryUtils.execute("Kimi 人物总结", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildPersonRequest(kimi, fallbackName, pageSummaries));
-            ResolvedPersonProfile profile = parseProfileFromPageSummaries(fallbackName, pageSummaries, body);
-            log.info("Kimi 最终画像摘要成功 resolvedName={} summaryLength={} tagCount={} evidenceUrlCount={}",
-                    profile.getResolvedName(),
-                    profile.getSummary() == null ? 0 : profile.getSummary().length(),
-                    profile.getTags() == null ? 0 : profile.getTags().size(),
-                    profile.getEvidenceUrls() == null ? 0 : profile.getEvidenceUrls().size());
-            return profile;
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        return RetryUtils.execute("DeepSeek 人物总结", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildPersonRequest(deepseek, fallbackName, pageSummaries));
+            return parseProfileFromPageSummaries(fallbackName, pageSummaries, body);
         });
     }
 
-    @Override
     public String summarizeSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        validateConfig(kimi);
-        int pageSummaryCount = pageSummaries == null ? 0 : pageSummaries.size();
-        log.info("Kimi 主题摘要开始 resolvedName={} sectionType={} pageSummaryCount={}",
-                resolvedName, sectionType, pageSummaryCount);
-
-        return RetryUtils.execute("Kimi 主题摘要", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildSectionRequest(kimi, resolvedName, sectionType, pageSummaries));
-            String summary = parseSectionSummary(body);
-            log.info("Kimi 主题摘要成功 resolvedName={} sectionType={} summaryLength={}",
-                    resolvedName, sectionType, summary == null ? 0 : summary.length());
-            return summary;
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        return RetryUtils.execute("DeepSeek 主题摘要", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildSectionRequest(deepseek, resolvedName, sectionType, pageSummaries));
+            return parseSectionSummary(body);
         });
     }
 
-    @Override
     public ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
                                                              List<String> candidateNames,
                                                              List<PageSummary> pageSummaries,
                                                              ResolvedPersonProfile draftProfile) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        validateConfig(kimi);
-        log.info("Kimi 综合判断开始 fallbackName={} candidateCount={} pageSummaryCount={}",
-                fallbackName,
-                candidateNames == null ? 0 : candidateNames.size(),
-                pageSummaries == null ? 0 : pageSummaries.size());
-
-        return RetryUtils.execute("Kimi 综合判断", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildJudgementRequest(kimi, fallbackName, candidateNames, pageSummaries, draftProfile));
-            ResolvedPersonProfile judged = parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
-            log.info("Kimi 综合判断成功 resolvedName={} summaryLength={}",
-                    judged.getResolvedName(),
-                    judged.getSummary() == null ? 0 : judged.getSummary().length());
-            return judged;
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        return RetryUtils.execute("DeepSeek 综合判断", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildJudgementRequest(deepseek, fallbackName, candidateNames, pageSummaries, draftProfile));
+            return parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
         });
     }
 
-    private void validateConfig(KimiApiProperties kimi) {
-        if (!StringUtils.hasText(kimi.getApiKey())
-                || !StringUtils.hasText(kimi.getBaseUrl())
-                || !StringUtils.hasText(kimi.getModel())) {
-            log.error("Kimi 配置缺失 baseUrlConfigured={} modelConfigured={} apiKeyConfigured={}",
-                    StringUtils.hasText(kimi.getBaseUrl()),
-                    StringUtils.hasText(kimi.getModel()),
-                    StringUtils.hasText(kimi.getApiKey()));
-            throw new ApiCallException("CONFIG_MISSING: Kimi 配置不完整");
+    private void validateConfig(DeepSeekApiProperties deepseek) {
+        if (!StringUtils.hasText(deepseek.getApiKey())
+                || !StringUtils.hasText(deepseek.getBaseUrl())
+                || !StringUtils.hasText(deepseek.getModel())) {
+            log.error("DeepSeek 配置缺失 baseUrlConfigured={} modelConfigured={} apiKeyConfigured={}",
+                    StringUtils.hasText(deepseek.getBaseUrl()),
+                    StringUtils.hasText(deepseek.getModel()),
+                    StringUtils.hasText(deepseek.getApiKey()));
+            throw new ApiCallException("CONFIG_MISSING: DeepSeek 配置不完整");
         }
     }
 
-    private JsonNode callKimi(KimiApiProperties kimi, Map<String, Object> requestBody) {
+    private JsonNode callDeepSeek(DeepSeekApiProperties deepseek, Map<String, Object> requestBody) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(kimi.getApiKey());
+        headers.setBearerAuth(deepseek.getApiKey());
         headers.setContentType(MediaType.APPLICATION_JSON);
-
-        log.info("Kimi 请求已发送 model={} url={}", kimi.getModel(), LogSanitizer.maskUrl(kimi.getBaseUrl()));
+        log.info("DeepSeek 请求已发送 model={} url={}", deepseek.getModel(), LogSanitizer.maskUrl(deepseek.getBaseUrl()));
         ResponseEntity<JsonNode> response = restTemplate.exchange(
-                kimi.getBaseUrl(),
+                deepseek.getBaseUrl(),
                 HttpMethod.POST,
                 new HttpEntity<>(requestBody, headers),
                 JsonNode.class
@@ -202,11 +135,12 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         return response.getBody();
     }
 
-    private Map<String, Object> buildPageRequest(KimiApiProperties kimi, String fallbackName, PageContent page) {
+    private Map<String, Object> buildPageRequest(DeepSeekApiProperties deepseek, String fallbackName, PageContent page) {
         return Map.of(
-                "model", kimi.getModel(),
+                "model", deepseek.getModel(),
+                "stream", false,
                 "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
                         Map.of("role", "user", "content", buildPagePrompt(fallbackName, page))
                 ),
                 "tools", List.of(Map.of(
@@ -229,89 +163,18 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                 )
                         )
                 )),
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", PAGE_SUMMARY_FUNCTION_NAME)
-                )
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", PAGE_SUMMARY_FUNCTION_NAME))
         );
     }
 
-
-    /**
-     * 构建请求（已改为返回 imageUrl，不再使用 base64）
-     */
-    private Map<String, Object> buildFaceEnhanceRequestByUrl(KimiApiProperties kimi,
-                                                             String imageUrl,
-                                                             String filename,
-                                                             String contentType) {
-
-        return Map.of(
-                "model", kimi.getModel(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
-                        Map.of("role", "user", "content",
-                                buildFaceEnhancePromptByUrl(imageUrl, filename, contentType))
-                ),
-                "tools", List.of(Map.of(
-                        "type", "function",
-                        "function", Map.of(
-                                "name", FACE_ENHANCE_FUNCTION_NAME,
-                                "description", "提交增强人脸图像",
-                                "parameters", Map.of(
-                                        "type", "object",
-                                        "properties", Map.of(
-                                                "imageUrl", Map.of("type", "string"),
-                                                "filename", Map.of("type", "string"),
-                                                "contentType", Map.of("type", "string")
-                                        ),
-                                        "required", List.of("imageUrl"),
-                                        "additionalProperties", false
-                                )
-                        )
-                )),
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", FACE_ENHANCE_FUNCTION_NAME)
-                )
-        );
-    }
-
-    private Map<String, Object> buildFaceCandidateRequest(KimiApiProperties kimi, MultipartFile image) {
-        return Map.of(
-                "model", kimi.getModel(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
-                        Map.of("role", "user", "content", buildFaceCandidatePrompt(image))
-                ),
-                "tools", List.of(Map.of(
-                        "type", "function",
-                        "function", Map.of(
-                                "name", FACE_CANDIDATE_FUNCTION_NAME,
-                                "description", "提交图像识别的人物候选名称",
-                                "parameters", Map.of(
-                                        "type", "object",
-                                        "properties", Map.of(
-                                                "candidateNames", Map.of("type", "array", "items", Map.of("type", "string"))
-                                        ),
-                                        "required", List.of("candidateNames"),
-                                        "additionalProperties", false
-                                )
-                        )
-                )),
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", FACE_CANDIDATE_FUNCTION_NAME)
-                )
-        );
-    }
-
-    private Map<String, Object> buildPersonRequest(KimiApiProperties kimi,
+    private Map<String, Object> buildPersonRequest(DeepSeekApiProperties deepseek,
                                                    String fallbackName,
                                                    List<PageSummary> pageSummaries) {
         return Map.of(
-                "model", kimi.getModel(),
+                "model", deepseek.getModel(),
+                "stream", false,
                 "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
                         Map.of("role", "user", "content", buildPersonPrompt(fallbackName, pageSummaries))
                 ),
                 "tools", List.of(Map.of(
@@ -322,22 +185,20 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                 "parameters", profileSchema()
                         )
                 )),
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", PERSON_PROFILE_FUNCTION_NAME)
-                )
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", PERSON_PROFILE_FUNCTION_NAME))
         );
     }
 
-    private Map<String, Object> buildJudgementRequest(KimiApiProperties kimi,
+    private Map<String, Object> buildJudgementRequest(DeepSeekApiProperties deepseek,
                                                       String fallbackName,
                                                       List<String> candidateNames,
                                                       List<PageSummary> pageSummaries,
                                                       ResolvedPersonProfile draftProfile) {
         return Map.of(
-                "model", kimi.getModel(),
+                "model", deepseek.getModel(),
+                "stream", false,
                 "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
                         Map.of("role", "user", "content", buildJudgementPrompt(fallbackName, candidateNames, pageSummaries, draftProfile))
                 ),
                 "tools", List.of(Map.of(
@@ -348,21 +209,19 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                 "parameters", profileSchema()
                         )
                 )),
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", PROFILE_JUDGEMENT_FUNCTION_NAME)
-                )
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", PROFILE_JUDGEMENT_FUNCTION_NAME))
         );
     }
 
-    private Map<String, Object> buildSectionRequest(KimiApiProperties kimi,
+    private Map<String, Object> buildSectionRequest(DeepSeekApiProperties deepseek,
                                                     String resolvedName,
                                                     String sectionType,
                                                     List<PageSummary> pageSummaries) {
         return Map.of(
-                "model", kimi.getModel(),
+                "model", deepseek.getModel(),
+                "stream", false,
                 "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
                         Map.of("role", "user", "content", buildSectionPrompt(resolvedName, sectionType, pageSummaries))
                 ),
                 "tools", List.of(Map.of(
@@ -372,18 +231,13 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                 "description", "提交人物某个主题的单段摘要",
                                 "parameters", Map.of(
                                         "type", "object",
-                                        "properties", Map.of(
-                                                "summary", Map.of("type", "string")
-                                        ),
+                                        "properties", Map.of("summary", Map.of("type", "string")),
                                         "required", List.of("summary"),
                                         "additionalProperties", false
                                 )
                         )
                 )),
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", SECTION_SUMMARY_FUNCTION_NAME)
-                )
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", SECTION_SUMMARY_FUNCTION_NAME))
         );
     }
 
@@ -433,44 +287,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 page == null ? null : page.getTitle(),
                 page == null ? null : page.getUrl(),
                 page == null ? null : page.getContent()
-        );
-    }
-
-
-    /**
-     * Prompt：要求返回图片URL（关键改动）
-     */
-    private String buildFaceEnhancePromptByUrl(String imageUrl, String filename, String contentType) {
-        return """
-                请对输入图片进行人脸增强（提高清晰度、去噪、细节优化），要求必须保持人物特征不变。
-                
-                要求：
-                1. 输出增强后的图片，并提供可访问的图片URL
-                2. 不要返回 base64
-                3. 返回 JSON 格式如下：
-                
-                {
-                  "imageUrl": "增强后的图片访问地址",
-                  "filename": "%s",
-                  "contentType": "%s"
-                }
-                
-                原始图片URL: %s
-                """.formatted(filename, contentType, imageUrl);
-    }
-
-    private String buildFaceCandidatePrompt(MultipartFile image) {
-        return """
-                请根据下面的人脸图像判断人物身份，给出最多 3 个候选名称（按可信度降序）。
-                只输出 JSON，且返回内容语言必须为中文。
-                JSON 字段固定为 candidateNames。
-                filename: %s
-                contentType: %s
-                imageBase64: %s
-                """.formatted(
-                image == null ? null : image.getOriginalFilename(),
-                image == null ? null : image.getContentType(),
-                toBase64(image)
         );
     }
 
@@ -560,9 +376,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
-    private String buildSectionPrompt(String resolvedName,
-                                      String sectionType,
-                                      List<PageSummary> pageSummaries) {
+    private String buildSectionPrompt(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
         String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
                 .map(summary -> """
                         sourceUrl: %s
@@ -596,71 +410,14 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 """.formatted(resolvedName, sectionType, pageSummaryContent);
     }
 
-    /**
-     * 解析 Kimi 返回并下载高清化图片字节。
-     */
-    private MultipartFile parseEnhancedImage(String originalFilename,
-                                             String originalContentType,
-                                             JsonNode body) {
-
-        String content = extractStructuredPayload(body, FACE_ENHANCE_FUNCTION_NAME);
-
-        try {
-            JsonNode json = readStructuredJson(content, "Kimi 人脸增强");
-
-            String imageUrl = trimToNull(json.path("imageUrl").asText(null));
-            if (!StringUtils.hasText(imageUrl)) {
-                throw new ApiCallException("EMPTY_RESPONSE: Kimi未返回图片URL");
-            }
-
-            String filename = firstNonBlank(
-                    trimToNull(json.path("filename").asText(null)),
-                    originalFilename,
-                    "enhanced-face.jpg"
-            );
-
-            String contentType = firstNonBlank(
-                    trimToNull(json.path("contentType").asText(null)),
-                    originalContentType,
-                    "image/jpeg"
-            );
-
-            // 下载图片
-            byte[] bytes = downloadImage(imageUrl);
-
-            // 校验（防止脏数据）
-            if (bytes.length < 10 * 1024) {
-                throw new ApiCallException("INVALID_IMAGE: 图片过小，疑似异常");
-            }
-
-            return new InMemoryMultipartFile(filename, contentType, bytes);
-
-        } catch (Exception ex) {
-            log.warn("Kimi 人脸增强结果解析失败 error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: 图片处理失败", ex);
-        }
-    }
-
-    private List<String> parseFaceCandidates(JsonNode body) {
-        String content = extractStructuredPayload(body, FACE_CANDIDATE_FUNCTION_NAME);
-        try {
-            JsonNode json = readStructuredJson(content, "Kimi 候选姓名结果");
-            return readStringList(json.path("candidateNames"));
-        } catch (JsonProcessingException ex) {
-            log.warn("Kimi 候选姓名结果解析失败 error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: Kimi 候选姓名结果不是合法 JSON", ex);
-        }
-    }
-
     private PageSummary parsePageSummary(PageContent page, JsonNode body) {
         String content = extractStructuredPayload(body, PAGE_SUMMARY_FUNCTION_NAME);
         try {
-            JsonNode json = readStructuredJson(content, "Kimi 页面摘要");
+            JsonNode json = readStructuredJson(content, "DeepSeek 页面摘要");
             String summary = json.path("summary").asText(null);
             if (!StringUtils.hasText(summary)) {
-                throw new ApiCallException("EMPTY_RESPONSE: Kimi 页面摘要为空");
+                throw new ApiCallException("EMPTY_RESPONSE: DeepSeek 页面摘要为空");
             }
-
             return new PageSummary()
                     .setSourceUrl(firstNonBlank(trimToNull(json.path("sourceUrl").asText(null)), page == null ? null : page.getUrl()))
                     .setTitle(firstNonBlank(trimToNull(json.path("title").asText(null)), page == null ? null : page.getTitle()))
@@ -669,8 +426,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(readStringList(json.path("tags")));
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi 页面摘要解析失败 error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: Kimi 页面摘要不是合法 JSON", ex);
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 页面摘要不是合法 JSON", ex);
         }
     }
 
@@ -679,22 +435,10 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                                                 JsonNode body) {
         String content = extractStructuredPayload(body, PERSON_PROFILE_FUNCTION_NAME);
         try {
-            JsonNode json = readStructuredJson(content, "Kimi 最终画像");
+            JsonNode json = readStructuredJson(content, "DeepSeek 最终画像");
             return toProfile(json, fallbackName, pageSummaries == null ? List.of() : pageSummaries, null);
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi 最终画像解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: Kimi 返回内容不是合法 JSON", ex);
-        }
-    }
-
-    private String parseSectionSummary(JsonNode body) {
-        String content = extractStructuredPayload(body, SECTION_SUMMARY_FUNCTION_NAME);
-        try {
-            JsonNode json = readStructuredJson(content, "Kimi 主题摘要");
-            return trimToNull(json.path("summary").asText(null));
-        } catch (JsonProcessingException ex) {
-            log.warn("Kimi 主题摘要解析失败 error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: Kimi 主题摘要不是合法 JSON", ex);
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 返回内容不是合法 JSON", ex);
         }
     }
 
@@ -704,35 +448,20 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                                                      JsonNode body) {
         String content = extractStructuredPayload(body, PROFILE_JUDGEMENT_FUNCTION_NAME);
         try {
-            JsonNode json = readStructuredJson(content, "Kimi 综合判断");
+            JsonNode json = readStructuredJson(content, "DeepSeek 综合判断");
             return toProfile(json, fallbackName, pageSummaries == null ? List.of() : pageSummaries, draftProfile);
         } catch (JsonProcessingException ex) {
-            log.warn("Kimi 综合判断结果解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: Kimi 综合判断内容不是合法 JSON", ex);
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 综合判断内容不是合法 JSON", ex);
         }
     }
 
-    /**
-     * 下载图片
-     */
-    private byte[] downloadImage(String url) {
+    private String parseSectionSummary(JsonNode body) {
+        String content = extractStructuredPayload(body, SECTION_SUMMARY_FUNCTION_NAME);
         try {
-            RestTemplate restTemplate = new RestTemplate();
-            ResponseEntity<byte[]> response = restTemplate.getForEntity(url, byte[].class);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("下载图片失败");
-            }
-
-            byte[] body = response.getBody();
-            if (body == null || body.length == 0) {
-                throw new RuntimeException("图片为空");
-            }
-
-            return body;
-
-        } catch (Exception e) {
-            throw new RuntimeException("图片下载失败: " + url, e);
+            JsonNode json = readStructuredJson(content, "DeepSeek 主题摘要");
+            return trimToNull(json.path("summary").asText(null));
+        } catch (JsonProcessingException ex) {
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 主题摘要不是合法 JSON", ex);
         }
     }
 
@@ -776,36 +505,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             if ((profile.getTags() == null || profile.getTags().isEmpty()) && draftProfile.getTags() != null) {
                 profile.setTags(draftProfile.getTags());
             }
-            if (!StringUtils.hasText(profile.getWikipedia())) {
-                profile.setWikipedia(draftProfile.getWikipedia());
-            }
-            if (!StringUtils.hasText(profile.getOfficialWebsite())) {
-                profile.setOfficialWebsite(draftProfile.getOfficialWebsite());
-            }
-            if ((profile.getBasicInfo() == null || isBasicInfoEmpty(profile.getBasicInfo())) && draftProfile.getBasicInfo() != null) {
-                profile.setBasicInfo(draftProfile.getBasicInfo());
-            }
         }
-
         return profile;
-    }
-
-    private boolean isBasicInfoEmpty(PersonBasicInfo basicInfo) {
-        if (basicInfo == null) {
-            return true;
-        }
-        return !StringUtils.hasText(basicInfo.getBirthDate())
-                && (basicInfo.getEducation() == null || basicInfo.getEducation().isEmpty())
-                && (basicInfo.getOccupations() == null || basicInfo.getOccupations().isEmpty())
-                && (basicInfo.getBiographies() == null || basicInfo.getBiographies().isEmpty());
-    }
-
-    private String extractContent(JsonNode body) {
-        String content = body == null ? null : body.path("choices").path(0).path("message").path("content").asText(null);
-        if (!StringUtils.hasText(content)) {
-            throw new ApiCallException("EMPTY_RESPONSE: Kimi 返回内容为空");
-        }
-        return content;
     }
 
     private String extractStructuredPayload(JsonNode body, String expectedFunctionName) {
@@ -821,7 +522,15 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 }
             }
         }
-        return extractContent(body);
+        String content = messageNode == null ? null : messageNode.path("content").asText(null);
+        if (!StringUtils.hasText(content)) {
+            throw new ApiCallException("EMPTY_RESPONSE: DeepSeek 返回内容为空");
+        }
+        String xmlPayload = extractXmlInvokePayload(content, expectedFunctionName);
+        if (StringUtils.hasText(xmlPayload)) {
+            return xmlPayload;
+        }
+        return content;
     }
 
     private List<String> readStringList(JsonNode arrayNode) {
@@ -848,35 +557,13 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .setBiographies(readStringList(basicInfoNode.path("biographies")));
     }
 
-    private String toBase64(MultipartFile image) {
-        if (image == null) {
-            return "";
-        }
-        try {
-            return Base64.getEncoder().encodeToString(image.getBytes());
-        } catch (IOException ex) {
-            throw new ApiCallException("INVALID_IMAGE: 无法读取图片字节内容", ex);
-        }
-    }
-
-    private String stripDataUrlPrefix(String value) {
-        if (!StringUtils.hasText(value)) {
-            return value;
-        }
-        int index = value.indexOf(",");
-        if (value.startsWith("data:") && index > 0) {
-            return value.substring(index + 1);
-        }
-        return value;
-    }
-
     private String firstNonBlank(String... values) {
         if (values == null) {
             return null;
         }
         for (String value : values) {
             if (StringUtils.hasText(value)) {
-                return value;
+                return value.trim();
             }
         }
         return null;
@@ -887,24 +574,16 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private String normalizeJsonContent(String content) {
-        String normalized = content == null ? null : content.trim();
-        if (!StringUtils.hasText(normalized)) {
-            return normalized;
+        String trimmed = trimToNull(content);
+        if (trimmed == null) {
+            return null;
         }
-        if (!normalized.startsWith("```")) {
-            return normalized;
+        if (trimmed.startsWith("```")) {
+            trimmed = trimmed.replaceFirst("^```json\\s*", "");
+            trimmed = trimmed.replaceFirst("^```\\s*", "");
+            trimmed = trimmed.replaceFirst("\\s*```$", "");
         }
-
-        int firstLineBreak = normalized.indexOf('\n');
-        if (firstLineBreak < 0) {
-            return normalized;
-        }
-
-        String withoutOpeningFence = normalized.substring(firstLineBreak + 1).trim();
-        if (withoutOpeningFence.endsWith("```")) {
-            withoutOpeningFence = withoutOpeningFence.substring(0, withoutOpeningFence.length() - 3).trim();
-        }
-        return withoutOpeningFence;
+        return trimmed;
     }
 
     private JsonNode readStructuredJson(String content, String scene) throws JsonProcessingException {
@@ -979,5 +658,62 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         }
         String singleLine = normalized.replaceAll("\\s+", " ");
         return singleLine.length() <= 120 ? singleLine : singleLine.substring(0, 120) + "...";
+    }
+
+    private String extractXmlInvokePayload(String content, String expectedFunctionName) {
+        if (!StringUtils.hasText(content) || !content.contains("<invoke")) {
+            return null;
+        }
+        Matcher invokeMatcher = XML_INVOKE_PATTERN.matcher(content);
+        while (invokeMatcher.find()) {
+            String functionName = invokeMatcher.group(1);
+            if (!expectedFunctionName.equals(functionName)) {
+                continue;
+            }
+            String invokeBody = invokeMatcher.group(2);
+            Matcher parameterMatcher = XML_PARAMETER_PATTERN.matcher(invokeBody);
+            Map<String, JsonNode> parameters = new LinkedHashMap<>();
+            while (parameterMatcher.find()) {
+                String name = trimToNull(parameterMatcher.group(1));
+                if (!StringUtils.hasText(name)) {
+                    continue;
+                }
+                parameters.put(name, toJsonValueNode(parameterMatcher.group(2)));
+            }
+            if (parameters.isEmpty()) {
+                return null;
+            }
+            return objectMapper.valueToTree(parameters).toString();
+        }
+        return null;
+    }
+
+    private JsonNode toJsonValueNode(String rawValue) {
+        String value = trimToNull(rawValue);
+        if (value == null) {
+            return objectMapper.nullNode();
+        }
+        if ((value.startsWith("{") && value.endsWith("}")) || (value.startsWith("[") && value.endsWith("]"))) {
+            try {
+                return objectMapper.readTree(value);
+            } catch (JsonProcessingException ex) {
+                log.debug("xml parameter json parse failed value={} error={}", previewContent(value), ex.getMessage());
+            }
+        }
+        if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value) || "null".equalsIgnoreCase(value)) {
+            try {
+                return objectMapper.readTree(value.toLowerCase());
+            } catch (JsonProcessingException ex) {
+                log.debug("xml parameter literal parse failed value={} error={}", value, ex.getMessage());
+            }
+        }
+        if (value.matches("-?\\d+(\\.\\d+)?")) {
+            try {
+                return objectMapper.readTree(value);
+            } catch (JsonProcessingException ex) {
+                log.debug("xml parameter number parse failed value={} error={}", value, ex.getMessage());
+            }
+        }
+        return objectMapper.getNodeFactory().textNode(value);
     }
 }

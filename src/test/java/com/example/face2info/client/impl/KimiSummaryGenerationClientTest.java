@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.SocketTimeoutException;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,6 +101,132 @@ class KimiSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldParseFaceCandidateNamesWhenKimiWrapsJsonWithExplanation() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "我先给出识别结果：\\n```json\\n{\\\"candidateNames\\\":[\\\"雷军\\\",\\\"Lei Jun\\\"]}\\n```"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        List<String> candidates = client.recognizeFaceCandidateNames(new org.springframework.mock.web.MockMultipartFile(
+                "image", "face.jpg", MediaType.IMAGE_JPEG_VALUE, "fake-image".getBytes()
+        ));
+
+        assertThat(candidates).containsExactly("雷军", "Lei Jun");
+    }
+
+    @Test
+    void shouldThrowControlledExceptionWhenKimiReturnsPlainTextForFaceCandidates() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "我需要根据这张人脸图像判断人物身份，但现在无法给出候选名称。"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        assertThatThrownBy(() -> client.recognizeFaceCandidateNames(new org.springframework.mock.web.MockMultipartFile(
+                "image", "face.jpg", MediaType.IMAGE_JPEG_VALUE, "fake-image".getBytes()
+        )))
+                .isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("INVALID_RESPONSE")
+                .hasMessageContaining("未返回 JSON");
+    }
+
+    @Test
+    void shouldSummarizeSectionFromPageSummaries() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "{\\"summary\\":\\"周杰伦的教育经历主要集中在台湾求学阶段。\\"}"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        String summary = client.summarizeSectionFromPageSummaries(
+                "周杰伦",
+                "education",
+                List.of(new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("A summary"))
+        );
+
+        assertThat(summary).isEqualTo("周杰伦的教育经历主要集中在台湾求学阶段。");
+    }
+
+    @Test
+    void shouldReturnNullWhenSectionSummaryIsBlank() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"summary\\":\\"   \\"}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        String summary = client.summarizeSectionFromPageSummaries(
+                "周杰伦",
+                "career",
+                List.of(new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("A summary"))
+        );
+
+        assertThat(summary).isNull();
+    }
+
+    @Test
+    void shouldThrowWhenSectionSummaryPayloadIsInvalid() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"not-json"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        assertThatThrownBy(() -> client.summarizeSectionFromPageSummaries(
+                "周杰伦",
+                "family",
+                List.of(new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("A summary"))
+        )).isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("INVALID_RESPONSE");
+    }
+
+    @Test
     void shouldThrowControlledExceptionWhenPageSummaryIsBlank() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
@@ -117,6 +244,67 @@ class KimiSummaryGenerationClientTest {
                 .setContent("Page content A")))
                 .isInstanceOf(ApiCallException.class)
                 .hasMessageContaining("EMPTY_RESPONSE");
+    }
+
+    @Test
+    void shouldParsePageSummaryWhenKimiWrapsJsonWithExplanation() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "以下是结构化结果：\\n```json\\n{\\\"resolvedNameCandidate\\\":\\\"雷军\\\",\\\"summary\\\":\\\"小米创始人。\\\",\\\"keyFacts\\\":[\\\"创办小米\\\"],\\\"tags\\\":[\\\"科技\\\"],\\\"sourceUrl\\\":\\\"https://example.com/lei\\\",\\\"title\\\":\\\"Lei Jun\\\"}\\n```"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        PageSummary summary = client.summarizePage("雷军", new PageContent()
+                .setUrl("https://example.com/lei")
+                .setTitle("Lei Jun")
+                .setContent("Page content"));
+
+        assertThat(summary.getResolvedNameCandidate()).isEqualTo("雷军");
+        assertThat(summary.getSummary()).isEqualTo("小米创始人。");
+        assertThat(summary.getKeyFacts()).containsExactly("创办小米");
+        assertThat(summary.getTags()).containsExactly("科技");
+        assertThat(summary.getSourceUrl()).isEqualTo("https://example.com/lei");
+    }
+
+    @Test
+    void shouldThrowControlledExceptionWhenKimiReturnsPlainTextRefusalForPageSummary() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "抱歉，这个页面我暂时无法总结。"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        assertThatThrownBy(() -> client.summarizePage("雷军", new PageContent()
+                .setUrl("https://example.com/lei")
+                .setTitle("Lei Jun")
+                .setContent("Page content")))
+                .isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("INVALID_RESPONSE")
+                .hasMessageContaining("未返回 JSON");
     }
 
     @Test
@@ -245,6 +433,41 @@ class KimiSummaryGenerationClientTest {
                 .hasMessageContaining("INVALID_RESPONSE");
     }
 
+    @Test
+    void shouldRetryFinalProfileWhenFirstAttemptTimesOut() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "{\\\"resolvedName\\\":\\\"Jay Chou\\\",\\\"summary\\\":\\\"Jay Chou is a Mandopop singer-songwriter.\\\",\\\"keyFacts\\\":[\\\"Fact A\\\"],\\\"tags\\\":[\\\"singer\\\",\\\"producer\\\"],\\\"evidenceUrls\\\":[\\\"https://example.com/a\\\"]}"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key", 2, 1), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        assertThat(profile.getSummary()).isEqualTo("Jay Chou is a Mandopop singer-songwriter.");
+        server.verify();
+    }
+
     @Disabled("手工调试 Kimi 真调用时再启用")
     @Test
     void shouldPrintRealKimiResponse() {
@@ -256,6 +479,10 @@ class KimiSummaryGenerationClientTest {
     }
 
     private ApiProperties createProperties(String apiKey) {
+        return createProperties(apiKey, 1, 300L);
+    }
+
+    private ApiProperties createProperties(String apiKey, int maxRetries, long backoffInitialMs) {
         ApiProperties properties = new ApiProperties();
         properties.getApi().getSummary().setEnabled(true);
         properties.getApi().getSummary().setProvider("kimi");
@@ -263,7 +490,8 @@ class KimiSummaryGenerationClientTest {
         properties.getApi().getKimi().setBaseUrl("https://www.sophnet.com/api/open-apis/v1/chat/completions");
         properties.getApi().getKimi().setApiKey(apiKey);
         properties.getApi().getKimi().setModel("Kimi-K2.5");
-        properties.getApi().getKimi().setMaxRetries(1);
+        properties.getApi().getKimi().setMaxRetries(maxRetries);
+        properties.getApi().getKimi().setBackoffInitialMs(backoffInitialMs);
         return properties;
     }
 }

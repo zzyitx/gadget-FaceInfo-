@@ -56,10 +56,19 @@ face2info:
       api-key: ${KIMI_API_KEY:}
       model: ${KIMI_MODEL:moonshot-v1-8k}
       connect-timeout-ms: 5000
-      read-timeout-ms: 15000
+      read-timeout-ms: 75000
       max-retries: 2
-      backoff-initial-ms: 300
+      backoff-initial-ms: 2000
       system-prompt: ${KIMI_SYSTEM_PROMPT:你是一个人物信息提取助手，输出结构化文本时只输出JSON。}
+    deepseek:
+      base-url: ${DEEPSEEK_API_BASE_URL:https://www.sophnet.com/api/open-apis/v1/chat/completions}
+      api-key: ${SOPHNET_API_KEY:}
+      model: ${DEEPSEEK_MODEL:DeepSeek-V3.2-Fast}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 60000
+      max-retries: 2
+      backoff-initial-ms: 500
+      system-prompt: ${DEEPSEEK_SYSTEM_PROMPT:你是一个人物信息提取助手，输出结构化文本时只输出JSON。}
     summary:
       enabled: true
       provider: kimi
@@ -68,6 +77,16 @@ face2info:
       model: ${SUMMARY_MODEL:}
       connect-timeout-ms: 5000
       read-timeout-ms: 15000
+      page-routing-enabled: true
+      long-content-threshold: 4000
+      structured-page-keywords:
+        - 简历
+        - 履历
+        - 资料
+        - 档案
+        - 人物简介
+        - 作品列表
+        - 获奖记录
     facecheck:
       base-url: https://facecheck.id
       upload-path: /api/upload_pic

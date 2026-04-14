@@ -72,6 +72,8 @@
 - `NEWS_API_KEY`
 - `JINA_API_KEY`
 - `KIMI_API_KEY`
+- `SOPHNET_API_KEY`
+- `DEEPSEEK_MODEL`
 
 本地调试时，可通过以下方式注入敏感配置：
 
@@ -171,11 +173,20 @@ mvn clean test
 mvn clean verify
 ```
 
-## Kimi 正文增强
+## DeepSeek 与 Kimi 摘要分流
 
-- 通过 `face2info.api.summary.provider=kimi` 启用 Kimi 正文增强
-- 需要配置环境变量 `KIMI_API_KEY`，如有必要可额外配置 `KIMI_API_BASE_URL`、`KIMI_MODEL` 和 `KIMI_SYSTEM_PROMPT`
-- Kimi 处理成功时，接口会补充：
+- 当前聚合链路采用 `DeepSeek + Kimi` 双模型分流
+- 长文和普通网页优先由 `DeepSeek-V3.2-Fast` 处理
+- 结构化特征明显的页面可分流给 `Kimi`
+- 主题摘要采用 `DeepSeek -> Kimi` 的降级顺序
+- 最终人物总结与综合判断采用 `DeepSeek -> Kimi` 的降级顺序
+- 两个模型都失败时，接口返回 `大模型提取人物信息失败`
+- 需要配置环境变量：
+  - `SOPHNET_API_KEY`
+  - `DEEPSEEK_MODEL`
+  - `KIMI_API_KEY`
+  - 如有必要可额外配置 `DEEPSEEK_API_BASE_URL`、`DEEPSEEK_SYSTEM_PROMPT`、`KIMI_API_BASE_URL`、`KIMI_MODEL` 和 `KIMI_SYSTEM_PROMPT`
+- 大模型处理成功时，接口会补充：
   - `person.description`
   - `person.summary`
   - `person.tags`
@@ -187,7 +198,7 @@ mvn clean verify
   - `education`
   - `occupations`
   - `biographies`
-- Kimi 调用失败时，接口仍返回最小可用聚合结果，并在顶层 `warnings` 中返回 `正文智能处理暂时不可用`
+- 页面级模型失败会在服务内部自动做分流回退，不直接中断总流程
 
 ## GFPGAN 本地人脸高清化
 

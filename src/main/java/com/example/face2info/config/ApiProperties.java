@@ -28,6 +28,7 @@ public class ApiProperties {
         private NewsApiProperties news = new NewsApiProperties();
         private JinaApiProperties jina = new JinaApiProperties();
         private KimiApiProperties kimi = new KimiApiProperties();
+        private DeepSeekApiProperties deepseek = new DeepSeekApiProperties();
         private SummaryApiProperties summary = new SummaryApiProperties();
         private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();
         private FaceDetectionProperties faceDetection = new FaceDetectionProperties();
