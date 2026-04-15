@@ -299,6 +299,41 @@ class KimiSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldRecoverContaminatedFinalProfileFieldsFromSummaryPayload() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "{\\"resolvedName\\":\\"黄仁勋\\",\\"summary\\":\\"黄仁勋作为NVIDIA公司的创始人、总裁兼首席执行官，自1993年创立公司以来一直担任领导职务。</｜DSML｜parameter> <｜DSML｜parameter name=\\\\\\"educationSummary\\\\\\" string=\\\\\\"true\\\\\\">1983年毕业于俄勒冈州立大学电气工程专业，获得学士学位；1990年获斯坦福大学电气工程硕士学位。</｜DSML｜parameter> <｜DSML｜parameter name=\\\\\\"officialWebsite\\\\\\" string=\\\\\\"true\\\\\\">https://www.nvidia.cn/newsroom/bios/jensen-huang/</｜DSML｜parameter> <｜DSML｜parameter name=\\\\\\"keyFacts\\\\\\" string=\\\\\\"false\\\\\\">[\\\\\\"1993年创立NVIDIA公司\\\\\\",\\\\\\"2006年推出CUDA并行计算平台\\\\\\"]</｜DSML｜parameter> <｜DSML｜parameter name=\\\\\\"basicInfo\\\\\\" string=\\\\\\"false\\\\\\">{\\\\\\"birthDate\\\\\\": \\\\\\"1963年2月17日\\\\\\", \\\\\\"education\\\\\\": [\\\\\\"俄勒冈州立大学电气工程学士\\\\\\"], \\\\\\"occupations\\\\\\": [\\\\\\"NVIDIA创始人、董事长兼首席执行官\\\\\\"], \\\\\\"biographies\\\\\\": [\\\\\\"台湾裔美国籍企业家\\\\\\"]}</｜DSML｜parameter>\\"}"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("黄仁勋", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getResolvedName()).isEqualTo("黄仁勋");
+        assertThat(profile.getSummary()).isEqualTo("黄仁勋作为NVIDIA公司的创始人、总裁兼首席执行官，自1993年创立公司以来一直担任领导职务。");
+        assertThat(profile.getEducationSummary()).isEqualTo("1983年毕业于俄勒冈州立大学电气工程专业，获得学士学位；1990年获斯坦福大学电气工程硕士学位。");
+        assertThat(profile.getOfficialWebsite()).isEqualTo("https://www.nvidia.cn/newsroom/bios/jensen-huang/");
+        assertThat(profile.getKeyFacts()).containsExactly("1993年创立NVIDIA公司", "2006年推出CUDA并行计算平台");
+        assertThat(profile.getBasicInfo().getBirthDate()).isEqualTo("1963年2月17日");
+        assertThat(profile.getBasicInfo().getEducation()).containsExactly("俄勒冈州立大学电气工程学士");
+        assertThat(profile.getBasicInfo().getOccupations()).containsExactly("NVIDIA创始人、董事长兼首席执行官");
+        assertThat(profile.getBasicInfo().getBiographies()).containsExactly("台湾裔美国籍企业家");
+    }
+
+    @Test
     void shouldThrowControlledExceptionWhenFinalSummaryReturnsInvalidJson() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
