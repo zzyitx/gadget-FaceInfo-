@@ -164,16 +164,16 @@
 
     .profile-sections {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: 1fr;
+      gap: 14px;
       margin-top: 16px;
     }
 
     .profile-section {
-      padding: 14px 16px;
-      border-radius: 18px;
+      padding: 18px 20px;
+      border-radius: 20px;
       border: 1px solid rgba(41, 28, 20, 0.12);
-      background: rgba(242, 225, 210, 0.34);
+      background: linear-gradient(180deg, rgba(255, 249, 244, 0.96), rgba(242, 225, 210, 0.44));
       min-width: 0;
     }
 
@@ -188,7 +188,7 @@
     .profile-section-title {
       margin: 0;
       font-family: Georgia, serif;
-      font-size: 20px;
+      font-size: 24px;
       letter-spacing: -0.02em;
     }
 
@@ -198,6 +198,7 @@
       line-height: 1.75;
       white-space: pre-wrap;
       word-break: break-word;
+      font-size: 15px;
     }
 
     .profile-section-empty {
@@ -453,6 +454,7 @@
     </div>
     <h1>人物详情检索结果</h1>
     <p class="hero-copy">本页展示所选人像框对应的人物信息、图片匹配、公开社交账号与相关文章。</p>
+    <p class="hero-copy">教育经历、家庭背景、职业经历、涉华言论、政治倾向、地址信息、家族成员情况和污点劣迹都会拆分为独立主题区块展示。</p>
   </section>
 
   <div class="result-layout">
@@ -583,6 +585,11 @@
     const educationSummary = person && person.education_summary ? person.education_summary : "";
     const familyBackgroundSummary = person && person.family_background_summary ? person.family_background_summary : "";
     const careerSummary = person && person.career_summary ? person.career_summary : "";
+    const chinaRelatedStatementsSummary = person && person.china_related_statements_summary ? person.china_related_statements_summary : "";
+    const politicalTendencySummary = person && person.political_tendency_summary ? person.political_tendency_summary : "";
+    const contactInformationSummary = person && person.contact_information_summary ? person.contact_information_summary : "";
+    const familyMemberSituationSummary = person && person.family_member_situation_summary ? person.family_member_situation_summary : "";
+    const misconductSummary = person && person.misconduct_summary ? person.misconduct_summary : "";
 
     const personMeta = [];
     const wikiLinks = [
@@ -601,7 +608,12 @@
     profileSections.innerHTML = [
       renderProfileSection("教育经历", educationSummary, "暂无教育经历内容。"),
       renderProfileSection("家庭背景", familyBackgroundSummary, "暂无家庭背景内容。"),
-      renderProfileSection("职业经历", careerSummary, "暂无职业经历内容。")
+      renderProfileSection("职业经历", careerSummary, "暂无职业经历内容。"),
+      renderProfileSection("涉华言论", chinaRelatedStatementsSummary, "暂无涉华言论内容。"),
+      renderProfileSection("政治倾向", politicalTendencySummary, "暂无政治倾向内容。"),
+      renderProfileSection("地址信息", contactInformationSummary, "暂无公开通讯、网络身份或核心成员信息。"),
+      renderProfileSection("家族成员情况", familyMemberSituationSummary, "暂无家族成员、经商情况或涉华利益信息。"),
+      renderProfileSection("污点劣迹", misconductSummary, "暂无违法记录、处罚或负面事件信息。")
     ].join("");
 
     const matches = Array.isArray(data.image_matches) ? data.image_matches : [];
@@ -807,6 +819,11 @@
         education_summary: data.person.education_summary || null,
         family_background_summary: data.person.family_background_summary || null,
         career_summary: data.person.career_summary || null,
+        china_related_statements_summary: data.person.china_related_statements_summary || null,
+        political_tendency_summary: data.person.political_tendency_summary || null,
+        contact_information_summary: data.person.contact_information_summary || null,
+        family_member_situation_summary: data.person.family_member_situation_summary || null,
+        misconduct_summary: data.person.misconduct_summary || null,
         tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],
         evidence_urls: Array.isArray(data.person.evidence_urls) ? data.person.evidence_urls.slice(0, 12) : [],
         wikipedia: data.person.wikipedia || null,
