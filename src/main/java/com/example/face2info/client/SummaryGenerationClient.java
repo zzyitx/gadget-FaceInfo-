@@ -18,19 +18,14 @@ public interface SummaryGenerationClient {
     PageSummary summarizePage(String fallbackName, PageContent page);
 
     /**
-     * 基于图床 URL 对人脸图像做高清化处理。
-     */
-    MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType);
-
-    /**
-     * 基于人脸图像进行人物识别，返回候选名称列表。
-     */
-    List<String> recognizeFaceCandidateNames(MultipartFile image);
-
-    /**
      * 基于篇级摘要集合生成最终人物总结。
      */
     ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries);
+
+    /**
+     * 基于图床 URL 对人脸图像做高清化处理。
+     */
+    MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType);
 
     /**
      * 基于主题相关的篇级摘要集合生成单段主题摘要。
@@ -38,10 +33,9 @@ public interface SummaryGenerationClient {
     String summarizeSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries);
 
     /**
-     * 结合候选名称、篇级总结和最终总结进行综合判断。
+     * 结合篇级总结和最终总结进行综合判断。
      */
     ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
-                                                      List<String> candidateNames,
                                                       List<PageSummary> pageSummaries,
                                                       ResolvedPersonProfile draftProfile);
 }

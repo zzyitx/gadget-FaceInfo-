@@ -2,7 +2,6 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.SerpApiClient;
-import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.TmpfilesClient;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
@@ -49,7 +48,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     private final SerpApiClient serpApiClient;
     private final NameExtractor nameExtractor;
     private final TmpfilesClient tmpfilesClient;
-    private final SummaryGenerationClient summaryGenerationClient;
     private final ImageSimilarityService imageSimilarityService;
     private final ImageResultCacheService imageResultCacheService;
     private final ThreadPoolTaskExecutor executor;
@@ -59,7 +57,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                                       SerpApiClient serpApiClient,
                                       NameExtractor nameExtractor,
                                       TmpfilesClient tmpfilesClient,
-                                      SummaryGenerationClient summaryGenerationClient,
                                       ImageSimilarityService imageSimilarityService,
                                       ImageResultCacheService imageResultCacheService,
                                       @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor) {
@@ -67,7 +64,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         this.serpApiClient = serpApiClient;
         this.nameExtractor = nameExtractor;
         this.tmpfilesClient = tmpfilesClient;
-        this.summaryGenerationClient = summaryGenerationClient;
         this.imageSimilarityService = imageSimilarityService;
         this.imageResultCacheService = imageResultCacheService;
         this.executor = executor;
@@ -110,7 +106,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 image.getOriginalFilename(), image.getSize(), image.getContentType());
 
         RecognitionEvidence searchEvidence = searchByImageUrl(imageUrl, image);
-        searchEvidence.setSeedQueries(recognizeCandidateNames(image, searchEvidence));
 
         log.info("人脸识别模块完成 imageMatchCount={} seedQueryCount={} webEvidenceCount={} errorCount={}",
                 searchEvidence.getImageMatches().size(),
@@ -119,35 +114,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 searchEvidence.getErrors().size());
         imageResultCacheService.cacheRecognitionEvidence(image, searchEvidence);
         return searchEvidence;
-    }
-
-    /**
-     * 调用大模型识别候选人名，并做清洗、去重与数量收敛。
-     * 该步骤失败时仅记录错误并降级为空列表，避免影响主流程返回。
-     */
-    private List<String> recognizeCandidateNames(MultipartFile image, RecognitionEvidence evidence) {
-        try {
-            List<String> rawCandidates = summaryGenerationClient.recognizeFaceCandidateNames(image);
-            Set<String> normalized = new LinkedHashSet<>();
-            if (rawCandidates != null) {
-                for (String rawCandidate : rawCandidates) {
-                    String cleaned = nameExtractor.cleanCandidateName(rawCandidate);
-                    if (StringUtils.hasText(cleaned)) {
-                        normalized.add(cleaned);
-                        if (normalized.size() >= MAX_SEED_QUERIES) {
-                            break;
-                        }
-                    }
-                }
-            }
-            List<String> candidates = new ArrayList<>(normalized);
-            log.info("大模型候选名称识别完成 count={} candidates={}", candidates.size(), candidates);
-            return candidates;
-        } catch (RuntimeException ex) {
-            log.warn("大模型候选名称识别失败 fileName={} error={}", image.getOriginalFilename(), ex.getMessage(), ex);
-            evidence.getErrors().add("face_name_recognition: " + ex.getMessage());
-            return List.of();
-        }
     }
 
     private RecognitionEvidence searchByImageUrl(String imageUrl, MultipartFile originalImage) {
@@ -184,6 +150,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 bingOutcome.root()
         ));
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
+        evidence.setSeedQueries(extractSeedQueries(lensOutcome.root(), evidence.getWebEvidences(), evidence.getImageMatches()));
         log.info("识别证据去重完成 before={} after={}", webEvidences.size(), evidence.getWebEvidences().size());
         return evidence;
     }
@@ -293,6 +260,38 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             }
         }
         return deduplicated;
+    }
+
+    /**
+     * 从搜图证据里提取稳定的回退搜索词，避免再次调用大模型去猜人名。
+     */
+    private List<String> extractSeedQueries(JsonNode lensRoot, List<WebEvidence> webEvidences, List<ImageMatch> imageMatches) {
+        Set<String> normalized = new LinkedHashSet<>();
+        collectSeedQuery(normalized, firstNonBlank(lensRoot, "knowledgeGraph.title", "knowledge_graph.title"));
+        if (imageMatches != null) {
+            for (ImageMatch match : imageMatches) {
+                if (normalized.size() >= MAX_SEED_QUERIES) {
+                    break;
+                }
+                collectSeedQuery(normalized, match == null ? null : match.getTitle());
+            }
+        }
+        if (webEvidences != null) {
+            for (WebEvidence evidence : webEvidences) {
+                if (normalized.size() >= MAX_SEED_QUERIES) {
+                    break;
+                }
+                collectSeedQuery(normalized, evidence == null ? null : evidence.getTitle());
+            }
+        }
+        return new ArrayList<>(normalized);
+    }
+
+    private void collectSeedQuery(Set<String> normalized, String rawValue) {
+        String cleaned = nameExtractor.cleanCandidateName(rawValue);
+        if (StringUtils.hasText(cleaned)) {
+            normalized.add(cleaned);
+        }
     }
 
     /**

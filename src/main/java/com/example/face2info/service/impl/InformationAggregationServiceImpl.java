@@ -138,7 +138,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             profile = resolveProfileFromEvidence(
                     evidence.getWebEvidences(),
                     firstSeedQuery(evidence),
-                    safeList(evidence.getSeedQueries()),
                     result.getWarnings()
             );
         } catch (ApiCallException ex) {
@@ -153,7 +152,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         EnrichedProfile enrichedProfile = enrichProfileByResolvedName(
                 profile,
                 resolvedName,
-                safeList(evidence.getSeedQueries()),
                 result.getWarnings()
         );
         profile = enrichedProfile.profile();
@@ -165,6 +163,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             result.setPerson(new PersonAggregate()
                     .setDescription(appendSuffix(cleanText(profile.getDescription()), LLM_SUFFIX))
                     .setSummary(appendSuffix(finalSummary, LLM_SUFFIX))
+                    // 这三个字段分别对应前端的教育、家庭、职业独立区域，避免继续依赖单一长摘要。
+                    .setEducationSummary(profile.getEducationSummary())
+                    .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
+                    .setCareerSummary(profile.getCareerSummary())
                     .setImageUrl(cleanText(enrichedProfile.imageUrl()))
                     .setBasicInfo(profile.getBasicInfo())
                     .setOfficialWebsite(profile.getOfficialWebsite())
@@ -184,16 +186,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName) {
-        return resolveProfileFromEvidence(evidences, fallbackName, List.of(), new ArrayList<>());
-    }
-
-    ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName, List<String> warnings) {
-        return resolveProfileFromEvidence(evidences, fallbackName, List.of(), warnings);
+        return resolveProfileFromEvidence(evidences, fallbackName, new ArrayList<>());
     }
 
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences,
                                                      String fallbackName,
-                                                     List<String> candidateNames,
                                                      List<String> warnings) {
         List<String> urls = selectTopUrls(evidences);
         if (urls.isEmpty()) {
@@ -249,40 +246,37 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     .setEvidenceUrls(urls);
         }
 
-        return applyComprehensiveJudgement(fallbackName, safeList(candidateNames), pageSummaries, profile, warnings);
+        return applyComprehensiveJudgement(fallbackName, pageSummaries, profile, warnings);
     }
 
     private ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
-                                                              List<String> candidateNames,
                                                               List<PageSummary> pageSummaries,
                                                               ResolvedPersonProfile profile,
                                                               List<String> warnings) {
         if (deepSeekSummaryGenerationClient == null) {
-            return applyComprehensiveJudgementWithSingleProvider(fallbackName, candidateNames, pageSummaries, profile, warnings);
+            return applyComprehensiveJudgementWithSingleProvider(fallbackName, pageSummaries, profile, warnings);
         }
         try {
             ResolvedPersonProfile judged = deepSeekSummaryGenerationClient.applyComprehensiveJudgement(
                     fallbackName,
-                    candidateNames,
                     pageSummaries,
                     profile
             );
             return completeJudgedProfile(judged, profile, warnings);
         } catch (RuntimeException deepSeekEx) {
-            log.error("综合判断DeepSeek失败 fallbackName={} candidateCount={} pageSummaryCount={} category={} error={}",
-                    fallbackName, candidateNames.size(), pageSummaries.size(),
+            log.error("综合判断DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    fallbackName, pageSummaries.size(),
                     classifySummaryFailure(deepSeekEx), deepSeekEx.getMessage(), deepSeekEx);
             try {
                 ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
                         fallbackName,
-                        candidateNames,
                         pageSummaries,
                         profile
                 );
                 return completeJudgedProfile(judged, profile, warnings);
             } catch (RuntimeException kimiEx) {
-                log.error("综合判断Kimi兜底失败 fallbackName={} candidateCount={} pageSummaryCount={} category={} error={}",
-                        fallbackName, candidateNames.size(), pageSummaries.size(),
+                log.error("综合判断Kimi兜底失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                        fallbackName, pageSummaries.size(),
                         classifySummaryFailure(kimiEx), kimiEx.getMessage(), kimiEx);
                 throw new ApiCallException("LLM_PROFILE_FAILED: " + LLM_FAILURE_MESSAGE, kimiEx);
             }
@@ -296,6 +290,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setName(resolvedName)
                 .setDescription(appendSuffix(StringUtils.hasText(shortDescription) ? shortDescription : longSummary, LLM_SUFFIX))
                 .setSummary(appendSuffix(longSummary, LLM_SUFFIX))
+                // 这三个字段分别向前端输出独立内容块，方便单独渲染教育、家庭和职业信息。
+                .setEducationSummary(profile.getEducationSummary())
+                .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
+                .setCareerSummary(profile.getCareerSummary())
                 .setImageUrl(cleanText(imageUrl))
                 .setWikipedia(cleanText(profile.getWikipedia()))
                 .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
@@ -430,7 +428,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private EnrichedProfile enrichProfileByResolvedName(ResolvedPersonProfile profile,
                                                         String resolvedName,
-                                                        List<String> candidateNames,
                                                         List<String> warnings) {
         if (!shouldRunSecondarySearch(profile, resolvedName)) {
             return new EnrichedProfile(profile, null);
@@ -457,7 +454,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         ResolvedPersonProfile mergedProfile = summarizeSecondaryEvidence(
                 resolvedName,
-                safeList(candidateNames),
                 webEvidences,
                 profile,
                 warnings
@@ -570,7 +566,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private ResolvedPersonProfile summarizeSecondaryEvidence(String resolvedName,
-                                                             List<String> candidateNames,
                                                              List<WebEvidence> evidences,
                                                              ResolvedPersonProfile baseProfile,
                                                              List<String> warnings) {
@@ -622,7 +617,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         ResolvedPersonProfile judgedSecondaryProfile = applyComprehensiveJudgement(
                 resolvedName,
-                candidateNames,
                 pageSummaries,
                 secondaryProfile,
                 warnings
@@ -826,10 +820,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return evidence.getSeedQueries().get(0);
     }
 
-    private List<String> safeList(List<String> values) {
-        return values == null ? List.of() : values;
-    }
-
     private record EnrichedProfile(ResolvedPersonProfile profile, String imageUrl) {
     }
 
@@ -985,21 +975,19 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private ResolvedPersonProfile applyComprehensiveJudgementWithSingleProvider(String fallbackName,
-                                                                                List<String> candidateNames,
                                                                                 List<PageSummary> pageSummaries,
                                                                                 ResolvedPersonProfile profile,
                                                                                 List<String> warnings) {
         try {
             ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
                     fallbackName,
-                    candidateNames,
                     pageSummaries,
                     profile
             );
             return completeJudgedProfile(judged, profile, warnings);
         } catch (RuntimeException ex) {
-            log.warn("综合判断失败 fallbackName={} candidateCount={} pageSummaryCount={} error={}",
-                    fallbackName, candidateNames.size(), pageSummaries.size(), ex.getMessage(), ex);
+            log.warn("综合判断失败 fallbackName={} pageSummaryCount={} error={}",
+                    fallbackName, pageSummaries.size(), ex.getMessage(), ex);
             warnings.add(JUDGEMENT_WARNING);
             return profile;
         }

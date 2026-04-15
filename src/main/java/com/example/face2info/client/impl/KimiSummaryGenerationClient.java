@@ -27,8 +27,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +42,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     private static final String PERSON_PROFILE_FUNCTION_NAME = "submit_person_profile";
     private static final String SECTION_SUMMARY_FUNCTION_NAME = "submit_section_summary";
     private static final String FACE_ENHANCE_FUNCTION_NAME = "submit_enhanced_face_image";
-    private static final String FACE_CANDIDATE_FUNCTION_NAME = "submit_face_candidate_names";
     private static final String PROFILE_JUDGEMENT_FUNCTION_NAME = "submit_profile_judgement";
 
     private final RestTemplate restTemplate;
@@ -102,22 +99,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
-    public List<String> recognizeFaceCandidateNames(MultipartFile image) {
-        KimiApiProperties kimi = properties.getApi().getKimi();
-        validateConfig(kimi);
-        log.info("Kimi 候选姓名识别开始 fileName={} size={}",
-                image == null ? null : image.getOriginalFilename(),
-                image == null ? 0 : image.getSize());
-
-        return RetryUtils.execute("Kimi 候选姓名识别", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildFaceCandidateRequest(kimi, image));
-            List<String> candidates = parseFaceCandidates(body);
-            log.info("Kimi 候选姓名识别成功 count={} candidates={}", candidates.size(), candidates);
-            return candidates;
-        });
-    }
-
-    @Override
     public ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
@@ -155,18 +136,16 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     @Override
     public ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
-                                                             List<String> candidateNames,
                                                              List<PageSummary> pageSummaries,
                                                              ResolvedPersonProfile draftProfile) {
         KimiApiProperties kimi = properties.getApi().getKimi();
         validateConfig(kimi);
-        log.info("Kimi 综合判断开始 fallbackName={} candidateCount={} pageSummaryCount={}",
+        log.info("Kimi 综合判断开始 fallbackName={} pageSummaryCount={}",
                 fallbackName,
-                candidateNames == null ? 0 : candidateNames.size(),
                 pageSummaries == null ? 0 : pageSummaries.size());
 
         return RetryUtils.execute("Kimi 综合判断", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
-            JsonNode body = callKimi(kimi, buildJudgementRequest(kimi, fallbackName, candidateNames, pageSummaries, draftProfile));
+            JsonNode body = callKimi(kimi, buildJudgementRequest(kimi, fallbackName, pageSummaries, draftProfile));
             ResolvedPersonProfile judged = parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
             log.info("Kimi 综合判断成功 resolvedName={} summaryLength={}",
                     judged.getResolvedName(),
@@ -211,13 +190,12 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 ),
                 "tools", List.of(Map.of(
                         "type", "function",
-                        "function", Map.of(
-                                "name", PAGE_SUMMARY_FUNCTION_NAME,
-                                "description", "提交单篇页面摘要的结构化结果",
-                                "parameters", Map.of(
-                                        "type", "object",
-                                        "properties", Map.of(
-                                                "resolvedNameCandidate", Map.of("type", "string"),
+                                "function", Map.of(
+                                        "name", PAGE_SUMMARY_FUNCTION_NAME,
+                                        "description", "提交单篇页面摘要的结构化结果",
+                                        "parameters", Map.of(
+                                                "type", "object",
+                                                "properties", Map.of(
                                                 "summary", Map.of("type", "string"),
                                                 "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
                                                 "tags", Map.of("type", "array", "items", Map.of("type", "string")),
@@ -276,35 +254,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
-    private Map<String, Object> buildFaceCandidateRequest(KimiApiProperties kimi, MultipartFile image) {
-        return Map.of(
-                "model", kimi.getModel(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
-                        Map.of("role", "user", "content", buildFaceCandidatePrompt(image))
-                ),
-                "tools", List.of(Map.of(
-                        "type", "function",
-                        "function", Map.of(
-                                "name", FACE_CANDIDATE_FUNCTION_NAME,
-                                "description", "提交图像识别的人物候选名称",
-                                "parameters", Map.of(
-                                        "type", "object",
-                                        "properties", Map.of(
-                                                "candidateNames", Map.of("type", "array", "items", Map.of("type", "string"))
-                                        ),
-                                        "required", List.of("candidateNames"),
-                                        "additionalProperties", false
-                                )
-                        )
-                )),
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", FACE_CANDIDATE_FUNCTION_NAME)
-                )
-        );
-    }
-
     private Map<String, Object> buildPersonRequest(KimiApiProperties kimi,
                                                    String fallbackName,
                                                    List<PageSummary> pageSummaries) {
@@ -331,14 +280,13 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private Map<String, Object> buildJudgementRequest(KimiApiProperties kimi,
                                                       String fallbackName,
-                                                      List<String> candidateNames,
                                                       List<PageSummary> pageSummaries,
                                                       ResolvedPersonProfile draftProfile) {
         return Map.of(
                 "model", kimi.getModel(),
                 "messages", List.of(
                         Map.of("role", "system", "content", kimi.getSystemPrompt()),
-                        Map.of("role", "user", "content", buildJudgementPrompt(fallbackName, candidateNames, pageSummaries, draftProfile))
+                        Map.of("role", "user", "content", buildJudgementPrompt(fallbackName, pageSummaries, draftProfile))
                 ),
                 "tools", List.of(Map.of(
                         "type", "function",
@@ -388,30 +336,33 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private Map<String, Object> profileSchema() {
-        return Map.of(
-                "type", "object",
-                "properties", Map.of(
-                        "resolvedName", Map.of("type", "string"),
-                        "description", Map.of("type", "string"),
-                        "summary", Map.of("type", "string"),
-                        "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
-                        "tags", Map.of("type", "array", "items", Map.of("type", "string")),
-                        "wikipedia", Map.of("type", "string"),
-                        "officialWebsite", Map.of("type", "string"),
-                        "basicInfo", Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "birthDate", Map.of("type", "string"),
-                                        "education", Map.of("type", "array", "items", Map.of("type", "string")),
-                                        "occupations", Map.of("type", "array", "items", Map.of("type", "string")),
-                                        "biographies", Map.of("type", "array", "items", Map.of("type", "string"))
-                                ),
-                                "additionalProperties", false
-                        ),
-                        "evidenceUrls", Map.of("type", "array", "items", Map.of("type", "string"))
-                ),
-                "required", List.of("resolvedName"),
-                "additionalProperties", false
+        return Map.ofEntries(
+                Map.entry("type", "object"),
+                Map.entry("properties", Map.ofEntries(
+                        Map.entry("resolvedName", Map.of("type", "string")),
+                        Map.entry("description", Map.of("type", "string")),
+                        Map.entry("summary", Map.of("type", "string")),
+                        Map.entry("educationSummary", Map.of("type", "string")),
+                        Map.entry("familyBackgroundSummary", Map.of("type", "string")),
+                        Map.entry("careerSummary", Map.of("type", "string")),
+                        Map.entry("keyFacts", Map.of("type", "array", "items", Map.of("type", "string"))),
+                        Map.entry("tags", Map.of("type", "array", "items", Map.of("type", "string"))),
+                        Map.entry("wikipedia", Map.of("type", "string")),
+                        Map.entry("officialWebsite", Map.of("type", "string")),
+                        Map.entry("basicInfo", Map.ofEntries(
+                                Map.entry("type", "object"),
+                                Map.entry("properties", Map.ofEntries(
+                                        Map.entry("birthDate", Map.of("type", "string")),
+                                        Map.entry("education", Map.of("type", "array", "items", Map.of("type", "string"))),
+                                        Map.entry("occupations", Map.of("type", "array", "items", Map.of("type", "string"))),
+                                        Map.entry("biographies", Map.of("type", "array", "items", Map.of("type", "string")))
+                                )),
+                                Map.entry("additionalProperties", false)
+                        )),
+                        Map.entry("evidenceUrls", Map.of("type", "array", "items", Map.of("type", "string")))
+                )),
+                Map.entry("required", List.of("resolvedName")),
+                Map.entry("additionalProperties", false)
         );
     }
 
@@ -421,8 +372,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 必须满足以下约束：
                 1. 只能通过函数 submit_page_summary 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
-                3. 即使信息不足，也必须按既定字段返回 JSON；resolvedNameCandidate 可为空，keyFacts/tags 返回空数组，summary 必须给出最保守的正文摘要。
-                JSON 字段固定为 resolvedNameCandidate、summary、keyFacts、tags、sourceUrl、title。
+                3. 即使信息不足，也必须按既定字段返回 JSON；keyFacts/tags 返回空数组，summary 必须给出最保守的正文摘要。
+                JSON 字段固定为 summary、keyFacts、tags、sourceUrl、title。
                 fallbackName: %s
                 title: %s
                 url: %s
@@ -459,34 +410,17 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 """.formatted(filename, contentType, imageUrl);
     }
 
-    private String buildFaceCandidatePrompt(MultipartFile image) {
-        return """
-                请根据下面的人脸图像判断人物身份，给出最多 3 个候选名称（按可信度降序）。
-                只输出 JSON，且返回内容语言必须为中文。
-                JSON 字段固定为 candidateNames。
-                filename: %s
-                contentType: %s
-                imageBase64: %s
-                """.formatted(
-                image == null ? null : image.getOriginalFilename(),
-                image == null ? null : image.getContentType(),
-                toBase64(image)
-        );
-    }
-
     private String buildPersonPrompt(String fallbackName, List<PageSummary> pageSummaries) {
         String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
-                        resolvedNameCandidate: %s
                         summary: %s
                         keyFacts: %s
                         tags: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
-                        summary.getResolvedNameCandidate(),
                         summary.getSummary(),
                         summary.getKeyFacts(),
                         summary.getTags()
@@ -499,7 +433,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 1. 只能通过函数 submit_person_profile 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 篇级摘要如下：
@@ -508,21 +442,18 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private String buildJudgementPrompt(String fallbackName,
-                                        List<String> candidateNames,
                                         List<PageSummary> pageSummaries,
                                         ResolvedPersonProfile draftProfile) {
         String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
-                        resolvedNameCandidate: %s
                         summary: %s
                         keyFacts: %s
                         tags: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
-                        summary.getResolvedNameCandidate(),
                         summary.getSummary(),
                         summary.getKeyFacts(),
                         summary.getTags()
@@ -530,15 +461,14 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于候选名称、篇级总结和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
+                请基于篇级总结和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
                 必须满足以下约束：
                 1. 只能通过函数 submit_profile_judgement 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
-                candidateNames: %s
                 draftResolvedName: %s
                 draftDescription: %s
                 draftSummary: %s
@@ -549,7 +479,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 %s
                 """.formatted(
                 fallbackName,
-                candidateNames,
                 draftProfile == null ? null : draftProfile.getResolvedName(),
                 draftProfile == null ? null : draftProfile.getDescription(),
                 draftProfile == null ? null : draftProfile.getSummary(),
@@ -567,14 +496,12 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
-                        resolvedNameCandidate: %s
                         summary: %s
                         keyFacts: %s
                         tags: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
-                        summary.getResolvedNameCandidate(),
                         summary.getSummary(),
                         summary.getKeyFacts(),
                         summary.getTags()
@@ -641,17 +568,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         }
     }
 
-    private List<String> parseFaceCandidates(JsonNode body) {
-        String content = extractStructuredPayload(body, FACE_CANDIDATE_FUNCTION_NAME);
-        try {
-            JsonNode json = readStructuredJson(content, "Kimi 候选姓名结果");
-            return readStringList(json.path("candidateNames"));
-        } catch (JsonProcessingException ex) {
-            log.warn("Kimi 候选姓名结果解析失败 error={}", ex.getMessage(), ex);
-            throw new ApiCallException("INVALID_RESPONSE: Kimi 候选姓名结果不是合法 JSON", ex);
-        }
-    }
-
     private PageSummary parsePageSummary(PageContent page, JsonNode body) {
         String content = extractStructuredPayload(body, PAGE_SUMMARY_FUNCTION_NAME);
         try {
@@ -664,7 +580,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             return new PageSummary()
                     .setSourceUrl(firstNonBlank(trimToNull(json.path("sourceUrl").asText(null)), page == null ? null : page.getUrl()))
                     .setTitle(firstNonBlank(trimToNull(json.path("title").asText(null)), page == null ? null : page.getTitle()))
-                    .setResolvedNameCandidate(trimToNull(json.path("resolvedNameCandidate").asText(null)))
                     .setSummary(summary.trim())
                     .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(readStringList(json.path("tags")));
@@ -756,6 +671,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .setResolvedName(firstNonBlank(trimToNull(json.path("resolvedName").asText(null)), fallbackName))
                 .setDescription(trimToNull(json.path("description").asText(null)))
                 .setSummary(trimToNull(json.path("summary").asText(null)))
+                .setEducationSummary(trimToNull(json.path("educationSummary").asText(null)))
+                .setFamilyBackgroundSummary(trimToNull(json.path("familyBackgroundSummary").asText(null)))
+                .setCareerSummary(trimToNull(json.path("careerSummary").asText(null)))
                 .setKeyFacts(readStringList(json.path("keyFacts")))
                 .setTags(readStringList(json.path("tags")))
                 .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
@@ -769,6 +687,15 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             }
             if (!StringUtils.hasText(profile.getSummary())) {
                 profile.setSummary(draftProfile.getSummary());
+            }
+            if (!StringUtils.hasText(profile.getEducationSummary())) {
+                profile.setEducationSummary(draftProfile.getEducationSummary());
+            }
+            if (!StringUtils.hasText(profile.getFamilyBackgroundSummary())) {
+                profile.setFamilyBackgroundSummary(draftProfile.getFamilyBackgroundSummary());
+            }
+            if (!StringUtils.hasText(profile.getCareerSummary())) {
+                profile.setCareerSummary(draftProfile.getCareerSummary());
             }
             if ((profile.getKeyFacts() == null || profile.getKeyFacts().isEmpty()) && draftProfile.getKeyFacts() != null) {
                 profile.setKeyFacts(draftProfile.getKeyFacts());
@@ -846,17 +773,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .setEducation(readStringList(basicInfoNode.path("education")))
                 .setOccupations(readStringList(basicInfoNode.path("occupations")))
                 .setBiographies(readStringList(basicInfoNode.path("biographies")));
-    }
-
-    private String toBase64(MultipartFile image) {
-        if (image == null) {
-            return "";
-        }
-        try {
-            return Base64.getEncoder().encodeToString(image.getBytes());
-        } catch (IOException ex) {
-            throw new ApiCallException("INVALID_IMAGE: 无法读取图片字节内容", ex);
-        }
     }
 
     private String stripDataUrlPrefix(String value) {

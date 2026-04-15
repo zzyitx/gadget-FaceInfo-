@@ -98,13 +98,12 @@ public class DeepSeekSummaryGenerationClient {
     }
 
     public ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
-                                                             List<String> candidateNames,
                                                              List<PageSummary> pageSummaries,
                                                              ResolvedPersonProfile draftProfile) {
         DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
         validateConfig(deepseek);
         return RetryUtils.execute("DeepSeek 综合判断", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
-            JsonNode body = callDeepSeek(deepseek, buildJudgementRequest(deepseek, fallbackName, candidateNames, pageSummaries, draftProfile));
+            JsonNode body = callDeepSeek(deepseek, buildJudgementRequest(deepseek, fallbackName, pageSummaries, draftProfile));
             return parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
         });
     }
@@ -151,7 +150,6 @@ public class DeepSeekSummaryGenerationClient {
                                 "parameters", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
-                                                "resolvedNameCandidate", Map.of("type", "string"),
                                                 "summary", Map.of("type", "string"),
                                                 "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
                                                 "tags", Map.of("type", "array", "items", Map.of("type", "string")),
@@ -191,7 +189,6 @@ public class DeepSeekSummaryGenerationClient {
 
     private Map<String, Object> buildJudgementRequest(DeepSeekApiProperties deepseek,
                                                       String fallbackName,
-                                                      List<String> candidateNames,
                                                       List<PageSummary> pageSummaries,
                                                       ResolvedPersonProfile draftProfile) {
         return Map.of(
@@ -199,7 +196,7 @@ public class DeepSeekSummaryGenerationClient {
                 "stream", false,
                 "messages", List.of(
                         Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
-                        Map.of("role", "user", "content", buildJudgementPrompt(fallbackName, candidateNames, pageSummaries, draftProfile))
+                        Map.of("role", "user", "content", buildJudgementPrompt(fallbackName, pageSummaries, draftProfile))
                 ),
                 "tools", List.of(Map.of(
                         "type", "function",
@@ -242,30 +239,33 @@ public class DeepSeekSummaryGenerationClient {
     }
 
     private Map<String, Object> profileSchema() {
-        return Map.of(
-                "type", "object",
-                "properties", Map.of(
-                        "resolvedName", Map.of("type", "string"),
-                        "description", Map.of("type", "string"),
-                        "summary", Map.of("type", "string"),
-                        "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
-                        "tags", Map.of("type", "array", "items", Map.of("type", "string")),
-                        "wikipedia", Map.of("type", "string"),
-                        "officialWebsite", Map.of("type", "string"),
-                        "basicInfo", Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "birthDate", Map.of("type", "string"),
-                                        "education", Map.of("type", "array", "items", Map.of("type", "string")),
-                                        "occupations", Map.of("type", "array", "items", Map.of("type", "string")),
-                                        "biographies", Map.of("type", "array", "items", Map.of("type", "string"))
-                                ),
-                                "additionalProperties", false
-                        ),
-                        "evidenceUrls", Map.of("type", "array", "items", Map.of("type", "string"))
-                ),
-                "required", List.of("resolvedName"),
-                "additionalProperties", false
+        return Map.ofEntries(
+                Map.entry("type", "object"),
+                Map.entry("properties", Map.ofEntries(
+                        Map.entry("resolvedName", Map.of("type", "string")),
+                        Map.entry("description", Map.of("type", "string")),
+                        Map.entry("summary", Map.of("type", "string")),
+                        Map.entry("educationSummary", Map.of("type", "string")),
+                        Map.entry("familyBackgroundSummary", Map.of("type", "string")),
+                        Map.entry("careerSummary", Map.of("type", "string")),
+                        Map.entry("keyFacts", Map.of("type", "array", "items", Map.of("type", "string"))),
+                        Map.entry("tags", Map.of("type", "array", "items", Map.of("type", "string"))),
+                        Map.entry("wikipedia", Map.of("type", "string")),
+                        Map.entry("officialWebsite", Map.of("type", "string")),
+                        Map.entry("basicInfo", Map.ofEntries(
+                                Map.entry("type", "object"),
+                                Map.entry("properties", Map.ofEntries(
+                                        Map.entry("birthDate", Map.of("type", "string")),
+                                        Map.entry("education", Map.of("type", "array", "items", Map.of("type", "string"))),
+                                        Map.entry("occupations", Map.of("type", "array", "items", Map.of("type", "string"))),
+                                        Map.entry("biographies", Map.of("type", "array", "items", Map.of("type", "string")))
+                                )),
+                                Map.entry("additionalProperties", false)
+                        )),
+                        Map.entry("evidenceUrls", Map.of("type", "array", "items", Map.of("type", "string")))
+                )),
+                Map.entry("required", List.of("resolvedName")),
+                Map.entry("additionalProperties", false)
         );
     }
 
@@ -275,8 +275,8 @@ public class DeepSeekSummaryGenerationClient {
                 必须满足以下约束：
                 1. 只能通过函数 submit_page_summary 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
-                3. 即使信息不足，也必须按既定字段返回 JSON；resolvedNameCandidate 可为空，keyFacts/tags 返回空数组，summary 必须给出最保守的正文摘要。
-                JSON 字段固定为 resolvedNameCandidate、summary、keyFacts、tags、sourceUrl、title。
+                3. 即使信息不足，也必须按既定字段返回 JSON；keyFacts/tags 返回空数组，summary 必须给出最保守的正文摘要。
+                JSON 字段固定为 summary、keyFacts、tags、sourceUrl、title。
                 fallbackName: %s
                 title: %s
                 url: %s
@@ -295,14 +295,12 @@ public class DeepSeekSummaryGenerationClient {
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
-                        resolvedNameCandidate: %s
                         summary: %s
                         keyFacts: %s
                         tags: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
-                        summary.getResolvedNameCandidate(),
                         summary.getSummary(),
                         summary.getKeyFacts(),
                         summary.getTags()
@@ -315,7 +313,7 @@ public class DeepSeekSummaryGenerationClient {
                 1. 只能通过函数 submit_person_profile 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 篇级摘要如下：
@@ -324,21 +322,18 @@ public class DeepSeekSummaryGenerationClient {
     }
 
     private String buildJudgementPrompt(String fallbackName,
-                                        List<String> candidateNames,
                                         List<PageSummary> pageSummaries,
                                         ResolvedPersonProfile draftProfile) {
         String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
-                        resolvedNameCandidate: %s
                         summary: %s
                         keyFacts: %s
                         tags: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
-                        summary.getResolvedNameCandidate(),
                         summary.getSummary(),
                         summary.getKeyFacts(),
                         summary.getTags()
@@ -346,15 +341,14 @@ public class DeepSeekSummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于候选名称、篇级总结和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
+                请基于篇级总结和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
                 必须满足以下约束：
                 1. 只能通过函数 submit_profile_judgement 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
-                candidateNames: %s
                 draftResolvedName: %s
                 draftDescription: %s
                 draftSummary: %s
@@ -365,7 +359,6 @@ public class DeepSeekSummaryGenerationClient {
                 %s
                 """.formatted(
                 fallbackName,
-                candidateNames,
                 draftProfile == null ? null : draftProfile.getResolvedName(),
                 draftProfile == null ? null : draftProfile.getDescription(),
                 draftProfile == null ? null : draftProfile.getSummary(),
@@ -381,14 +374,12 @@ public class DeepSeekSummaryGenerationClient {
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
-                        resolvedNameCandidate: %s
                         summary: %s
                         keyFacts: %s
                         tags: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
-                        summary.getResolvedNameCandidate(),
                         summary.getSummary(),
                         summary.getKeyFacts(),
                         summary.getTags()
@@ -421,7 +412,6 @@ public class DeepSeekSummaryGenerationClient {
             return new PageSummary()
                     .setSourceUrl(firstNonBlank(trimToNull(json.path("sourceUrl").asText(null)), page == null ? null : page.getUrl()))
                     .setTitle(firstNonBlank(trimToNull(json.path("title").asText(null)), page == null ? null : page.getTitle()))
-                    .setResolvedNameCandidate(trimToNull(json.path("resolvedNameCandidate").asText(null)))
                     .setSummary(summary.trim())
                     .setKeyFacts(readStringList(json.path("keyFacts")))
                     .setTags(readStringList(json.path("tags")));
@@ -485,6 +475,9 @@ public class DeepSeekSummaryGenerationClient {
                 .setResolvedName(firstNonBlank(trimToNull(json.path("resolvedName").asText(null)), fallbackName))
                 .setDescription(trimToNull(json.path("description").asText(null)))
                 .setSummary(trimToNull(json.path("summary").asText(null)))
+                .setEducationSummary(trimToNull(json.path("educationSummary").asText(null)))
+                .setFamilyBackgroundSummary(trimToNull(json.path("familyBackgroundSummary").asText(null)))
+                .setCareerSummary(trimToNull(json.path("careerSummary").asText(null)))
                 .setKeyFacts(readStringList(json.path("keyFacts")))
                 .setTags(readStringList(json.path("tags")))
                 .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
@@ -498,6 +491,15 @@ public class DeepSeekSummaryGenerationClient {
             }
             if (!StringUtils.hasText(profile.getSummary())) {
                 profile.setSummary(draftProfile.getSummary());
+            }
+            if (!StringUtils.hasText(profile.getEducationSummary())) {
+                profile.setEducationSummary(draftProfile.getEducationSummary());
+            }
+            if (!StringUtils.hasText(profile.getFamilyBackgroundSummary())) {
+                profile.setFamilyBackgroundSummary(draftProfile.getFamilyBackgroundSummary());
+            }
+            if (!StringUtils.hasText(profile.getCareerSummary())) {
+                profile.setCareerSummary(draftProfile.getCareerSummary());
             }
             if ((profile.getKeyFacts() == null || profile.getKeyFacts().isEmpty()) && draftProfile.getKeyFacts() != null) {
                 profile.setKeyFacts(draftProfile.getKeyFacts());

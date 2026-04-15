@@ -17,9 +17,6 @@ public class PageSummary {
     @Schema(description = "正文标题")
     private String title;
 
-    @Schema(description = "从正文中解析出的候选人物名称")
-    private String resolvedNameCandidate;
-
     @Schema(description = "正文摘要")
     private String summary;
 
@@ -44,15 +41,6 @@ public class PageSummary {
 
     public PageSummary setTitle(String title) {
         this.title = title;
-        return this;
-    }
-
-    public String getResolvedNameCandidate() {
-        return resolvedNameCandidate;
-    }
-
-    public PageSummary setResolvedNameCandidate(String resolvedNameCandidate) {
-        this.resolvedNameCandidate = resolvedNameCandidate;
         return this;
     }
 

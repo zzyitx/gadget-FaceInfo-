@@ -36,16 +36,6 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
-    public MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType) {
-        throw new UnsupportedOperationException("noop summary provider does not support image enhancement by URL");
-    }
-
-    @Override
-    public List<String> recognizeFaceCandidateNames(MultipartFile image) {
-        return List.of();
-    }
-
-    @Override
     public ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries) {
         ResolvedPersonProfile profile = new ResolvedPersonProfile()
                 .setResolvedName(fallbackName);
@@ -78,13 +68,17 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     @Override
+    public MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType) {
+        throw new UnsupportedOperationException("noop summary provider does not support image enhancement by URL");
+    }
+
+    @Override
     public String summarizeSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
         throw new UnsupportedOperationException("noop summary provider does not support section summary generation");
     }
 
     @Override
     public ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
-                                                             List<String> candidateNames,
                                                              List<PageSummary> pageSummaries,
                                                              ResolvedPersonProfile draftProfile) {
         return draftProfile == null ? new ResolvedPersonProfile().setResolvedName(fallbackName) : draftProfile;
