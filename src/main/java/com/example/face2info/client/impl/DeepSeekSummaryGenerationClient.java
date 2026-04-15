@@ -47,6 +47,10 @@ public class DeepSeekSummaryGenerationClient {
             "<parameter\\s+name\\s*=\\s*\"([^\"]+)\"[^>]*>(.*?)</parameter>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
+    private static final Pattern SERIALIZED_PARAMETER_PATTERN = Pattern.compile(
+            "<[^>]*parameter\\s+name\\s*=\\s*\"([^\"]+)\"[^>]*>(.*?)</[^>]*parameter>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
 
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
@@ -248,6 +252,11 @@ public class DeepSeekSummaryGenerationClient {
                         Map.entry("educationSummary", Map.of("type", "string")),
                         Map.entry("familyBackgroundSummary", Map.of("type", "string")),
                         Map.entry("careerSummary", Map.of("type", "string")),
+                        Map.entry("chinaRelatedStatementsSummary", Map.of("type", "string")),
+                        Map.entry("politicalTendencySummary", Map.of("type", "string")),
+                        Map.entry("contactInformationSummary", Map.of("type", "string")),
+                        Map.entry("familyMemberSituationSummary", Map.of("type", "string")),
+                        Map.entry("misconductSummary", Map.of("type", "string")),
                         Map.entry("keyFacts", Map.of("type", "array", "items", Map.of("type", "string"))),
                         Map.entry("tags", Map.of("type", "array", "items", Map.of("type", "string"))),
                         Map.entry("wikipedia", Map.of("type", "string")),
@@ -313,8 +322,8 @@ public class DeepSeekSummaryGenerationClient {
                 1. 只能通过函数 submit_person_profile 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
-                summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary 的内容。
+                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 篇级摘要如下：
@@ -347,8 +356,8 @@ public class DeepSeekSummaryGenerationClient {
                 1. 只能通过函数 submit_profile_judgement 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
-                summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary 的内容。
+                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 draftResolvedName: %s
@@ -395,7 +404,7 @@ public class DeepSeekSummaryGenerationClient {
                 2. 返回内容语言必须为中文。
                 3. 即使信息不足，也必须返回 JSON；summary 可为空字符串，但不能返回自然语言拒答。
                 JSON 字段固定为 summary。
-                主题只允许是 education、family、career 之一。
+                主题只允许是 education、family、career、china_related_statements、political_view、contact_information、family_member_situation、misconduct 之一。
                 resolvedName: %s
                 sectionType: %s
                 篇级摘要如下：
@@ -480,12 +489,21 @@ public class DeepSeekSummaryGenerationClient {
                 .setEducationSummary(trimToNull(json.path("educationSummary").asText(null)))
                 .setFamilyBackgroundSummary(trimToNull(json.path("familyBackgroundSummary").asText(null)))
                 .setCareerSummary(trimToNull(json.path("careerSummary").asText(null)))
+                .setChinaRelatedStatementsSummary(trimToNull(json.path("chinaRelatedStatementsSummary").asText(null)))
+                .setPoliticalTendencySummary(trimToNull(json.path("politicalTendencySummary").asText(null)))
+                .setContactInformationSummary(trimToNull(json.path("contactInformationSummary").asText(null)))
+                .setFamilyMemberSituationSummary(trimToNull(json.path("familyMemberSituationSummary").asText(null)))
+                .setMisconductSummary(trimToNull(json.path("misconductSummary").asText(null)))
                 .setKeyFacts(readStringList(json.path("keyFacts")))
                 .setTags(readStringList(json.path("tags")))
                 .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
                 .setOfficialWebsite(trimToNull(json.path("officialWebsite").asText(null)))
                 .setBasicInfo(readBasicInfo(json.path("basicInfo")))
                 .setEvidenceUrls(evidenceUrls);
+
+        // 某些模型会把后续 parameter 片段串进 summary 字段里，这里优先把被污染的结构化字段回收出来，
+        // 保证返回给前端的仍然是稳定的 profile 结构，而不是把协议碎片直接暴露出去。
+        recoverContaminatedProfileFields(profile);
 
         if (draftProfile != null) {
             if (!StringUtils.hasText(profile.getDescription())) {
@@ -503,6 +521,21 @@ public class DeepSeekSummaryGenerationClient {
             if (!StringUtils.hasText(profile.getCareerSummary())) {
                 profile.setCareerSummary(draftProfile.getCareerSummary());
             }
+            if (!StringUtils.hasText(profile.getChinaRelatedStatementsSummary())) {
+                profile.setChinaRelatedStatementsSummary(draftProfile.getChinaRelatedStatementsSummary());
+            }
+            if (!StringUtils.hasText(profile.getPoliticalTendencySummary())) {
+                profile.setPoliticalTendencySummary(draftProfile.getPoliticalTendencySummary());
+            }
+            if (!StringUtils.hasText(profile.getContactInformationSummary())) {
+                profile.setContactInformationSummary(draftProfile.getContactInformationSummary());
+            }
+            if (!StringUtils.hasText(profile.getFamilyMemberSituationSummary())) {
+                profile.setFamilyMemberSituationSummary(draftProfile.getFamilyMemberSituationSummary());
+            }
+            if (!StringUtils.hasText(profile.getMisconductSummary())) {
+                profile.setMisconductSummary(draftProfile.getMisconductSummary());
+            }
             if ((profile.getKeyFacts() == null || profile.getKeyFacts().isEmpty()) && draftProfile.getKeyFacts() != null) {
                 profile.setKeyFacts(draftProfile.getKeyFacts());
             }
@@ -511,6 +544,75 @@ public class DeepSeekSummaryGenerationClient {
             }
         }
         return profile;
+    }
+
+    private void recoverContaminatedProfileFields(ResolvedPersonProfile profile) {
+        if (profile == null || !StringUtils.hasText(profile.getSummary())) {
+            return;
+        }
+        String summary = profile.getSummary();
+        Matcher matcher = SERIALIZED_PARAMETER_PATTERN.matcher(summary);
+        if (!matcher.find()) {
+            profile.setSummary(stripProtocolArtifacts(summary));
+            return;
+        }
+
+        Map<String, JsonNode> recoveredParameters = new LinkedHashMap<>();
+        matcher.reset();
+        while (matcher.find()) {
+            String name = trimToNull(matcher.group(1));
+            if (!StringUtils.hasText(name)) {
+                continue;
+            }
+            recoveredParameters.put(name, toJsonValueNode(matcher.group(2)));
+        }
+
+        Matcher firstParameterMatcher = SERIALIZED_PARAMETER_PATTERN.matcher(summary);
+        int firstParameterIndex = firstParameterMatcher.find() ? firstParameterMatcher.start() : summary.length();
+        String cleanSummary = trimToNull(stripProtocolArtifacts(summary.substring(0, firstParameterIndex)));
+        JsonNode summaryNode = recoveredParameters.get("summary");
+        if (summaryNode != null && !summaryNode.isNull() && StringUtils.hasText(summaryNode.asText())) {
+            profile.setSummary(trimToNull(summaryNode.asText()));
+        } else if (StringUtils.hasText(cleanSummary)) {
+            profile.setSummary(cleanSummary);
+        }
+
+        applyRecoveredProfileField(profile, "educationSummary", recoveredParameters.get("educationSummary"));
+        applyRecoveredProfileField(profile, "familyBackgroundSummary", recoveredParameters.get("familyBackgroundSummary"));
+        applyRecoveredProfileField(profile, "careerSummary", recoveredParameters.get("careerSummary"));
+        applyRecoveredProfileField(profile, "chinaRelatedStatementsSummary", recoveredParameters.get("chinaRelatedStatementsSummary"));
+        applyRecoveredProfileField(profile, "politicalTendencySummary", recoveredParameters.get("politicalTendencySummary"));
+        applyRecoveredProfileField(profile, "contactInformationSummary", recoveredParameters.get("contactInformationSummary"));
+        applyRecoveredProfileField(profile, "familyMemberSituationSummary", recoveredParameters.get("familyMemberSituationSummary"));
+        applyRecoveredProfileField(profile, "misconductSummary", recoveredParameters.get("misconductSummary"));
+        applyRecoveredProfileField(profile, "keyFacts", recoveredParameters.get("keyFacts"));
+        applyRecoveredProfileField(profile, "tags", recoveredParameters.get("tags"));
+        applyRecoveredProfileField(profile, "wikipedia", recoveredParameters.get("wikipedia"));
+        applyRecoveredProfileField(profile, "officialWebsite", recoveredParameters.get("officialWebsite"));
+        applyRecoveredProfileField(profile, "basicInfo", recoveredParameters.get("basicInfo"));
+    }
+
+    private void applyRecoveredProfileField(ResolvedPersonProfile profile, String fieldName, JsonNode valueNode) {
+        if (profile == null || valueNode == null || valueNode.isNull()) {
+            return;
+        }
+        switch (fieldName) {
+            case "educationSummary" -> profile.setEducationSummary(trimToNull(valueNode.asText(null)));
+            case "familyBackgroundSummary" -> profile.setFamilyBackgroundSummary(trimToNull(valueNode.asText(null)));
+            case "careerSummary" -> profile.setCareerSummary(trimToNull(valueNode.asText(null)));
+            case "chinaRelatedStatementsSummary" -> profile.setChinaRelatedStatementsSummary(trimToNull(valueNode.asText(null)));
+            case "politicalTendencySummary" -> profile.setPoliticalTendencySummary(trimToNull(valueNode.asText(null)));
+            case "contactInformationSummary" -> profile.setContactInformationSummary(trimToNull(valueNode.asText(null)));
+            case "familyMemberSituationSummary" -> profile.setFamilyMemberSituationSummary(trimToNull(valueNode.asText(null)));
+            case "misconductSummary" -> profile.setMisconductSummary(trimToNull(valueNode.asText(null)));
+            case "keyFacts" -> profile.setKeyFacts(readStringList(valueNode));
+            case "tags" -> profile.setTags(readStringList(valueNode));
+            case "wikipedia" -> profile.setWikipedia(trimToNull(valueNode.asText(null)));
+            case "officialWebsite" -> profile.setOfficialWebsite(trimToNull(valueNode.asText(null)));
+            case "basicInfo" -> profile.setBasicInfo(readBasicInfo(valueNode));
+            default -> {
+            }
+        }
     }
 
     private String extractStructuredPayload(JsonNode body, String expectedFunctionName) {
@@ -693,6 +795,16 @@ public class DeepSeekSummaryGenerationClient {
             return objectMapper.valueToTree(parameters).toString();
         }
         return null;
+    }
+
+    private String stripProtocolArtifacts(String value) {
+        String normalized = trimToNull(value);
+        if (!StringUtils.hasText(normalized)) {
+            return normalized;
+        }
+        normalized = normalized.replaceAll("</[^>]*parameter>\\s*$", "");
+        normalized = normalized.replaceAll("\\s*<\\/?[^>]*parameter[^>]*>\\s*", " ");
+        return trimToNull(normalized);
     }
 
     private JsonNode toJsonValueNode(String rawValue) {
