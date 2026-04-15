@@ -31,7 +31,7 @@ class DeepSeekSummaryGenerationClientTest {
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
-                        {"choices":[{"message":{"content":"{\\"resolvedNameCandidate\\":\\"Jay Chou\\",\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\",\\"title\\":\\"A\\"}"}}]}
+                        {"choices":[{"message":{"content":"{\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\",\\"title\\":\\"A\\"}"}}]}
                         """, MediaType.APPLICATION_JSON));
 
         DeepSeekSummaryGenerationClient client =
@@ -42,7 +42,6 @@ class DeepSeekSummaryGenerationClientTest {
                 .setTitle("A")
                 .setContent("body"));
 
-        assertThat(summary.getResolvedNameCandidate()).isEqualTo("Jay Chou");
         assertThat(summary.getSummary()).isEqualTo("Singer");
         assertThat(summary.getKeyFacts()).containsExactly("Fact A");
         assertThat(summary.getTags()).containsExactly("music");
@@ -70,38 +69,6 @@ class DeepSeekSummaryGenerationClientTest {
         assertThat(profile.getKeyFacts()).containsExactly("Fact A");
         assertThat(profile.getTags()).containsExactly("singer");
         assertThat(profile.getEvidenceUrls()).containsExactly("https://example.com/a");
-    }
-
-    @Test
-    void shouldParseFinalProfileWhenDeepSeekWrapsJsonWithExplanation() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withSuccess("""
-                        {
-                          "choices": [
-                            {
-                              "message": {
-                                "content": "我先整理如下：\\n```json\\n{\\\"resolvedName\\\":\\\"雷军\\\",\\\"summary\\\":\\\"企业家与投资人。\\\",\\\"keyFacts\\\":[\\\"小米集团创始人\\\"],\\\"tags\\\":[\\\"科技\\\"],\\\"evidenceUrls\\\":[\\\"https://example.com/lei\\\"]}\\n```"
-                              }
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        DeepSeekSummaryGenerationClient client =
-                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
-
-        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("雷军", List.of(
-                new PageSummary().setSourceUrl("https://example.com/lei").setSummary("Summary A")
-        ));
-
-        assertThat(profile.getResolvedName()).isEqualTo("雷军");
-        assertThat(profile.getSummary()).isEqualTo("企业家与投资人。");
-        assertThat(profile.getKeyFacts()).containsExactly("小米集团创始人");
-        assertThat(profile.getTags()).containsExactly("科技");
-        assertThat(profile.getEvidenceUrls()).containsExactly("https://example.com/lei");
     }
 
     @Test
@@ -180,46 +147,16 @@ class DeepSeekSummaryGenerationClientTest {
     }
 
     @Test
-    void shouldThrowControlledExceptionWhenDeepSeekReturnsPlainTextForFinalProfile() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
-                .andExpect(method(HttpMethod.POST))
-                .andRespond(withSuccess("""
-                        {
-                          "choices": [
-                            {
-                              "message": {
-                                "content": "我需要从提供的篇级摘要中提取关于雷军的完整信息，但现在无法稳定输出。"
-                              }
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        DeepSeekSummaryGenerationClient client =
-                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
-
-        assertThatThrownBy(() -> client.summarizePersonFromPageSummaries("雷军", List.of(
-                new PageSummary().setSourceUrl("https://example.com/lei").setSummary("Summary A")
-        )))
-                .isInstanceOf(ApiCallException.class)
-                .hasMessageContaining("INVALID_RESPONSE")
-                .hasMessageContaining("未返回 JSON");
-    }
-
-    @Test
     void shouldParsePageSummaryWhenDeepSeekWrapsJsonWithExplanation() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
-                .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
                         {
                           "choices": [
                             {
                               "message": {
-                                "content": "我先给出结果：\\n```json\\n{\\\"resolvedNameCandidate\\\":\\\"雷军\\\",\\\"summary\\\":\\\"企业家。\\\",\\\"keyFacts\\\":[\\\"小米集团创始人\\\"],\\\"tags\\\":[\\\"商业\\\"],\\\"sourceUrl\\\":\\\"https://example.com/lei\\\",\\\"title\\\":\\\"Lei Jun\\\"}\\n```"
+                                "content": "我先给出结果：\\n```json\\n{\\\"summary\\\":\\\"企业家。\\\",\\\"keyFacts\\\":[\\\"小米集团创始人\\\"],\\\"tags\\\":[\\\"商业\\\"],\\\"sourceUrl\\\":\\\"https://example.com/lei\\\",\\\"title\\\":\\\"Lei Jun\\\"}\\n```"
                               }
                             }
                           ]
@@ -234,7 +171,6 @@ class DeepSeekSummaryGenerationClientTest {
                 .setTitle("Lei Jun")
                 .setContent("body"));
 
-        assertThat(summary.getResolvedNameCandidate()).isEqualTo("雷军");
         assertThat(summary.getSummary()).isEqualTo("企业家。");
         assertThat(summary.getKeyFacts()).containsExactly("小米集团创始人");
         assertThat(summary.getTags()).containsExactly("商业");

@@ -42,7 +42,7 @@ class KimiSummaryGenerationClientTest {
                                     "type": "function",
                                     "function": {
                                       "name": "submit_page_summary",
-                                      "arguments": "{\\"resolvedNameCandidate\\":\\"Jay Chou\\",\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\"}"
+                                      "arguments": "{\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\"}"
                                     }
                                   }
                                 ]
@@ -60,7 +60,6 @@ class KimiSummaryGenerationClientTest {
                 .setTitle("Article A")
                 .setContent("Page content A"));
 
-        assertThat(summary.getResolvedNameCandidate()).isEqualTo("Jay Chou");
         assertThat(summary.getSummary()).isEqualTo("Singer");
         assertThat(summary.getKeyFacts()).containsExactly("Fact A");
         assertThat(summary.getTags()).containsExactly("music");
@@ -78,7 +77,7 @@ class KimiSummaryGenerationClientTest {
                           "choices": [
                             {
                               "message": {
-                                "content": "{\\"resolvedNameCandidate\\":\\"Jay Chou\\",\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\"}"
+                                "content": "{\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\"}"
                               }
                             }
                           ]
@@ -93,66 +92,10 @@ class KimiSummaryGenerationClientTest {
                 .setTitle("Article A")
                 .setContent("Page content A"));
 
-        assertThat(summary.getResolvedNameCandidate()).isEqualTo("Jay Chou");
         assertThat(summary.getSummary()).isEqualTo("Singer");
         assertThat(summary.getKeyFacts()).containsExactly("Fact A");
         assertThat(summary.getTags()).containsExactly("music");
         assertThat(summary.getSourceUrl()).isEqualTo("https://example.com/a");
-    }
-
-    @Test
-    void shouldParseFaceCandidateNamesWhenKimiWrapsJsonWithExplanation() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
-                .andRespond(withSuccess("""
-                        {
-                          "choices": [
-                            {
-                              "message": {
-                                "content": "我先给出识别结果：\\n```json\\n{\\\"candidateNames\\\":[\\\"雷军\\\",\\\"Lei Jun\\\"]}\\n```"
-                              }
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        KimiSummaryGenerationClient client =
-                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
-
-        List<String> candidates = client.recognizeFaceCandidateNames(new org.springframework.mock.web.MockMultipartFile(
-                "image", "face.jpg", MediaType.IMAGE_JPEG_VALUE, "fake-image".getBytes()
-        ));
-
-        assertThat(candidates).containsExactly("雷军", "Lei Jun");
-    }
-
-    @Test
-    void shouldThrowControlledExceptionWhenKimiReturnsPlainTextForFaceCandidates() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
-                .andRespond(withSuccess("""
-                        {
-                          "choices": [
-                            {
-                              "message": {
-                                "content": "我需要根据这张人脸图像判断人物身份，但现在无法给出候选名称。"
-                              }
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        KimiSummaryGenerationClient client =
-                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
-
-        assertThatThrownBy(() -> client.recognizeFaceCandidateNames(new org.springframework.mock.web.MockMultipartFile(
-                "image", "face.jpg", MediaType.IMAGE_JPEG_VALUE, "fake-image".getBytes()
-        )))
-                .isInstanceOf(ApiCallException.class)
-                .hasMessageContaining("INVALID_RESPONSE")
-                .hasMessageContaining("未返回 JSON");
     }
 
     @Test
@@ -244,67 +187,6 @@ class KimiSummaryGenerationClientTest {
                 .setContent("Page content A")))
                 .isInstanceOf(ApiCallException.class)
                 .hasMessageContaining("EMPTY_RESPONSE");
-    }
-
-    @Test
-    void shouldParsePageSummaryWhenKimiWrapsJsonWithExplanation() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
-                .andRespond(withSuccess("""
-                        {
-                          "choices": [
-                            {
-                              "message": {
-                                "content": "以下是结构化结果：\\n```json\\n{\\\"resolvedNameCandidate\\\":\\\"雷军\\\",\\\"summary\\\":\\\"小米创始人。\\\",\\\"keyFacts\\\":[\\\"创办小米\\\"],\\\"tags\\\":[\\\"科技\\\"],\\\"sourceUrl\\\":\\\"https://example.com/lei\\\",\\\"title\\\":\\\"Lei Jun\\\"}\\n```"
-                              }
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        KimiSummaryGenerationClient client =
-                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
-
-        PageSummary summary = client.summarizePage("雷军", new PageContent()
-                .setUrl("https://example.com/lei")
-                .setTitle("Lei Jun")
-                .setContent("Page content"));
-
-        assertThat(summary.getResolvedNameCandidate()).isEqualTo("雷军");
-        assertThat(summary.getSummary()).isEqualTo("小米创始人。");
-        assertThat(summary.getKeyFacts()).containsExactly("创办小米");
-        assertThat(summary.getTags()).containsExactly("科技");
-        assertThat(summary.getSourceUrl()).isEqualTo("https://example.com/lei");
-    }
-
-    @Test
-    void shouldThrowControlledExceptionWhenKimiReturnsPlainTextRefusalForPageSummary() {
-        RestTemplate restTemplate = new RestTemplate();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
-                .andRespond(withSuccess("""
-                        {
-                          "choices": [
-                            {
-                              "message": {
-                                "content": "抱歉，这个页面我暂时无法总结。"
-                              }
-                            }
-                          ]
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        KimiSummaryGenerationClient client =
-                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
-
-        assertThatThrownBy(() -> client.summarizePage("雷军", new PageContent()
-                .setUrl("https://example.com/lei")
-                .setTitle("Lei Jun")
-                .setContent("Page content")))
-                .isInstanceOf(ApiCallException.class)
-                .hasMessageContaining("INVALID_RESPONSE")
-                .hasMessageContaining("未返回 JSON");
     }
 
     @Test
@@ -449,7 +331,7 @@ class KimiSummaryGenerationClientTest {
                           "choices": [
                             {
                               "message": {
-                                "content": "{\\\"resolvedName\\\":\\\"Jay Chou\\\",\\\"summary\\\":\\\"Jay Chou is a Mandopop singer-songwriter.\\\",\\\"keyFacts\\\":[\\\"Fact A\\\"],\\\"tags\\\":[\\\"singer\\\",\\\"producer\\\"],\\\"evidenceUrls\\\":[\\\"https://example.com/a\\\"]}"
+                                "content": "{\\"resolvedName\\":\\"Jay Chou\\",\\"summary\\":\\"Jay Chou is a Mandopop singer-songwriter.\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"singer\\",\\"producer\\"],\\"evidenceUrls\\":[\\"https://example.com/a\\"]}"
                               }
                             }
                           ]

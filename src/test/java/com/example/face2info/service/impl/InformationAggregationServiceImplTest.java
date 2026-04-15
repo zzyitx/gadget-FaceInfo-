@@ -123,7 +123,7 @@ class InformationAggregationServiceImplTest {
         when(deepSeekClient.summarizePage("unknown", longPage)).thenReturn(deepSeekSummary);
         when(deepSeekClient.summarizePersonFromPageSummaries("unknown", List.of(deepSeekSummary)))
                 .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("DeepSeek final"));
-        when(deepSeekClient.applyComprehensiveJudgement(eq("unknown"), eq(List.of()), eq(List.of(deepSeekSummary)), any(ResolvedPersonProfile.class)))
+        when(deepSeekClient.applyComprehensiveJudgement(eq("unknown"), eq(List.of(deepSeekSummary)), any(ResolvedPersonProfile.class)))
                 .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("DeepSeek final"));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
@@ -131,7 +131,7 @@ class InformationAggregationServiceImplTest {
                 jinaReaderClient, kimiClient, deepSeekClient, executor, properties
         );
 
-        service.resolveProfileFromEvidence(List.of(new WebEvidence().setUrl("https://example.com/a")), "unknown", List.of(), new ArrayList<>());
+        service.resolveProfileFromEvidence(List.of(new WebEvidence().setUrl("https://example.com/a")), "unknown", List.of());
 
         verify(deepSeekClient).summarizePage("unknown", longPage);
         verify(kimiClient, never()).summarizePage("unknown", longPage);
@@ -155,8 +155,8 @@ class InformationAggregationServiceImplTest {
         );
         when(kimiClient.summarizePersonFromPageSummaries(anyString(), anyList()))
                 .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("base summary"));
-        when(kimiClient.applyComprehensiveJudgement(anyString(), anyList(), anyList(), any(ResolvedPersonProfile.class)))
-                .thenAnswer(invocation -> invocation.getArgument(3));
+        when(kimiClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
 
         ObjectMapper mapper = new ObjectMapper();
         try {
@@ -451,10 +451,9 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/a")));
         when(summaryGenerationClient.applyComprehensiveJudgement(
                 eq("Jay Chou"),
-                eq(List.of("Jay Chou")),
                 eq(List.of(pageSummary)),
                 any(ResolvedPersonProfile.class)))
-                .thenAnswer(invocation -> invocation.getArgument(3));
+                .thenAnswer(invocation -> invocation.getArgument(2));
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
@@ -466,6 +465,44 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getSummary()).isEqualTo(
                 "base summary\n\neducation summary\n\nfamily summary\n\ncareer summary (由大模型总结)"
         );
+        assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
+        assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
+        assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
+    }
+
+    @Test
+    void shouldExposeSectionSummariesWhenResolvedNameIsMissing() throws Exception {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("page summary");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(summaryGenerationClient.summarizePage(null, page)).thenReturn(pageSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(null, List.of(pageSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setSummary("base summary")
+                        .setEducationSummary("education summary")
+                        .setFamilyBackgroundSummary("family summary")
+                        .setCareerSummary("career summary"));
+        when(summaryGenerationClient.applyComprehensiveJudgement(
+                anyString(),
+                anyList(),
+                any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of())
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getErrors()).contains("未能从识别证据中解析人物名称");
+        assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
+        assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
+        assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
     }
 
     @Test
@@ -514,10 +551,9 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/a")));
         when(summaryGenerationClient.applyComprehensiveJudgement(
                 eq("Jay Chou"),
-                eq(List.of("Jay Chou")),
                 eq(List.of(seedSummary)),
                 any(ResolvedPersonProfile.class)))
-                .thenAnswer(invocation -> invocation.getArgument(3));
+                .thenAnswer(invocation -> invocation.getArgument(2));
 
         ObjectMapper mapper = new ObjectMapper();
         when(googleSearchClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
@@ -580,8 +616,8 @@ class InformationAggregationServiceImplTest {
                         .setResolvedName("Jay Chou")
                         .setDescription("short")
                         .setSummary("base summary"));
-        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), anyList(), any(ResolvedPersonProfile.class)))
-                .thenAnswer(invocation -> invocation.getArgument(3));
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
 
         ObjectMapper mapper = new ObjectMapper();
         when(googleSearchClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
@@ -620,7 +656,6 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary))).thenReturn(draftProfile);
         when(summaryGenerationClient.applyComprehensiveJudgement(
                 "Jay Chou",
-                List.of("Jay Chou", "周杰伦"),
                 List.of(pageSummary),
                 draftProfile)).thenReturn(judgedProfile);
 
@@ -637,7 +672,6 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getSummary()).isEqualTo("judged summary (由大模型总结)");
         verify(summaryGenerationClient).applyComprehensiveJudgement(
                 "Jay Chou",
-                List.of("Jay Chou", "周杰伦"),
                 List.of(pageSummary),
                 draftProfile);
     }
@@ -708,8 +742,8 @@ class InformationAggregationServiceImplTest {
                         .setSummary("secondary detailed summary")
                         .setDescription("secondary short description")
                         .setEvidenceUrls(secondaryUrls));
-        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), anyList(), any(ResolvedPersonProfile.class)))
-                .thenAnswer(invocation -> invocation.getArgument(3));
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
                 googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
@@ -752,9 +786,8 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.applyComprehensiveJudgement(
                 anyString(),
                 anyList(),
-                anyList(),
                 org.mockito.ArgumentMatchers.any(ResolvedPersonProfile.class)))
-                .thenAnswer(invocation -> invocation.getArgument(3));
+                .thenAnswer(invocation -> invocation.getArgument(2));
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
@@ -847,7 +880,6 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries)).thenReturn(profile);
         when(summaryGenerationClient.applyComprehensiveJudgement(
                 fallbackName,
-                List.of(fallbackName),
                 pageSummaries,
                 profile)).thenReturn(profile);
     }
