@@ -8,15 +8,19 @@ import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.DerivedTopicRequest;
+import com.example.face2info.entity.internal.DerivedTopicType;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SerpApiResponse;
+import com.example.face2info.entity.internal.TopicQueryDecision;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.service.DerivedTopicQueryService;
 import com.example.face2info.service.InformationAggregationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +58,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String EDUCATION_SECTION = "education";
     private static final String FAMILY_SECTION = "family";
     private static final String CAREER_SECTION = "career";
+    private static final String CHINA_RELATED_STATEMENTS_SECTION = "china_related_statements";
+    private static final String POLITICAL_VIEW_SECTION = "political_view";
+    private static final String CONTACT_INFORMATION_SECTION = "contact_information";
+    private static final String FAMILY_MEMBER_SITUATION_SECTION = "family_member_situation";
+    private static final String MISCONDUCT_SECTION = "misconduct";
     private static final Set<String> VIDEO_PLATFORM_HOSTS = Set.of(
             "youtube.com",
             "youtu.be",
@@ -75,6 +84,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient;
     private final ThreadPoolTaskExecutor executor;
     private final ApiProperties properties;
+    private final DerivedTopicQueryService derivedTopicQueryService;
 
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -84,7 +94,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              SummaryGenerationClient summaryGenerationClient,
                                              @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                              @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor,
-                                             ApiProperties properties) {
+                                             ApiProperties properties,
+                                             DerivedTopicQueryService derivedTopicQueryService) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.newsApiClient = newsApiClient;
@@ -93,6 +104,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
         this.executor = executor;
         this.properties = properties;
+        this.derivedTopicQueryService = derivedTopicQueryService;
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -102,7 +114,20 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       SummaryGenerationClient summaryGenerationClient,
                                       @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, deepSeekSummaryGenerationClient, executor, new ApiProperties());
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+                deepSeekSummaryGenerationClient, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService());
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      NewsApiClient newsApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor,
+                                      ApiProperties properties) {
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+                deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -112,7 +137,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       SummaryGenerationClient summaryGenerationClient,
                                       ThreadPoolTaskExecutor executor,
                                       ApiProperties properties) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, null, executor, properties);
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+                null, executor, properties, new PassThroughDerivedTopicQueryService());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -121,7 +147,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       JinaReaderClient jinaReaderClient,
                                       SummaryGenerationClient summaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient, null, executor, new ApiProperties());
+        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+                null, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService());
     }
 
     @Override
@@ -167,6 +194,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     .setEducationSummary(profile.getEducationSummary())
                     .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
                     .setCareerSummary(profile.getCareerSummary())
+                    .setChinaRelatedStatementsSummary(profile.getChinaRelatedStatementsSummary())
+                    .setPoliticalTendencySummary(profile.getPoliticalTendencySummary())
+                    .setContactInformationSummary(profile.getContactInformationSummary())
+                    .setFamilyMemberSituationSummary(profile.getFamilyMemberSituationSummary())
+                    .setMisconductSummary(profile.getMisconductSummary())
                     .setImageUrl(cleanText(enrichedProfile.imageUrl()))
                     .setBasicInfo(profile.getBasicInfo())
                     .setOfficialWebsite(profile.getOfficialWebsite())
@@ -294,6 +326,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setEducationSummary(profile.getEducationSummary())
                 .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
                 .setCareerSummary(profile.getCareerSummary())
+                .setChinaRelatedStatementsSummary(profile.getChinaRelatedStatementsSummary())
+                .setPoliticalTendencySummary(profile.getPoliticalTendencySummary())
+                .setContactInformationSummary(profile.getContactInformationSummary())
+                .setFamilyMemberSituationSummary(profile.getFamilyMemberSituationSummary())
+                .setMisconductSummary(profile.getMisconductSummary())
                 .setImageUrl(cleanText(imageUrl))
                 .setWikipedia(cleanText(profile.getWikipedia()))
                 .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
@@ -321,6 +358,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setEducationSummary(profile.getEducationSummary())
                 .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
                 .setCareerSummary(profile.getCareerSummary())
+                .setChinaRelatedStatementsSummary(profile.getChinaRelatedStatementsSummary())
+                .setPoliticalTendencySummary(profile.getPoliticalTendencySummary())
+                .setContactInformationSummary(profile.getContactInformationSummary())
+                .setFamilyMemberSituationSummary(profile.getFamilyMemberSituationSummary())
+                .setMisconductSummary(profile.getMisconductSummary())
                 .setKeyFacts(profile.getKeyFacts())
                 .setTags(profile.getTags())
                 .setEvidenceUrls(profile.getEvidenceUrls())
@@ -331,7 +373,14 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     String summarizeSection(String resolvedName, String sectionType, String query) {
         try {
-            SerpApiResponse searchResponse = googleSearchClient.googleSearch(query);
+            TopicQueryDecision decision = derivedTopicQueryService.resolveQuery(new DerivedTopicRequest()
+                    .setResolvedName(resolvedName)
+                    .setTopicType(DerivedTopicType.fromSectionType(sectionType))
+                    .setRawQuery(query));
+            String finalQuery = decision == null || !StringUtils.hasText(decision.getFinalQuery())
+                    ? query
+                    : decision.getFinalQuery();
+            SerpApiResponse searchResponse = googleSearchClient.googleSearch(finalQuery);
             if (searchResponse == null || searchResponse.getRoot() == null) {
                 return null;
             }
@@ -364,6 +413,14 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             log.warn("section summary failed resolvedName={} sectionType={} query={} error={}",
                     resolvedName, sectionType, query, ex.getMessage(), ex);
             return null;
+        }
+    }
+
+    private static final class PassThroughDerivedTopicQueryService implements DerivedTopicQueryService {
+
+        @Override
+        public TopicQueryDecision resolveQuery(DerivedTopicRequest request) {
+            return new TopicQueryDecision().setFinalQuery(request == null ? null : request.getRawQuery());
         }
     }
 
@@ -458,11 +515,37 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 () -> summarizeSection(resolvedName, FAMILY_SECTION, resolvedName + "的家庭背景"), executor);
         CompletableFuture<String> careerFuture = CompletableFuture.supplyAsync(
                 () -> summarizeSection(resolvedName, CAREER_SECTION, resolvedName + "的职业经历"), executor);
+        // 关键逻辑：新增主题统一走派生主题摘要链路，前端直接按独立区域渲染，不再依赖长摘要二次拆分。
+        CompletableFuture<String> chinaRelatedStatementsFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, CHINA_RELATED_STATEMENTS_SECTION,
+                        resolvedName + " 涉华言论 中国评价 中美关系 中欧关系"), executor);
+        CompletableFuture<String> politicalViewFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, POLITICAL_VIEW_SECTION,
+                        resolvedName + " 政治倾向 政党 政治理念 政策立场"), executor);
+        CompletableFuture<String> contactInformationFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, CONTACT_INFORMATION_SECTION,
+                        resolvedName + " 公开通讯 办公电话 官方邮箱 认证社交账号 联系方式"), executor);
+        CompletableFuture<String> familyMemberSituationFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, FAMILY_MEMBER_SITUATION_SECTION,
+                        resolvedName + " 家族成员 亲属 经商 在华投资 商业纠纷"), executor);
+        CompletableFuture<String> misconductFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSection(resolvedName, MISCONDUCT_SECTION,
+                        resolvedName + " 违法记录 行政处罚 负面事件 失信"), executor);
 
         ResolvedPersonProfile enriched = copyProfile(profile);
         enriched.setEducationSummary(firstNonBlankText(joinSectionFuture(educationFuture), profile.getEducationSummary()));
         enriched.setFamilyBackgroundSummary(firstNonBlankText(joinSectionFuture(familyFuture), profile.getFamilyBackgroundSummary()));
         enriched.setCareerSummary(firstNonBlankText(joinSectionFuture(careerFuture), profile.getCareerSummary()));
+        enriched.setChinaRelatedStatementsSummary(firstNonBlankText(
+                joinSectionFuture(chinaRelatedStatementsFuture), profile.getChinaRelatedStatementsSummary()));
+        enriched.setPoliticalTendencySummary(firstNonBlankText(
+                joinSectionFuture(politicalViewFuture), profile.getPoliticalTendencySummary()));
+        enriched.setContactInformationSummary(firstNonBlankText(
+                joinSectionFuture(contactInformationFuture), profile.getContactInformationSummary()));
+        enriched.setFamilyMemberSituationSummary(firstNonBlankText(
+                joinSectionFuture(familyMemberSituationFuture), profile.getFamilyMemberSituationSummary()));
+        enriched.setMisconductSummary(firstNonBlankText(
+                joinSectionFuture(misconductFuture), profile.getMisconductSummary()));
         return enriched;
     }
 
@@ -627,6 +710,16 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setEducationSummary(firstNonBlankText(secondaryProfile.getEducationSummary(), baseProfile.getEducationSummary()))
                 .setFamilyBackgroundSummary(firstNonBlankText(secondaryProfile.getFamilyBackgroundSummary(), baseProfile.getFamilyBackgroundSummary()))
                 .setCareerSummary(firstNonBlankText(secondaryProfile.getCareerSummary(), baseProfile.getCareerSummary()))
+                .setChinaRelatedStatementsSummary(firstNonBlankText(
+                        secondaryProfile.getChinaRelatedStatementsSummary(), baseProfile.getChinaRelatedStatementsSummary()))
+                .setPoliticalTendencySummary(firstNonBlankText(
+                        secondaryProfile.getPoliticalTendencySummary(), baseProfile.getPoliticalTendencySummary()))
+                .setContactInformationSummary(firstNonBlankText(
+                        secondaryProfile.getContactInformationSummary(), baseProfile.getContactInformationSummary()))
+                .setFamilyMemberSituationSummary(firstNonBlankText(
+                        secondaryProfile.getFamilyMemberSituationSummary(), baseProfile.getFamilyMemberSituationSummary()))
+                .setMisconductSummary(firstNonBlankText(
+                        secondaryProfile.getMisconductSummary(), baseProfile.getMisconductSummary()))
                 .setWikipedia(firstNonBlankText(secondaryProfile.getWikipedia(), baseProfile.getWikipedia()))
                 .setOfficialWebsite(firstNonBlankText(secondaryProfile.getOfficialWebsite(), baseProfile.getOfficialWebsite()))
                 .setTags(pickList(secondaryProfile.getTags(), baseProfile.getTags()))

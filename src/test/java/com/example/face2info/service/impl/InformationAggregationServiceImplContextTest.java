@@ -6,6 +6,7 @@ import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
+import com.example.face2info.service.DerivedTopicQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -56,6 +57,11 @@ class InformationAggregationServiceImplContextTest {
         @Bean
         SummaryGenerationClient summaryGenerationClient() {
             return mock(SummaryGenerationClient.class);
+        }
+
+        @Bean
+        DerivedTopicQueryService derivedTopicQueryService() {
+            return mock(DerivedTopicQueryService.class);
         }
 
         @Bean

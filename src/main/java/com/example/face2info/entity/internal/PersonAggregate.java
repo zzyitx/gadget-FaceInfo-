@@ -29,6 +29,21 @@ public class PersonAggregate {
     @Schema(description = "职业经历摘要，供前端独立区域展示")
     private String careerSummary;
 
+    @Schema(description = "涉华言论摘要，供前端独立区域展示")
+    private String chinaRelatedStatementsSummary;
+
+    @Schema(description = "政治倾向摘要，供前端独立区域展示")
+    private String politicalTendencySummary;
+
+    @Schema(description = "地址信息摘要，供前端独立区域展示")
+    private String contactInformationSummary;
+
+    @Schema(description = "家族成员情况摘要，供前端独立区域展示")
+    private String familyMemberSituationSummary;
+
+    @Schema(description = "污点劣迹摘要，供前端独立区域展示")
+    private String misconductSummary;
+
     @Schema(description = "百科链接")
     private String wikipedia;
 
@@ -104,6 +119,51 @@ public class PersonAggregate {
 
     public PersonAggregate setCareerSummary(String careerSummary) {
         this.careerSummary = careerSummary;
+        return this;
+    }
+
+    public String getChinaRelatedStatementsSummary() {
+        return chinaRelatedStatementsSummary;
+    }
+
+    public PersonAggregate setChinaRelatedStatementsSummary(String chinaRelatedStatementsSummary) {
+        this.chinaRelatedStatementsSummary = chinaRelatedStatementsSummary;
+        return this;
+    }
+
+    public String getPoliticalTendencySummary() {
+        return politicalTendencySummary;
+    }
+
+    public PersonAggregate setPoliticalTendencySummary(String politicalTendencySummary) {
+        this.politicalTendencySummary = politicalTendencySummary;
+        return this;
+    }
+
+    public String getContactInformationSummary() {
+        return contactInformationSummary;
+    }
+
+    public PersonAggregate setContactInformationSummary(String contactInformationSummary) {
+        this.contactInformationSummary = contactInformationSummary;
+        return this;
+    }
+
+    public String getFamilyMemberSituationSummary() {
+        return familyMemberSituationSummary;
+    }
+
+    public PersonAggregate setFamilyMemberSituationSummary(String familyMemberSituationSummary) {
+        this.familyMemberSituationSummary = familyMemberSituationSummary;
+        return this;
+    }
+
+    public String getMisconductSummary() {
+        return misconductSummary;
+    }
+
+    public PersonAggregate setMisconductSummary(String misconductSummary) {
+        this.misconductSummary = misconductSummary;
         return this;
     }
 

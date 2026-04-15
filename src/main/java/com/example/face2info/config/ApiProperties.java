@@ -30,6 +30,7 @@ public class ApiProperties {
         private KimiApiProperties kimi = new KimiApiProperties();
         private DeepSeekApiProperties deepseek = new DeepSeekApiProperties();
         private SummaryApiProperties summary = new SummaryApiProperties();
+        private QueryRewriteProperties queryRewrite = new QueryRewriteProperties();
         private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();
         private FaceDetectionProperties faceDetection = new FaceDetectionProperties();
         private FaceEnhanceProperties faceEnhance = new FaceEnhanceProperties();

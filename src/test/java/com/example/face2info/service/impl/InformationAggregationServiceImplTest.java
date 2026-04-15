@@ -564,26 +564,71 @@ class InformationAggregationServiceImplTest {
         when(googleSearchClient.googleSearch("Jay Chou的职业经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Career","link":"https://example.com/career","snippet":"career snippet"}]}
                 """)));
+        when(googleSearchClient.googleSearch("Jay Chou 涉华言论 中国评价 中美关系 中欧关系")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"China Related","link":"https://example.com/china","snippet":"china snippet"}]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 政治倾向 政党 政治理念 政策立场")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"Political","link":"https://example.com/political","snippet":"political snippet"}]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 公开通讯 办公电话 官方邮箱 认证社交账号 联系方式")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"Contact","link":"https://example.com/contact","snippet":"contact snippet"}]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 家族成员 亲属 经商 在华投资 商业纠纷")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"Family Member","link":"https://example.com/family-member","snippet":"family member snippet"}]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 违法记录 行政处罚 负面事件 失信")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[{"title":"Misconduct","link":"https://example.com/misconduct","snippet":"misconduct snippet"}]}
+                """)));
 
         PageContent educationPage = new PageContent().setUrl("https://example.com/education").setTitle("Education").setContent("education body");
         PageContent familyPage = new PageContent().setUrl("https://example.com/family").setTitle("Family").setContent("family body");
         PageContent careerPage = new PageContent().setUrl("https://example.com/career").setTitle("Career").setContent("career body");
+        PageContent chinaPage = new PageContent().setUrl("https://example.com/china").setTitle("China").setContent("china body");
+        PageContent politicalPage = new PageContent().setUrl("https://example.com/political").setTitle("Political").setContent("political body");
+        PageContent contactPage = new PageContent().setUrl("https://example.com/contact").setTitle("Contact").setContent("contact body");
+        PageContent familyMemberPage = new PageContent().setUrl("https://example.com/family-member").setTitle("Family Member").setContent("family member body");
+        PageContent misconductPage = new PageContent().setUrl("https://example.com/misconduct").setTitle("Misconduct").setContent("misconduct body");
         when(jinaReaderClient.readPages(List.of("https://example.com/education"))).thenReturn(List.of(educationPage));
         when(jinaReaderClient.readPages(List.of("https://example.com/family"))).thenReturn(List.of(familyPage));
         when(jinaReaderClient.readPages(List.of("https://example.com/career"))).thenReturn(List.of(careerPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/china"))).thenReturn(List.of(chinaPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/political"))).thenReturn(List.of(politicalPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/contact"))).thenReturn(List.of(contactPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/family-member"))).thenReturn(List.of(familyMemberPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/misconduct"))).thenReturn(List.of(misconductPage));
 
         PageSummary educationSummary = new PageSummary().setSourceUrl("https://example.com/education").setTitle("Education").setSummary("education page");
         PageSummary familySummary = new PageSummary().setSourceUrl("https://example.com/family").setTitle("Family").setSummary("family page");
         PageSummary careerSummary = new PageSummary().setSourceUrl("https://example.com/career").setTitle("Career").setSummary("career page");
+        PageSummary chinaSummary = new PageSummary().setSourceUrl("https://example.com/china").setTitle("China").setSummary("china page");
+        PageSummary politicalSummary = new PageSummary().setSourceUrl("https://example.com/political").setTitle("Political").setSummary("political page");
+        PageSummary contactSummary = new PageSummary().setSourceUrl("https://example.com/contact").setTitle("Contact").setSummary("contact page");
+        PageSummary familyMemberSummary = new PageSummary().setSourceUrl("https://example.com/family-member").setTitle("Family Member").setSummary("family member page");
+        PageSummary misconductSummary = new PageSummary().setSourceUrl("https://example.com/misconduct").setTitle("Misconduct").setSummary("misconduct page");
         when(summaryGenerationClient.summarizePage("Jay Chou", educationPage)).thenReturn(educationSummary);
         when(summaryGenerationClient.summarizePage("Jay Chou", familyPage)).thenReturn(familySummary);
         when(summaryGenerationClient.summarizePage("Jay Chou", careerPage)).thenReturn(careerSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", chinaPage)).thenReturn(chinaSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", politicalPage)).thenReturn(politicalSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", contactPage)).thenReturn(contactSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", familyMemberPage)).thenReturn(familyMemberSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", misconductPage)).thenReturn(misconductSummary);
         when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(educationSummary)))
                 .thenReturn("education summary");
         when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "family", List.of(familySummary)))
                 .thenReturn("family summary");
         when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "career", List.of(careerSummary)))
                 .thenReturn("career summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "china_related_statements", List.of(chinaSummary)))
+                .thenReturn("china related statements summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "political_view", List.of(politicalSummary)))
+                .thenReturn("political tendency summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "contact_information", List.of(contactSummary)))
+                .thenReturn("contact information summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "family_member_situation", List.of(familyMemberSummary)))
+                .thenReturn("family member situation summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "misconduct", List.of(misconductSummary)))
+                .thenReturn("misconduct summary");
 
         AggregationResult result = new InformationAggregationServiceImpl(
                 googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
@@ -597,6 +642,11 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
         assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
         assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
+        assertThat(result.getPerson().getChinaRelatedStatementsSummary()).isEqualTo("china related statements summary");
+        assertThat(result.getPerson().getPoliticalTendencySummary()).isEqualTo("political tendency summary");
+        assertThat(result.getPerson().getContactInformationSummary()).isEqualTo("contact information summary");
+        assertThat(result.getPerson().getFamilyMemberSituationSummary()).isEqualTo("family member situation summary");
+        assertThat(result.getPerson().getMisconductSummary()).isEqualTo("misconduct summary");
     }
 
     @Test

@@ -87,6 +87,68 @@ face2info:
         - 人物简介
         - 作品列表
         - 获奖记录
+    query-rewrite:
+      enabled: true
+      provider-priority:
+        - deepseek
+        - kimi
+      candidate-count: 3
+      topic-strategies:
+        education: normalize
+        family: normalize
+        career: normalize
+        china_related_statements: rewrite
+        political_view: rewrite
+        contact_information: rewrite
+        family_member_situation: rewrite
+        misconduct: rewrite
+        controversial_statement: rewrite
+      sensitive-topic-patterns:
+        china_related_statements:
+          - 涉华言论
+          - 中国立场
+          - 中美关系
+          - 中欧关系
+        political_view:
+          - 政治倾向
+          - 政治理念
+          - 意识形态
+        contact_information:
+          - 办公电话
+          - 官方邮箱
+          - 联系方式
+          - 认证社交账号
+        family_member_situation:
+          - 家族成员
+          - 在华投资
+          - 商业纠纷
+          - 直系亲属
+        misconduct:
+          - 违法记录
+          - 行政处罚
+          - 失信行为
+          - 负面事件
+        controversial_statement:
+          - 反政府言论
+          - 有争议言论
+          - 立场表态
+      fallback-templates:
+        china_related_statements:
+          - "%s涉华言论 中国评价 中美关系 中欧关系"
+        political_view:
+          - "%s支持的政治理念"
+          - "%s公开表达的政治理念"
+        contact_information:
+          - "%s公开通讯 办公电话 官方邮箱 认证社交账号"
+        family_member_situation:
+          - "%s家族成员 经商情况 在华投资 商业纠纷"
+        misconduct:
+          - "%s违法记录 行政处罚 负面事件 失信行为"
+        controversial_statement:
+          - "%s发表了有争议的政治观点"
+          - "%s发布了引发争议的公开表态"
+      log-original-query: true
+      log-final-query: true
     facecheck:
       base-url: https://facecheck.id
       upload-path: /api/upload_pic

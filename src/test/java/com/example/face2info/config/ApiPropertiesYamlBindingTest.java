@@ -25,4 +25,21 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.containsKey("face2info.api.face-enhance.replicate.model-version")).isTrue();
         assertThat(properties.containsKey("face2info.api.replicate.model-version")).isFalse();
     }
+
+    @Test
+    void shouldExposeQueryRewriteStructureInApplicationGitYaml() {
+        YamlPropertiesFactoryBean factory = new YamlPropertiesFactoryBean();
+        factory.setResources(new ClassPathResource("application-git.yml"));
+        Properties properties = factory.getObject();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("face2info.api.query-rewrite.enabled")).isEqualTo("true");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.topic-strategies.education")).isEqualTo("normalize");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.topic-strategies.china_related_statements")).isEqualTo("rewrite");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.topic-strategies.political_view")).isEqualTo("rewrite");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.fallback-templates.china_related_statements[0]"))
+                .isEqualTo("%s涉华言论 中国评价 中美关系 中欧关系");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.fallback-templates.political_view[0]"))
+                .isEqualTo("%s支持的政治理念");
+    }
 }

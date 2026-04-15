@@ -31,6 +31,26 @@ public class PersonInfo {
     @Schema(description = "人物职业经历摘要", example = "先以创作人身份进入行业，后发展为歌手、导演与制作人。")
     private String careerSummary;
 
+    @JsonProperty("china_related_statements_summary")
+    @Schema(description = "人物涉华言论摘要", example = "曾就中国政治、经济文化及中美关系发表公开评价。")
+    private String chinaRelatedStatementsSummary;
+
+    @JsonProperty("political_tendency_summary")
+    @Schema(description = "人物政治倾向摘要", example = "公开支持自由主义和多边贸易等理念。")
+    private String politicalTendencySummary;
+
+    @JsonProperty("contact_information_summary")
+    @Schema(description = "人物地址信息摘要", example = "整理公开办公电话、官方邮箱和认证社交账号。")
+    private String contactInformationSummary;
+
+    @JsonProperty("family_member_situation_summary")
+    @Schema(description = "人物家族成员情况摘要", example = "概述直系亲属、经商情况与涉华利益往来。")
+    private String familyMemberSituationSummary;
+
+    @JsonProperty("misconduct_summary")
+    @Schema(description = "人物污点劣迹摘要", example = "汇总公开行政处罚、违法记录和失德争议事件。")
+    private String misconductSummary;
+
     @Schema(description = "人物百科词条链接", example = "https://zh.wikipedia.org/wiki/%E5%91%A8%E6%9D%B0%E4%BC%A6")
     private String wikipedia;
 
@@ -104,6 +124,51 @@ public class PersonInfo {
 
     public PersonInfo setCareerSummary(String careerSummary) {
         this.careerSummary = careerSummary;
+        return this;
+    }
+
+    public String getChinaRelatedStatementsSummary() {
+        return chinaRelatedStatementsSummary;
+    }
+
+    public PersonInfo setChinaRelatedStatementsSummary(String chinaRelatedStatementsSummary) {
+        this.chinaRelatedStatementsSummary = chinaRelatedStatementsSummary;
+        return this;
+    }
+
+    public String getPoliticalTendencySummary() {
+        return politicalTendencySummary;
+    }
+
+    public PersonInfo setPoliticalTendencySummary(String politicalTendencySummary) {
+        this.politicalTendencySummary = politicalTendencySummary;
+        return this;
+    }
+
+    public String getContactInformationSummary() {
+        return contactInformationSummary;
+    }
+
+    public PersonInfo setContactInformationSummary(String contactInformationSummary) {
+        this.contactInformationSummary = contactInformationSummary;
+        return this;
+    }
+
+    public String getFamilyMemberSituationSummary() {
+        return familyMemberSituationSummary;
+    }
+
+    public PersonInfo setFamilyMemberSituationSummary(String familyMemberSituationSummary) {
+        this.familyMemberSituationSummary = familyMemberSituationSummary;
+        return this;
+    }
+
+    public String getMisconductSummary() {
+        return misconductSummary;
+    }
+
+    public PersonInfo setMisconductSummary(String misconductSummary) {
+        this.misconductSummary = misconductSummary;
         return this;
     }
 

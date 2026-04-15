@@ -26,6 +26,21 @@ public class ResolvedPersonProfile {
     @Schema(description = "解析后的职业经历摘要，用于前端独立区域展示")
     private String careerSummary;
 
+    @Schema(description = "解析后的涉华言论摘要，用于前端独立区域展示")
+    private String chinaRelatedStatementsSummary;
+
+    @Schema(description = "解析后的政治倾向摘要，用于前端独立区域展示")
+    private String politicalTendencySummary;
+
+    @Schema(description = "解析后的地址信息摘要，用于前端独立区域展示")
+    private String contactInformationSummary;
+
+    @Schema(description = "解析后的家族成员情况摘要，用于前端独立区域展示")
+    private String familyMemberSituationSummary;
+
+    @Schema(description = "解析后的污点劣迹摘要，用于前端独立区域展示")
+    private String misconductSummary;
+
     @Schema(description = "解析出的关键事实")
     private List<String> keyFacts = new ArrayList<>();
 
@@ -95,6 +110,51 @@ public class ResolvedPersonProfile {
 
     public ResolvedPersonProfile setCareerSummary(String careerSummary) {
         this.careerSummary = careerSummary;
+        return this;
+    }
+
+    public String getChinaRelatedStatementsSummary() {
+        return chinaRelatedStatementsSummary;
+    }
+
+    public ResolvedPersonProfile setChinaRelatedStatementsSummary(String chinaRelatedStatementsSummary) {
+        this.chinaRelatedStatementsSummary = chinaRelatedStatementsSummary;
+        return this;
+    }
+
+    public String getPoliticalTendencySummary() {
+        return politicalTendencySummary;
+    }
+
+    public ResolvedPersonProfile setPoliticalTendencySummary(String politicalTendencySummary) {
+        this.politicalTendencySummary = politicalTendencySummary;
+        return this;
+    }
+
+    public String getContactInformationSummary() {
+        return contactInformationSummary;
+    }
+
+    public ResolvedPersonProfile setContactInformationSummary(String contactInformationSummary) {
+        this.contactInformationSummary = contactInformationSummary;
+        return this;
+    }
+
+    public String getFamilyMemberSituationSummary() {
+        return familyMemberSituationSummary;
+    }
+
+    public ResolvedPersonProfile setFamilyMemberSituationSummary(String familyMemberSituationSummary) {
+        this.familyMemberSituationSummary = familyMemberSituationSummary;
+        return this;
+    }
+
+    public String getMisconductSummary() {
+        return misconductSummary;
+    }
+
+    public ResolvedPersonProfile setMisconductSummary(String misconductSummary) {
+        this.misconductSummary = misconductSummary;
         return this;
     }
 
