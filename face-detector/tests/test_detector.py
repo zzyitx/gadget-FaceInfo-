@@ -48,6 +48,15 @@ def _build_two_face_like_image() -> bytes:
     return buffer.getvalue()
 
 
+def _build_similarity_test_image() -> Image.Image:
+    image = Image.new("RGB", (160, 120), "#E8E2D6")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((10, 10, 50, 50), fill="#F2C6A0")
+    draw.rectangle((22, 22, 62, 62), fill="#F2C6A0")
+    draw.rectangle((90, 10, 130, 50), fill="#3D5A80")
+    return image
+
+
 def test_detects_multiple_regions_and_returns_public_payload():
     detector = FaceDetector(prefer_mtcnn=False, non_mtcnn_quality_gate=False)
 
@@ -179,6 +188,90 @@ def test_post_process_removes_heavily_overlapped_candidates():
     image = Image.new("RGB", (100, 100), "white")
 
     payload = detector.detect_image(image)
+
+    assert len(payload.faces) == 1
+    assert payload.faces[0].bbox.x == 10
+    assert payload.faces[0].bbox.y == 10
+
+
+def test_similarity_threshold_merges_near_duplicate_faces_before_iou_fallback():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=40, height=40),
+                        confidence=0.93,
+                    ),
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=22, y=22, width=40, height=40),
+                        confidence=0.74,
+                    ),
+                ]
+            )
+        ],
+        confidence_threshold=0.5,
+        non_mtcnn_quality_gate=False,
+    )
+
+    payload = detector.detect_image(_build_similarity_test_image())
+
+    assert len(payload.faces) == 1
+    assert payload.faces[0].bbox.x == 10
+    assert payload.faces[0].bbox.y == 10
+
+
+def test_similarity_threshold_keeps_visually_distinct_faces():
+    detector = FaceDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=40, height=40),
+                        confidence=0.93,
+                    ),
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=90, y=10, width=40, height=40),
+                        confidence=0.74,
+                    ),
+                ]
+            )
+        ],
+        confidence_threshold=0.5,
+        non_mtcnn_quality_gate=False,
+    )
+
+    payload = detector.detect_image(_build_similarity_test_image())
+
+    assert len(payload.faces) == 2
+    assert [face.bbox.x for face in payload.faces] == [10, 90]
+
+
+def test_similarity_error_falls_back_to_iou_deduplication():
+    class _BrokenSimilarityDetector(FaceDetector):
+        def _compute_face_similarity(self, image, left, right):
+            raise RuntimeError("similarity unavailable")
+
+    detector = _BrokenSimilarityDetector(
+        backends=[
+            _FakeBackend(
+                [
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=10, y=10, width=40, height=40),
+                        confidence=0.93,
+                    ),
+                    _FakeCandidate(
+                        bbox=FaceBoundingBox(x=14, y=14, width=40, height=40),
+                        confidence=0.74,
+                    ),
+                ]
+            )
+        ],
+        confidence_threshold=0.5,
+        non_mtcnn_quality_gate=False,
+    )
+
+    payload = detector.detect_image(_build_similarity_test_image())
 
     assert len(payload.faces) == 1
     assert payload.faces[0].bbox.x == 10

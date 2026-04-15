@@ -289,6 +289,11 @@ class _ConnectedComponentBackend:
 
 
 class FaceDetector:
+    # 参考 CompreFace，把“是否同脸”先映射为 0..1 的 similarity，再做阈值判定。
+    FACE_SIMILARITY_THRESHOLD = 0.5
+    FACE_SIMILARITY_COSINE_PIVOT = 0.95
+    FACE_SIMILARITY_COSINE_SCALE = 30.0
+
     def __init__(
         self,
         prefer_mtcnn: bool = True,
@@ -462,9 +467,103 @@ class FaceDetector:
         filtered.sort(key=lambda item: item.confidence, reverse=True)
         selected: list[_FaceCandidate] = []
         for candidate in filtered:
-            if all(self._compute_iou(candidate.bbox, kept.bbox) < 0.42 for kept in selected):
+            if self._should_keep_candidate(image=image, candidate=candidate, selected=selected):
                 selected.append(candidate)
         return sorted(selected, key=lambda item: (item.bbox.y, item.bbox.x))
+
+    def _should_keep_candidate(
+        self,
+        image: Image.Image,
+        candidate: _FaceCandidate,
+        selected: list[_FaceCandidate],
+    ) -> bool:
+        for kept in selected:
+            if not self._should_compare_similarity(candidate.bbox, kept.bbox):
+                continue
+            similarity = self._try_compute_face_similarity(image=image, left=candidate.bbox, right=kept.bbox)
+            if similarity is None:
+                if self._compute_iou(candidate.bbox, kept.bbox) >= 0.42:
+                    return False
+                continue
+            if similarity >= self.FACE_SIMILARITY_THRESHOLD:
+                return False
+        return True
+
+    def _should_compare_similarity(self, left: FaceBoundingBox, right: FaceBoundingBox) -> bool:
+        left_center_x = left.x + (left.width / 2.0)
+        left_center_y = left.y + (left.height / 2.0)
+        right_center_x = right.x + (right.width / 2.0)
+        right_center_y = right.y + (right.height / 2.0)
+        center_distance = float(
+            np.hypot(left_center_x - right_center_x, left_center_y - right_center_y)
+        )
+        max_dimension = max(left.width, left.height, right.width, right.height)
+        return center_distance <= (max_dimension * 0.75)
+
+    def _try_compute_face_similarity(
+        self,
+        image: Image.Image,
+        left: FaceBoundingBox,
+        right: FaceBoundingBox,
+    ) -> float | None:
+        try:
+            return self._compute_face_similarity(image=image, left=left, right=right)
+        except Exception as exc:  # pragma: no cover - 仅用于降级保护
+            LOGGER.warning("Face similarity failed and will fallback to IoU. error=%s", exc)
+            return None
+
+    def _compute_face_similarity(
+        self,
+        image: Image.Image,
+        left: FaceBoundingBox,
+        right: FaceBoundingBox,
+    ) -> float:
+        left_signature = self._extract_face_signature(image=image, bbox=left)
+        right_signature = self._extract_face_signature(image=image, bbox=right)
+        left_norm = float(np.linalg.norm(left_signature))
+        right_norm = float(np.linalg.norm(right_signature))
+        if left_norm == 0.0 or right_norm == 0.0:
+            raise RuntimeError("face signature is empty")
+        cosine_similarity = float(np.dot(left_signature, right_signature) / (left_norm * right_norm))
+        return self._cosine_to_similarity(cosine_similarity)
+
+    def _extract_face_signature(self, image: Image.Image, bbox: FaceBoundingBox) -> np.ndarray:
+        crop = self._crop_face(image, bbox).convert("RGB")
+        resized_rgb = crop.resize((16, 16), Image.Resampling.BILINEAR)
+        rgb_vector = np.asarray(resized_rgb, dtype=np.float32).reshape(-1) / 255.0
+
+        resized_gray = crop.convert("L").resize((8, 8), Image.Resampling.BILINEAR)
+        gray_vector = np.asarray(resized_gray, dtype=np.float32).reshape(-1) / 255.0
+        gray_vector = gray_vector - float(np.mean(gray_vector))
+        gray_norm = float(np.linalg.norm(gray_vector))
+        if gray_norm > 0:
+            gray_vector = gray_vector / gray_norm
+
+        histogram_parts: list[np.ndarray] = []
+        for channel in range(3):
+            channel_histogram, _ = np.histogram(
+                np.asarray(resized_rgb, dtype=np.float32)[:, :, channel],
+                bins=8,
+                range=(0, 255),
+            )
+            histogram = channel_histogram.astype(np.float32)
+            histogram_sum = float(np.sum(histogram))
+            if histogram_sum > 0:
+                histogram = histogram / histogram_sum
+            histogram_parts.append(histogram)
+        histogram_vector = np.concatenate(histogram_parts, dtype=np.float32)
+
+        return np.concatenate((rgb_vector, gray_vector.astype(np.float32), histogram_vector), dtype=np.float32)
+
+    def _cosine_to_similarity(self, cosine_similarity: float) -> float:
+        similarity = (
+            np.tanh(
+                (cosine_similarity - self.FACE_SIMILARITY_COSINE_PIVOT)
+                * self.FACE_SIMILARITY_COSINE_SCALE
+            )
+            + 1.0
+        ) / 2.0
+        return float(max(0.0, min(1.0, similarity)))
 
     def _compute_iou(self, left: FaceBoundingBox, right: FaceBoundingBox) -> float:
         x1 = max(left.x, right.x)
