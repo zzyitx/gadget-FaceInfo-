@@ -84,13 +84,17 @@ class StaticPageTest {
         mockMvc.perform(get("/result.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("id=\"personCard\"")))
-                .andExpect(content().string(containsString("id=\"matchesCard\"")))
                 .andExpect(content().string(containsString("id=\"socialCard\"")))
                 .andExpect(content().string(containsString("id=\"newsCard\"")))
                 .andExpect(content().string(containsString("id=\"debugCard\"")))
+                .andExpect(content().string(containsString("result-layout")))
+                .andExpect(content().string(containsString("main-column")))
+                .andExpect(content().string(containsString("match-rail")))
+                .andExpect(content().string(not(containsString("id=\"matchesCard\""))))
                 .andExpect(content().string(containsString("href=\"/index.html\"")))
                 .andExpect(content().string(containsString("bootstrapResult()")))
-                .andExpect(content().string(containsString("SEARCH_RESULT_KEY")));
+                .andExpect(content().string(containsString("SEARCH_RESULT_KEY")))
+                .andExpect(content().string(not(containsString(">独立展示<"))));
     }
 
     @Test
@@ -99,9 +103,27 @@ class StaticPageTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("renderImageMatches")))
                 .andExpect(content().string(containsString("renderNews")))
+                .andExpect(content().string(containsString("sortImageMatches")))
+                .andExpect(content().string(containsString("buildMatchArticles")))
                 .andExpect(content().string(containsString("thumbnail_url")))
                 .andExpect(content().string(containsString("similarity_score")))
                 .andExpect(content().string(containsString("data-link")))
-                .andExpect(content().string(containsString("window.open")));
+                .andExpect(content().string(containsString("window.open")))
+                .andExpect(content().string(containsString("match-order")))
+                .andExpect(content().string(containsString("match-score")))
+                .andExpect(content().string(containsString("match-article-list")))
+                .andExpect(content().string(containsString("independent-news-list")))
+                .andExpect(content().string(containsString("article-source-title")));
+    }
+
+    @Test
+    void shouldNotFallbackImageCardLinkToThumbnailOrRepeatNoArticleCopy() throws Exception {
+        mockMvc.perform(get("/result.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString("该图片结果暂时没有相关文章"))))
+                .andExpect(content().string(not(containsString("item.link || item.thumbnail_url || \"#\""))))
+                .andExpect(content().string(containsString("<details")))
+                .andExpect(content().string(containsString("debug-details")))
+                .andExpect(content().string(containsString("id=\"rawResponse\"")));
     }
 }
