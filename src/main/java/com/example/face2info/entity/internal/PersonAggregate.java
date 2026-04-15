@@ -20,6 +20,15 @@ public class PersonAggregate {
     @Schema(description = "聚合后的摘要")
     private String summary;
 
+    @Schema(description = "教育经历摘要，供前端独立区域展示")
+    private String educationSummary;
+
+    @Schema(description = "家庭背景摘要，供前端独立区域展示")
+    private String familyBackgroundSummary;
+
+    @Schema(description = "职业经历摘要，供前端独立区域展示")
+    private String careerSummary;
+
     @Schema(description = "百科链接")
     private String wikipedia;
 
@@ -68,6 +77,33 @@ public class PersonAggregate {
 
     public PersonAggregate setSummary(String summary) {
         this.summary = summary;
+        return this;
+    }
+
+    public String getEducationSummary() {
+        return educationSummary;
+    }
+
+    public PersonAggregate setEducationSummary(String educationSummary) {
+        this.educationSummary = educationSummary;
+        return this;
+    }
+
+    public String getFamilyBackgroundSummary() {
+        return familyBackgroundSummary;
+    }
+
+    public PersonAggregate setFamilyBackgroundSummary(String familyBackgroundSummary) {
+        this.familyBackgroundSummary = familyBackgroundSummary;
+        return this;
+    }
+
+    public String getCareerSummary() {
+        return careerSummary;
+    }
+
+    public PersonAggregate setCareerSummary(String careerSummary) {
+        this.careerSummary = careerSummary;
         return this;
     }
 

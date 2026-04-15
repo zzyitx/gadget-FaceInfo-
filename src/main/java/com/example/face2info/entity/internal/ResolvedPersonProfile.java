@@ -17,13 +17,13 @@ public class ResolvedPersonProfile {
     @Schema(description = "解析后的人物摘要")
     private String summary;
 
-    @Schema(description = "解析后的教育经历摘要")
+    @Schema(description = "解析后的教育经历摘要，用于前端独立区域展示")
     private String educationSummary;
 
-    @Schema(description = "解析后的家庭背景摘要")
+    @Schema(description = "解析后的家庭背景摘要，用于前端独立区域展示")
     private String familyBackgroundSummary;
 
-    @Schema(description = "解析后的职业经历摘要")
+    @Schema(description = "解析后的职业经历摘要，用于前端独立区域展示")
     private String careerSummary;
 
     @Schema(description = "解析出的关键事实")

@@ -434,6 +434,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 2. 返回内容语言必须为中文。
                 3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
                 JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary 的内容。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 篇级摘要如下：
@@ -467,6 +468,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 2. 返回内容语言必须为中文。
                 3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
                 JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary 的内容。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 draftResolvedName: %s

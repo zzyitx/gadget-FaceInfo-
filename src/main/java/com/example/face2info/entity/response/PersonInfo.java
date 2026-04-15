@@ -19,6 +19,18 @@ public class PersonInfo {
     @Schema(description = "聚合后的结构化人物摘要", example = "周杰伦是华语流行音乐代表人物之一。")
     private String summary;
 
+    @JsonProperty("education_summary")
+    @Schema(description = "人物教育经历摘要", example = "毕业于淡江中学音乐班。")
+    private String educationSummary;
+
+    @JsonProperty("family_background_summary")
+    @Schema(description = "人物家庭背景摘要", example = "出身于台湾普通家庭，母亲对其音乐启蒙影响较大。")
+    private String familyBackgroundSummary;
+
+    @JsonProperty("career_summary")
+    @Schema(description = "人物职业经历摘要", example = "先以创作人身份进入行业，后发展为歌手、导演与制作人。")
+    private String careerSummary;
+
     @Schema(description = "人物百科词条链接", example = "https://zh.wikipedia.org/wiki/%E5%91%A8%E6%9D%B0%E4%BC%A6")
     private String wikipedia;
 
@@ -65,6 +77,33 @@ public class PersonInfo {
 
     public PersonInfo setSummary(String summary) {
         this.summary = summary;
+        return this;
+    }
+
+    public String getEducationSummary() {
+        return educationSummary;
+    }
+
+    public PersonInfo setEducationSummary(String educationSummary) {
+        this.educationSummary = educationSummary;
+        return this;
+    }
+
+    public String getFamilyBackgroundSummary() {
+        return familyBackgroundSummary;
+    }
+
+    public PersonInfo setFamilyBackgroundSummary(String familyBackgroundSummary) {
+        this.familyBackgroundSummary = familyBackgroundSummary;
+        return this;
+    }
+
+    public String getCareerSummary() {
+        return careerSummary;
+    }
+
+    public PersonInfo setCareerSummary(String careerSummary) {
+        this.careerSummary = careerSummary;
         return this;
     }
 

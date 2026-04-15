@@ -431,7 +431,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldJoinBaseSummaryWithThreeSectionSummariesInOrder() {
+    void shouldKeepSectionSummariesIndependentFromMainSummary() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -462,9 +462,7 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jay Chou"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getPerson().getSummary()).isEqualTo(
-                "base summary\n\neducation summary\n\nfamily summary\n\ncareer summary (由大模型总结)"
-        );
+        assertThat(result.getPerson().getSummary()).isEqualTo("base summary (由大模型总结)");
         assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
         assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
         assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
@@ -506,7 +504,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldSkipFailedSectionAndKeepRemainingOrder() {
+    void shouldKeepMainSummaryWhenExtraSectionsExist() {
         ResolvedPersonProfile profile = new ResolvedPersonProfile()
                 .setResolvedName("Jay Chou")
                 .setDescription("short intro")
@@ -517,7 +515,7 @@ class InformationAggregationServiceImplTest {
         assertThat(new InformationAggregationServiceImpl(
                 mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
                 mock(JinaReaderClient.class), mock(SummaryGenerationClient.class), executor
-        ).buildFinalSummary(profile)).isEqualTo("base summary\n\neducation summary\n\ncareer summary");
+        ).buildFinalSummary(profile)).isEqualTo("base summary");
     }
 
     @Test
@@ -595,9 +593,10 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
         assertThat(result.getPerson().getDescription()).isEqualTo("short intro (由大模型总结)");
-        assertThat(result.getPerson().getSummary()).isEqualTo(
-                "base summary\n\neducation summary\n\nfamily summary\n\ncareer summary (由大模型总结)"
-        );
+        assertThat(result.getPerson().getSummary()).isEqualTo("base summary (由大模型总结)");
+        assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
+        assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
+        assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
     }
 
     @Test

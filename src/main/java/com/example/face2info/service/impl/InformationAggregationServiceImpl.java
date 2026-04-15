@@ -306,22 +306,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (profile == null) {
             return null;
         }
-        List<String> sections = new ArrayList<>();
-        addSummarySection(sections, profile.getSummary());
-        addSummarySection(sections, profile.getEducationSummary());
-        addSummarySection(sections, profile.getFamilyBackgroundSummary());
-        addSummarySection(sections, profile.getCareerSummary());
-        if (sections.isEmpty()) {
-            return null;
-        }
-        return String.join("\n\n", sections);
-    }
-
-    private void addSummarySection(List<String> sections, String value) {
-        String cleaned = cleanText(value);
-        if (StringUtils.hasText(cleaned)) {
-            sections.add(cleaned);
-        }
+        // summary 只承载人物主体画像，教育/家庭/职业改由独立字段输出，避免正文和分区内容重复。
+        return cleanText(profile.getSummary());
     }
 
     private ResolvedPersonProfile copyProfile(ResolvedPersonProfile profile) {
