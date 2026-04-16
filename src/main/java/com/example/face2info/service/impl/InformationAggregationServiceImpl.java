@@ -669,7 +669,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (!StringUtils.hasText(resolvedName) || !StringUtils.hasText(sectionType)) {
             return List.of();
         }
-        List<String> templates = properties.getApi().getQueryRewrite().getBaseQueryTemplates().get(sectionType);
+        // 关键逻辑：本地 application.yml 若遗漏拆分模板，仍需回退到内建基础查询词，
+        // 否则派生主题会重新退回单条长 query，直接缩小搜索召回范围。
+        List<String> templates = properties.getApi().getQueryRewrite().resolveBaseQueryTemplates(sectionType);
         if (templates == null || templates.isEmpty()) {
             return List.of();
         }
