@@ -11,6 +11,7 @@ import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.exception.ApiCallException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.http.client.MockClientHttpRequest;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -48,6 +49,35 @@ class DeepSeekSummaryGenerationClientTest {
         assertThat(summary.getSummary()).isEqualTo("Singer");
         assertThat(summary.getKeyFacts()).containsExactly("Fact A");
         assertThat(summary.getTags()).containsExactly("music");
+    }
+
+    @Test
+    void shouldTruncateLongPageContentBeforeSendingPageSummaryRequest() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString().toString();
+                    assertThat(body).contains("1234567890");
+                    assertThat(body).contains("正文过长，以下内容已按长度截断");
+                    assertThat(body).doesNotContain("ABCDEFGHIJ");
+                })
+                .andRespond(withSuccess("""
+                        {\"choices\":[{\"message\":{\"content\":\"{\\\"summary\\\":\\\"Singer\\\",\\\"keyFacts\\\":[\\\"Fact A\\\"],\\\"tags\\\":[\\\"music\\\"],\\\"sourceUrl\\\":\\\"https://example.com/a\\\",\\\"title\\\":\\\"A\\\"}\"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        ApiProperties properties = createProperties("test-key");
+        properties.getApi().getSummary().setPageContentMaxLength(10);
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, properties, new ObjectMapper());
+
+        client.summarizePage("Jay Chou", new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("1234567890ABCDEFGHIJ"));
+
+        server.verify();
     }
 
     @Test

@@ -405,6 +405,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private String buildPagePrompt(String fallbackName, PageContent page) {
+        String pageBody = buildPageBody(page);
         return """
                 请基于以下单篇正文提取人物信息。
                 必须满足以下约束：
@@ -421,8 +422,23 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 fallbackName,
                 page == null ? null : page.getTitle(),
                 page == null ? null : page.getUrl(),
-                page == null ? null : page.getContent()
+                pageBody
         );
+    }
+
+    private String buildPageBody(PageContent page) {
+        if (page == null || !StringUtils.hasText(page.getContent())) {
+            return page == null ? null : page.getContent();
+        }
+        int maxLength = properties.getApi().getSummary().getPageContentMaxLength();
+        if (maxLength <= 0 || page.getContent().length() <= maxLength) {
+            return page.getContent();
+        }
+        // 关键逻辑：单页正文先截断再摘要，避免超长正文把页面摘要请求直接打满上下文。
+        return """
+                正文过长，以下内容已按长度截断（原始长度=%d，保留前 %d 字符）：
+                %s
+                """.formatted(page.getContent().length(), maxLength, page.getContent().substring(0, maxLength));
     }
 
 
@@ -500,7 +516,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于篇级总结和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
+                请基于页面摘要集合和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
                 必须满足以下约束：
                 1. 只能通过函数 submit_profile_judgement 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。

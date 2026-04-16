@@ -191,6 +191,53 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldStillRunSectionSummaryWhenOnlyPartOfPageSummariesSucceed() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent pageA = new PageContent()
+                .setUrl("https://example.com/education-a")
+                .setTitle("Education A")
+                .setContent("education body a");
+        PageContent pageB = new PageContent()
+                .setUrl("https://example.com/education-b")
+                .setTitle("Education B")
+                .setContent("education body b");
+        PageSummary summaryB = new PageSummary()
+                .setSourceUrl("https://example.com/education-b")
+                .setTitle("Education B")
+                .setSummary("education summary b");
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("Jay Chou的教育经历"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[
+                          {"title":"Education A","link":"https://example.com/education-a","snippet":"snippet a"},
+                          {"title":"Education B","link":"https://example.com/education-b","snippet":"snippet b"}
+                        ]}
+                        """)));
+        when(jinaReaderClient.readPages(List.of("https://example.com/education-a", "https://example.com/education-b")))
+                .thenReturn(List.of(pageA, pageB));
+        when(summaryGenerationClient.summarizePage("Jay Chou", pageA))
+                .thenThrow(new ApiCallException("INVALID_RESPONSE: first page failed"));
+        when(summaryGenerationClient.summarizePage("Jay Chou", pageB))
+                .thenReturn(summaryB);
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(summaryB)))
+                .thenReturn("education summary");
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        );
+
+        String summary = service.summarizeSection("Jay Chou", "education", "Jay Chou的教育经历");
+
+        assertThat(summary).isEqualTo("education summary");
+        verify(summaryGenerationClient).summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(summaryB));
+    }
+
+    @Test
     void shouldSearchChinaRelatedSectionWithMultipleBaseQueries() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);

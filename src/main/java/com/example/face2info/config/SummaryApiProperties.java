@@ -22,6 +22,10 @@ public class SummaryApiProperties {
     private int readTimeoutMs = 15000;
     private boolean pageRoutingEnabled = true;
     private int longContentThreshold = 4000;
+    /**
+     * 单页正文送入大模型前的最大字符数，避免超长网页直接打满上下文。
+     */
+    private int pageContentMaxLength = 12000;
     private List<String> structuredPageKeywords = new ArrayList<>(List.of(
             "简历",
             "履历",
