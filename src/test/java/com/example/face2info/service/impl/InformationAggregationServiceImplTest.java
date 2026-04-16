@@ -13,7 +13,11 @@ import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SectionSummaryItem;
+import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.SerpApiResponse;
+import com.example.face2info.entity.internal.TopicExpansionDecision;
+import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.exception.ApiCallException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -184,6 +188,226 @@ class InformationAggregationServiceImplTest {
 
         assertThat(summary).isEqualTo("education summary");
         verify(kimiClient).summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(pageSummary));
+    }
+
+    @Test
+    void shouldSearchChinaRelatedSectionWithMultipleBaseQueries() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        ApiProperties properties = createApiProperties(null);
+
+        PageContent statementPage = new PageContent()
+                .setUrl("https://example.com/china-statement")
+                .setTitle("Statement")
+                .setContent("statement body");
+        PageContent relationPage = new PageContent()
+                .setUrl("https://example.com/china-relation")
+                .setTitle("Relation")
+                .setContent("relation body");
+        PageSummary statementSummary = new PageSummary()
+                .setSourceUrl("https://example.com/china-statement")
+                .setTitle("Statement")
+                .setSummary("statement summary");
+        PageSummary relationSummary = new PageSummary()
+                .setSourceUrl("https://example.com/china-relation")
+                .setTitle("Relation")
+                .setSummary("relation summary");
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("Jay Chou 涉华言论"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Statement","link":"https://example.com/china-statement","snippet":"statement snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("Jay Chou 中国评价"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Relation","link":"https://example.com/china-relation","snippet":"relation snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("Jay Chou 中美关系"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou 中欧关系"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(jinaReaderClient.readPages(List.of("https://example.com/china-statement"))).thenReturn(List.of(statementPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/china-relation"))).thenReturn(List.of(relationPage));
+        when(summaryGenerationClient.summarizePage("Jay Chou", statementPage)).thenReturn(statementSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", relationPage)).thenReturn(relationSummary);
+        when(summaryGenerationClient.expandTopicQueriesFromPageSummaries(
+                "Jay Chou",
+                "china_related_statements",
+                List.of(statementSummary, relationSummary)))
+                .thenReturn(new TopicExpansionDecision()
+                        .setShouldExpand(true)
+                        .setExpansionQueries(List.of(
+                                new TopicExpansionQuery().setTerm("中国市场").setSection("中国评价").setReason("首轮摘要提到其在中国市场的公开表态")
+                        )));
+        when(summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(
+                "Jay Chou",
+                "china_related_statements",
+                List.of(statementSummary, relationSummary)))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem().setSection("涉华言论").setSummary("公开资料提到其曾发表涉华观点。"),
+                        new SectionSummaryItem().setSection("中国评价").setSummary("公开资料提到其评价中国市场。")
+                )));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor, properties
+        );
+
+        String summary = service.summarizeSection("Jay Chou", "china_related_statements", "unused fallback");
+
+        assertThat(summary).contains("一、涉华言论");
+        assertThat(summary).contains("二、中国评价");
+        assertThat(summary).contains("中国市场（首轮摘要提到其在中国市场的公开表态）");
+        verify(googleSearchClient).googleSearch("Jay Chou 涉华言论");
+        verify(googleSearchClient).googleSearch("Jay Chou 中国评价");
+        verify(googleSearchClient).googleSearch("Jay Chou 中美关系");
+        verify(googleSearchClient).googleSearch("Jay Chou 中欧关系");
+    }
+
+    @Test
+    void shouldRunExpandedQueriesAfterTopicExpansionDecision() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setPageRoutingEnabled(false);
+
+        PageContent basePage = new PageContent()
+                .setUrl("https://example.com/political-base")
+                .setTitle("Political Base")
+                .setContent("base body");
+        PageContent expandedPage = new PageContent()
+                .setUrl("https://example.com/political-expanded")
+                .setTitle("Political Expanded")
+                .setContent("expanded body");
+        PageSummary baseSummary = new PageSummary()
+                .setSourceUrl("https://example.com/political-base")
+                .setTitle("Political Base")
+                .setSummary("base summary");
+        PageSummary expandedSummary = new PageSummary()
+                .setSourceUrl("https://example.com/political-expanded")
+                .setTitle("Political Expanded")
+                .setSummary("expanded summary");
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("Jay Chou 政治倾向"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Political Base","link":"https://example.com/political-base","snippet":"base snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("Jay Chou 政党"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou 政治理念"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou 政策立场"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou 公开演讲"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Political Expanded","link":"https://example.com/political-expanded","snippet":"expanded snippet"}]}
+                        """)));
+        when(jinaReaderClient.readPages(List.of("https://example.com/political-base"))).thenReturn(List.of(basePage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/political-expanded"))).thenReturn(List.of(expandedPage));
+        when(summaryGenerationClient.summarizePage("Jay Chou", basePage)).thenReturn(baseSummary);
+        when(summaryGenerationClient.summarizePage("Jay Chou", expandedPage)).thenReturn(expandedSummary);
+        when(deepSeekClient.expandTopicQueriesFromPageSummaries(
+                "Jay Chou",
+                "political_view",
+                List.of(baseSummary)))
+                .thenReturn(new TopicExpansionDecision()
+                        .setShouldExpand(true)
+                        .setExpansionQueries(List.of(
+                                new TopicExpansionQuery().setTerm("公开演讲").setSection("政治倾向").setReason("首轮资料提到公开演讲")
+                        )));
+        when(deepSeekClient.summarizeSectionedSectionFromPageSummaries(
+                eq("Jay Chou"),
+                eq("political_view"),
+                anyList()))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem().setSection("政治倾向").setSummary("公开资料显示其政治表态较谨慎。"),
+                        new SectionSummaryItem().setSection("政治理念").setSummary("公开资料未见系统政治理念表述。")
+                )));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, deepSeekClient, executor, properties
+        );
+
+        String summary = service.summarizeSection("Jay Chou", "political_view", "unused fallback");
+
+        assertThat(summary).contains("一、政治倾向");
+        assertThat(summary).contains("公开演讲（首轮资料提到公开演讲）");
+        verify(deepSeekClient).expandTopicQueriesFromPageSummaries("Jay Chou", "political_view", List.of(baseSummary));
+        verify(googleSearchClient).googleSearch("Jay Chou 公开演讲");
+        verify(summaryGenerationClient).summarizePage("Jay Chou", expandedPage);
+    }
+
+    @Test
+    void shouldRenderFamilyMemberSituationWithFixedSectionTitles() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("family_member_situation", List.of("%s 家庭成员"));
+
+        PageContent familyPage = new PageContent()
+                .setUrl("https://example.com/family-member")
+                .setTitle("Family Member")
+                .setContent("family member body");
+        PageSummary familySummary = new PageSummary()
+                .setSourceUrl("https://example.com/family-member")
+                .setTitle("Family Member")
+                .setSummary("family member summary");
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("Jay Chou 家庭成员"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Family Member","link":"https://example.com/family-member","snippet":"family member snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("Jay Chou 子女"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(jinaReaderClient.readPages(List.of("https://example.com/family-member"))).thenReturn(List.of(familyPage));
+        when(summaryGenerationClient.summarizePage("Jay Chou", familyPage)).thenReturn(familySummary);
+        when(summaryGenerationClient.expandTopicQueriesFromPageSummaries(
+                "Jay Chou",
+                "family_member_situation",
+                List.of(familySummary)))
+                .thenReturn(new TopicExpansionDecision()
+                        .setShouldExpand(true)
+                        .setExpansionQueries(List.of(
+                                new TopicExpansionQuery().setTerm("子女").setSection("家庭成员").setReason("首轮摘要提到其配偶与子女")
+                        )));
+        when(summaryGenerationClient.summarizeSectionedSectionFromPageSummaries("Jay Chou", "family_member_situation", List.of(familySummary)))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem().setSection("家庭成员").setSummary("配偶与子女信息。"),
+                        new SectionSummaryItem().setSection("亲属信息").setSummary("父母与兄弟姐妹公开资料有限。"),
+                        new SectionSummaryItem().setSection("经商与投资").setSummary("暂无明确在华投资证据。"),
+                        new SectionSummaryItem().setSection("争议与纠纷").setSummary("未发现公开商业纠纷。")
+                )));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor, properties
+        );
+
+        String summary = service.summarizeSection("Jay Chou", "family_member_situation", "unused fallback");
+
+        assertThat(summary).isEqualTo("""
+                一、家庭成员
+                配偶与子女信息。
+                扩展检索依据：子女（首轮摘要提到其配偶与子女）
+
+                二、亲属信息
+                父母与兄弟姐妹公开资料有限。
+
+                三、经商与投资
+                暂无明确在华投资证据。
+
+                四、争议与纠纷
+                未发现公开商业纠纷。""");
     }
 
     @Test
@@ -938,6 +1162,47 @@ class InformationAggregationServiceImplTest {
         if (maxPageReads != null) {
             properties.getApi().getJina().setMaxPageReads(maxPageReads);
         }
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("china_related_statements", List.of(
+                "%s 涉华言论",
+                "%s 中国评价",
+                "%s 中美关系",
+                "%s 中欧关系"
+        ));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("political_view", List.of(
+                "%s 政治倾向",
+                "%s 政党",
+                "%s 政治理念",
+                "%s 政策立场"
+        ));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("contact_information", List.of(
+                "%s 公开通讯",
+                "%s 办公电话",
+                "%s 官方邮箱",
+                "%s 认证社交账号",
+                "%s 联系方式"
+        ));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("family_member_situation", List.of(
+                "%s 家庭成员",
+                "%s 亲属",
+                "%s 经商",
+                "%s 在华投资",
+                "%s 商业纠纷"
+        ));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("misconduct", List.of(
+                "%s 违法记录",
+                "%s 行政处罚",
+                "%s 负面事件",
+                "%s 失信行为"
+        ));
+        properties.getApi().getQueryRewrite().setExpandEnabledTopics(List.of(
+                "china_related_statements",
+                "political_view",
+                "contact_information",
+                "family_member_situation",
+                "misconduct"
+        ));
+        properties.getApi().getQueryRewrite().setExpandMaxQueryCount(4);
+        properties.getApi().getQueryRewrite().setExpandMaxTermLength(16);
         return properties;
     }
 

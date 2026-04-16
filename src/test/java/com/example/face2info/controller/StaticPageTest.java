@@ -98,6 +98,16 @@ class StaticPageTest {
     }
 
     @Test
+    void shouldPreserveStructuredProfileSectionLineBreaksOnResultPage() throws Exception {
+        mockMvc.perform(get("/result.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(".profile-section-body")))
+                .andExpect(content().string(containsString("white-space: pre-wrap")))
+                .andExpect(content().string(containsString("renderProfileSection(")))
+                .andExpect(content().string(containsString("family_member_situation_summary")));
+    }
+
+    @Test
     void shouldRenderResultPageImageAndNewsRenderingLogic() throws Exception {
         mockMvc.perform(get("/result.html"))
                 .andExpect(status().isOk())

@@ -15,7 +15,11 @@ import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SectionSummaryItem;
+import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.SerpApiResponse;
+import com.example.face2info.entity.internal.TopicExpansionDecision;
+import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.entity.internal.TopicQueryDecision;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.SocialAccount;
@@ -41,6 +45,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -63,6 +68,40 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String CONTACT_INFORMATION_SECTION = "contact_information";
     private static final String FAMILY_MEMBER_SITUATION_SECTION = "family_member_situation";
     private static final String MISCONDUCT_SECTION = "misconduct";
+    private static final String INFERENCE_REASON_PREFIX = "扩展检索依据：";
+    private static final Map<String, Map<String, String>> DERIVED_SECTION_TITLE_MAPS = Map.of(
+            CHINA_RELATED_STATEMENTS_SECTION, linkedSectionTitles(
+                    "涉华言论", "一、涉华言论",
+                    "中国评价", "二、中国评价",
+                    "国际关系", "三、国际关系",
+                    "相关争议", "四、相关争议"
+            ),
+            POLITICAL_VIEW_SECTION, linkedSectionTitles(
+                    "政治倾向", "一、政治倾向",
+                    "党派与组织", "二、党派与组织",
+                    "政治理念", "三、政治理念",
+                    "政策立场", "四、政策立场"
+            ),
+            CONTACT_INFORMATION_SECTION, linkedSectionTitles(
+                    "公开通讯", "一、公开通讯",
+                    "办公电话", "二、办公电话",
+                    "官方邮箱", "三、官方邮箱",
+                    "认证社交账号", "四、认证社交账号",
+                    "其他联系方式", "五、其他联系方式"
+            ),
+            FAMILY_MEMBER_SITUATION_SECTION, linkedSectionTitles(
+                    "家庭成员", "一、家庭成员",
+                    "亲属信息", "二、亲属信息",
+                    "经商与投资", "三、经商与投资",
+                    "争议与纠纷", "四、争议与纠纷"
+            ),
+            MISCONDUCT_SECTION, linkedSectionTitles(
+                    "违法记录", "一、违法记录",
+                    "行政处罚", "二、行政处罚",
+                    "负面事件", "三、负面事件",
+                    "失信信息", "四、失信信息"
+            )
+    );
     private static final Set<String> VIDEO_PLATFORM_HOSTS = Set.of(
             "youtube.com",
             "youtu.be",
@@ -373,42 +412,17 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     String summarizeSection(String resolvedName, String sectionType, String query) {
         try {
-            TopicQueryDecision decision = derivedTopicQueryService.resolveQuery(new DerivedTopicRequest()
-                    .setResolvedName(resolvedName)
-                    .setTopicType(DerivedTopicType.fromSectionType(sectionType))
-                    .setRawQuery(query));
-            String finalQuery = decision == null || !StringUtils.hasText(decision.getFinalQuery())
-                    ? query
-                    : decision.getFinalQuery();
-            SerpApiResponse searchResponse = googleSearchClient.googleSearch(finalQuery);
-            if (searchResponse == null || searchResponse.getRoot() == null) {
+            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, sectionType, query);
+            if (bundle.pageSummaries().isEmpty()) {
                 return null;
             }
-            List<WebEvidence> evidences = extractSearchOrganicWebEvidence(searchResponse.getRoot());
-            List<String> urls = selectTopUrls(evidences);
-            if (urls.isEmpty()) {
-                return null;
+            if (isDerivedSectionedTopic(sectionType)) {
+                String sectionedSummary = summarizeSectionedTopic(resolvedName, sectionType, bundle.pageSummaries(), bundle.expansionQueries());
+                if (StringUtils.hasText(sectionedSummary)) {
+                    return sectionedSummary;
+                }
             }
-
-            List<PageContent> pages = List.of();
-            try {
-                pages = jinaReaderClient.readPages(urls);
-            } catch (RuntimeException ex) {
-                log.warn("section jina read failed resolvedName={} sectionType={} urlCount={} error={}",
-                        resolvedName, sectionType, urls.size(), ex.getMessage(), ex);
-            }
-            if (pages == null || pages.isEmpty()) {
-                pages = buildFallbackPages(evidences, urls);
-            }
-            if (pages.isEmpty()) {
-                return null;
-            }
-
-            List<PageSummary> pageSummaries = collectPageSummaries(resolvedName, pages);
-            if (pageSummaries.isEmpty()) {
-                return null;
-            }
-            return summarizeSectionWithFallback(resolvedName, sectionType, pageSummaries);
+            return summarizeSectionWithFallback(resolvedName, sectionType, bundle.pageSummaries());
         } catch (RuntimeException ex) {
             log.warn("section summary failed resolvedName={} sectionType={} query={} error={}",
                     resolvedName, sectionType, query, ex.getMessage(), ex);
@@ -617,6 +631,306 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
         }
         return deduplicated;
+    }
+
+    // 派生主题统一走“两阶段搜索”：先跑基础拆分 query，再根据首轮摘要做模型扩展。
+    private SectionSearchBundle collectSectionSearchBundle(String resolvedName, String sectionType, String fallbackQuery) {
+        List<String> baseQueries = buildBaseQueries(resolvedName, sectionType);
+        if (baseQueries.isEmpty() && StringUtils.hasText(fallbackQuery)) {
+            baseQueries = List.of(fallbackQuery);
+        }
+        List<PageSummary> firstRound = collectPageSummariesForQueries(resolvedName, sectionType, baseQueries);
+        List<TopicExpansionQuery> expansionQueries = sanitizeExpansionQueries(
+                expandTopicQueriesWithFallback(resolvedName, sectionType, firstRound)
+        );
+        List<String> secondRoundQueries = expansionQueries.stream()
+                .map(TopicExpansionQuery::getTerm)
+                .filter(StringUtils::hasText)
+                .map(term -> resolvedName + " " + term)
+                .toList();
+        List<PageSummary> mergedPageSummaries = mergePageSummaries(
+                firstRound,
+                collectPageSummariesForQueries(resolvedName, sectionType, secondRoundQueries)
+        );
+        return new SectionSearchBundle(mergedPageSummaries, expansionQueries);
+    }
+
+    private List<String> buildBaseQueries(String resolvedName, String sectionType) {
+        if (!StringUtils.hasText(resolvedName) || !StringUtils.hasText(sectionType)) {
+            return List.of();
+        }
+        List<String> templates = properties.getApi().getQueryRewrite().getBaseQueryTemplates().get(sectionType);
+        if (templates == null || templates.isEmpty()) {
+            return List.of();
+        }
+        return templates.stream()
+                .map(template -> template == null ? null : template.formatted(resolvedName))
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private List<PageSummary> collectPageSummariesForQueries(String resolvedName, String sectionType, List<String> queries) {
+        if (queries == null || queries.isEmpty()) {
+            return List.of();
+        }
+        List<PageSummary> collected = new ArrayList<>();
+        for (String query : queries) {
+            collected.addAll(collectPageSummariesForSingleQuery(resolvedName, sectionType, query));
+        }
+        return collected;
+    }
+
+    private List<PageSummary> collectPageSummariesForSingleQuery(String resolvedName, String sectionType, String query) {
+        if (!StringUtils.hasText(query)) {
+            return List.of();
+        }
+        try {
+            String finalQuery = resolveSectionQuery(resolvedName, sectionType, query);
+            SerpApiResponse searchResponse = googleSearchClient.googleSearch(finalQuery);
+            if (searchResponse == null || searchResponse.getRoot() == null) {
+                return List.of();
+            }
+            List<WebEvidence> evidences = extractSearchOrganicWebEvidence(searchResponse.getRoot());
+            List<String> urls = selectTopUrls(evidences);
+            if (urls.isEmpty()) {
+                return List.of();
+            }
+            List<PageContent> pages = List.of();
+            try {
+                pages = jinaReaderClient.readPages(urls);
+            } catch (RuntimeException ex) {
+                log.warn("section jina read failed resolvedName={} sectionType={} query={} urlCount={} error={}",
+                        resolvedName, sectionType, finalQuery, urls.size(), ex.getMessage(), ex);
+            }
+            if (pages == null || pages.isEmpty()) {
+                pages = buildFallbackPages(evidences, urls);
+            }
+            if (pages == null || pages.isEmpty()) {
+                return List.of();
+            }
+            return collectPageSummaries(resolvedName, pages);
+        } catch (RuntimeException ex) {
+            log.warn("section query failed resolvedName={} sectionType={} query={} error={}",
+                    resolvedName, sectionType, query, ex.getMessage(), ex);
+            return List.of();
+        }
+    }
+
+    private String resolveSectionQuery(String resolvedName, String sectionType, String query) {
+        TopicQueryDecision decision = derivedTopicQueryService.resolveQuery(new DerivedTopicRequest()
+                .setResolvedName(resolvedName)
+                .setTopicType(DerivedTopicType.fromSectionType(sectionType))
+                .setRawQuery(query));
+        return decision == null || !StringUtils.hasText(decision.getFinalQuery()) ? query : decision.getFinalQuery();
+    }
+
+    // 扩展词推断只负责给出“继续搜什么”和“为什么搜”，不直接改写最终摘要。
+    private TopicExpansionDecision expandTopicQueriesWithFallback(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        if (!StringUtils.hasText(resolvedName)
+                || !StringUtils.hasText(sectionType)
+                || pageSummaries == null
+                || pageSummaries.isEmpty()
+                || !properties.getApi().getQueryRewrite().getExpandEnabledTopics().contains(sectionType)) {
+            return new TopicExpansionDecision().setShouldExpand(false).setExpansionQueries(List.of());
+        }
+        try {
+            if (deepSeekSummaryGenerationClient != null) {
+                return deepSeekSummaryGenerationClient.expandTopicQueriesFromPageSummaries(resolvedName, sectionType, pageSummaries);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("deepseek topic expansion failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
+        }
+        try {
+            return summaryGenerationClient.expandTopicQueriesFromPageSummaries(resolvedName, sectionType, pageSummaries);
+        } catch (RuntimeException ex) {
+            log.warn("topic expansion failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
+            return new TopicExpansionDecision().setShouldExpand(false).setExpansionQueries(List.of());
+        }
+    }
+
+    private List<TopicExpansionQuery> sanitizeExpansionQueries(TopicExpansionDecision decision) {
+        if (decision == null || !Boolean.TRUE.equals(decision.getShouldExpand()) || decision.getExpansionQueries() == null) {
+            return List.of();
+        }
+        int maxQueryCount = properties.getApi().getQueryRewrite().getExpandMaxQueryCount();
+        int maxTermLength = properties.getApi().getQueryRewrite().getExpandMaxTermLength();
+        Map<String, TopicExpansionQuery> deduplicated = new LinkedHashMap<>();
+        for (TopicExpansionQuery query : decision.getExpansionQueries()) {
+            if (query == null || !StringUtils.hasText(query.getTerm())) {
+                continue;
+            }
+            String normalizedTerm = query.getTerm().trim();
+            if (normalizedTerm.length() > maxTermLength) {
+                continue;
+            }
+            deduplicated.putIfAbsent(normalizedTerm, new TopicExpansionQuery()
+                    .setTerm(normalizedTerm)
+                    .setSection(cleanText(query.getSection()))
+                    .setReason(cleanText(query.getReason())));
+            if (deduplicated.size() >= maxQueryCount) {
+                break;
+            }
+        }
+        return List.copyOf(deduplicated.values());
+    }
+
+    private List<PageSummary> mergePageSummaries(List<PageSummary> primary, List<PageSummary> secondary) {
+        Map<String, PageSummary> deduplicated = new LinkedHashMap<>();
+        if (primary != null) {
+            primary.forEach(summary -> putPageSummary(deduplicated, summary));
+        }
+        if (secondary != null) {
+            secondary.forEach(summary -> putPageSummary(deduplicated, summary));
+        }
+        return List.copyOf(deduplicated.values());
+    }
+
+    private void putPageSummary(Map<String, PageSummary> target, PageSummary summary) {
+        if (target == null || summary == null) {
+            return;
+        }
+        String key = StringUtils.hasText(summary.getSourceUrl())
+                ? summary.getSourceUrl()
+                : ((summary.getTitle() == null ? "" : summary.getTitle()) + "|" + (summary.getSummary() == null ? "" : summary.getSummary()));
+        target.putIfAbsent(key, summary);
+    }
+
+    private boolean isDerivedSectionedTopic(String sectionType) {
+        return DERIVED_SECTION_TITLE_MAPS.containsKey(sectionType);
+    }
+
+    private String summarizeSectionedTopic(String resolvedName,
+                                           String sectionType,
+                                           List<PageSummary> pageSummaries,
+                                           List<TopicExpansionQuery> expansionQueries) {
+        try {
+            if (deepSeekSummaryGenerationClient != null) {
+                String deepSeekSummary = formatSectionedTopicSummary(
+                        sectionType,
+                        deepSeekSummaryGenerationClient.summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries),
+                        expansionQueries
+                );
+                if (StringUtils.hasText(deepSeekSummary)) {
+                    return deepSeekSummary;
+                }
+            }
+        } catch (RuntimeException ex) {
+            log.warn("deepseek sectioned summary failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
+        }
+        try {
+            String kimiSummary = formatSectionedTopicSummary(
+                    sectionType,
+                    summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries),
+                    expansionQueries
+            );
+            if (StringUtils.hasText(kimiSummary)) {
+                return kimiSummary;
+            }
+        } catch (RuntimeException ex) {
+            log.warn("sectioned summary failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
+        }
+        return null;
+    }
+
+    // 所有基础派生主题都按固定分段输出，并把扩展检索理由挂到对应分段下，避免理由脱离上下文。
+    private String formatSectionedTopicSummary(String sectionType,
+                                               SectionedSummary sectionedSummary,
+                                               List<TopicExpansionQuery> expansionQueries) {
+        Map<String, String> sectionTitles = DERIVED_SECTION_TITLE_MAPS.get(sectionType);
+        if (sectionTitles == null || sectionTitles.isEmpty()) {
+            return null;
+        }
+        Map<String, List<TopicExpansionQuery>> reasonsBySection = groupExpansionQueriesBySection(sectionTitles, expansionQueries);
+        Map<String, SectionSummaryItem> summariesBySection = new LinkedHashMap<>();
+        if (sectionedSummary != null && sectionedSummary.getSections() != null) {
+            for (SectionSummaryItem item : sectionedSummary.getSections()) {
+                if (item == null || !StringUtils.hasText(item.getSection()) || !StringUtils.hasText(item.getSummary())) {
+                    continue;
+                }
+                summariesBySection.putIfAbsent(item.getSection().trim(), item);
+            }
+        }
+        String content = sectionTitles.keySet().stream()
+                .map(section -> formatSectionedTopicItem(
+                        sectionTitles.get(section),
+                        summariesBySection.get(section),
+                        reasonsBySection.getOrDefault(section, List.of())
+                ))
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining("\n\n"));
+        return StringUtils.hasText(content) ? content.trim() : null;
+    }
+
+    private Map<String, List<TopicExpansionQuery>> groupExpansionQueriesBySection(Map<String, String> sectionTitles,
+                                                                                  List<TopicExpansionQuery> expansionQueries) {
+        Map<String, List<TopicExpansionQuery>> grouped = new LinkedHashMap<>();
+        if (sectionTitles == null || sectionTitles.isEmpty() || expansionQueries == null || expansionQueries.isEmpty()) {
+            return grouped;
+        }
+        String defaultSection = sectionTitles.keySet().iterator().next();
+        for (TopicExpansionQuery query : expansionQueries) {
+            if (query == null || !StringUtils.hasText(query.getTerm())) {
+                continue;
+            }
+            String section = StringUtils.hasText(query.getSection()) && sectionTitles.containsKey(query.getSection().trim())
+                    ? query.getSection().trim()
+                    : defaultSection;
+            grouped.computeIfAbsent(section, key -> new ArrayList<>()).add(query);
+        }
+        return grouped;
+    }
+
+    private String formatSectionedTopicItem(String title,
+                                            SectionSummaryItem item,
+                                            List<TopicExpansionQuery> expansionQueries) {
+        if (!StringUtils.hasText(title)) {
+            return null;
+        }
+        List<String> lines = new ArrayList<>();
+        if (item != null && StringUtils.hasText(item.getSummary())) {
+            lines.add(item.getSummary().trim());
+        }
+        String inferenceLine = formatInferenceReasonLine(expansionQueries);
+        if (StringUtils.hasText(inferenceLine)) {
+            lines.add(inferenceLine);
+        }
+        if (lines.isEmpty()) {
+            return null;
+        }
+        return title + "\n" + String.join("\n", lines);
+    }
+
+    private String formatInferenceReasonLine(List<TopicExpansionQuery> expansionQueries) {
+        if (expansionQueries == null || expansionQueries.isEmpty()) {
+            return null;
+        }
+        String content = expansionQueries.stream()
+                .filter(query -> query != null && StringUtils.hasText(query.getTerm()))
+                .map(query -> {
+                    String term = query.getTerm().trim();
+                    String reason = StringUtils.hasText(query.getReason()) ? query.getReason().trim() : "首轮资料存在相关线索";
+                    return term + "（" + reason + "）";
+                })
+                .distinct()
+                .collect(Collectors.joining("；"));
+        return StringUtils.hasText(content) ? INFERENCE_REASON_PREFIX + content : null;
+    }
+
+    private record SectionSearchBundle(List<PageSummary> pageSummaries, List<TopicExpansionQuery> expansionQueries) {
+    }
+
+    private static Map<String, String> linkedSectionTitles(String... values) {
+        Map<String, String> titles = new LinkedHashMap<>();
+        for (int index = 0; values != null && index + 1 < values.length; index += 2) {
+            titles.put(values[index], values[index + 1]);
+        }
+        return java.util.Collections.unmodifiableMap(titles);
     }
 
     private int searchEvidencePriority(WebEvidence evidence) {
