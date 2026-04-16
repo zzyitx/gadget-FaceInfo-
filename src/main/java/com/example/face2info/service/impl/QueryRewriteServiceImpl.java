@@ -154,6 +154,10 @@ public class QueryRewriteServiceImpl implements QueryRewriteService {
     }
 
     private String resolveFallbackQuery(DerivedTopicRequest request, SensitiveQueryAnalysis analysis) {
+        String independentBaseQuery = resolveIndependentBaseQuery(request);
+        if (StringUtils.hasText(independentBaseQuery)) {
+            return independentBaseQuery;
+        }
         if (request != null && request.getTopicType() != null) {
             List<String> templates = properties.getApi().getQueryRewrite().getFallbackTemplates()
                     .get(request.getTopicType().getKey());
@@ -172,6 +176,33 @@ public class QueryRewriteServiceImpl implements QueryRewriteService {
             }
         }
         return analysis.getNormalizedQuery();
+    }
+
+    private String resolveIndependentBaseQuery(DerivedTopicRequest request) {
+        if (request == null || request.getTopicType() == null) {
+            return null;
+        }
+        String normalizedQuery = normalizeQuery(request.getRawQuery());
+        if (!StringUtils.hasText(normalizedQuery) || !StringUtils.hasText(request.getResolvedName())) {
+            return null;
+        }
+        List<String> templates = properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .get(request.getTopicType().getKey());
+        if (templates == null || templates.isEmpty()) {
+            return null;
+        }
+        for (String template : templates) {
+            if (!StringUtils.hasText(template)) {
+                continue;
+            }
+            // 关键逻辑：如果当前查询本来就是拆分后的基础检索词，兜底时必须保留单条 query，
+            // 否则多关键词主题会被重新压回同一个大串，导致召回范围再次收缩。
+            String baseQuery = normalizeQuery(String.format(template, request.getResolvedName().trim()));
+            if (normalizedQuery.equals(baseQuery)) {
+                return normalizedQuery;
+            }
+        }
+        return null;
     }
 
     private String normalizeQuery(String query) {

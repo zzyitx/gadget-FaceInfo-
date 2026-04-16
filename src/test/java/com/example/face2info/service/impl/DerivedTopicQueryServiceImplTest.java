@@ -120,6 +120,28 @@ class DerivedTopicQueryServiceImplTest {
     }
 
     @Test
+    void shouldKeepBaseQueryIndependentWhenSensitiveTopicRewriteFallbackOccurs() {
+        QueryRewriteLlmClient llmClient = mock(QueryRewriteLlmClient.class);
+        ApiProperties properties = createProperties();
+        DerivedTopicQueryServiceImpl service = new DerivedTopicQueryServiceImpl(
+                new TopicRoutingServiceImpl(properties),
+                new QueryRewriteServiceImpl(llmClient, properties)
+        );
+        when(llmClient.generateCandidates(eq(QueryRewriteProvider.DEEPSEEK), any(SensitiveQueryAnalysis.class)))
+                .thenThrow(new RuntimeException("deepseek unavailable"));
+        when(llmClient.generateCandidates(eq(QueryRewriteProvider.KIMI), any(SensitiveQueryAnalysis.class)))
+                .thenThrow(new RuntimeException("kimi unavailable"));
+
+        TopicQueryDecision decision = service.resolveQuery(new DerivedTopicRequest()
+                .setResolvedName("黄仁勋")
+                .setTopicType(DerivedTopicType.FAMILY_MEMBER_SITUATION)
+                .setRawQuery("黄仁勋 亲属"));
+
+        assertThat(decision.getFinalQuery()).isEqualTo("黄仁勋 亲属");
+        assertThat(decision.getUsedFallback()).isTrue();
+    }
+
+    @Test
     void shouldRewriteChinaRelatedStatementsTopicWithSensitiveTerms() {
         QueryRewriteLlmClient llmClient = mock(QueryRewriteLlmClient.class);
         ApiProperties properties = createProperties();
