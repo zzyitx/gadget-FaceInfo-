@@ -314,6 +314,85 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldFallbackToDefaultFamilyMemberBaseQueriesWhenConfigMissing() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().remove("family_member_situation");
+
+        PageContent familyPage = new PageContent()
+                .setUrl("https://example.com/family")
+                .setTitle("Family")
+                .setContent("family body");
+        PageContent investmentPage = new PageContent()
+                .setUrl("https://example.com/investment")
+                .setTitle("Investment")
+                .setContent("investment body");
+        PageSummary familySummary = new PageSummary()
+                .setSourceUrl("https://example.com/family")
+                .setTitle("Family")
+                .setSummary("family summary");
+        PageSummary investmentSummary = new PageSummary()
+                .setSourceUrl("https://example.com/investment")
+                .setTitle("Investment")
+                .setSummary("investment summary");
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("黄仁勋（Jensen Huang） 家庭成员"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Family","link":"https://example.com/family","snippet":"family snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("黄仁勋（Jensen Huang） 亲属"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("黄仁勋（Jensen Huang） 经商"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("黄仁勋（Jensen Huang） 在华投资"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Investment","link":"https://example.com/investment","snippet":"investment snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("黄仁勋（Jensen Huang） 商业纠纷"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(jinaReaderClient.readPages(List.of("https://example.com/family"))).thenReturn(List.of(familyPage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/investment"))).thenReturn(List.of(investmentPage));
+        when(summaryGenerationClient.summarizePage("黄仁勋（Jensen Huang）", familyPage)).thenReturn(familySummary);
+        when(summaryGenerationClient.summarizePage("黄仁勋（Jensen Huang）", investmentPage)).thenReturn(investmentSummary);
+        when(summaryGenerationClient.expandTopicQueriesFromPageSummaries(
+                "黄仁勋（Jensen Huang）",
+                "family_member_situation",
+                List.of(familySummary, investmentSummary)))
+                .thenReturn(new TopicExpansionDecision().setShouldExpand(false).setExpansionQueries(List.of()));
+        when(summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(
+                "黄仁勋（Jensen Huang）",
+                "family_member_situation",
+                List.of(familySummary, investmentSummary)))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem().setSection("家庭成员").setSummary("存在公开家庭成员资料。"),
+                        new SectionSummaryItem().setSection("经商与投资").setSummary("公开资料提到在华投资相关讨论。")
+                )));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor, properties
+        );
+
+        String summary = service.summarizeSection(
+                "黄仁勋（Jensen Huang）",
+                "family_member_situation",
+                "黄仁勋（Jensen Huang） 家族成员 亲属 经商 在华投资 商业纠纷"
+        );
+
+        assertThat(summary).contains("一、家庭成员");
+        assertThat(summary).contains("三、经商与投资");
+        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 家庭成员");
+        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 亲属");
+        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 经商");
+        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 在华投资");
+        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 商业纠纷");
+    }
+
+    @Test
     void shouldRunExpandedQueriesAfterTopicExpansionDecision() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
@@ -389,6 +468,77 @@ class InformationAggregationServiceImplTest {
         verify(deepSeekClient).expandTopicQueriesFromPageSummaries("Jay Chou", "political_view", List.of(baseSummary));
         verify(googleSearchClient).googleSearch("Jay Chou 公开演讲");
         verify(summaryGenerationClient).summarizePage("Jay Chou", expandedPage);
+    }
+
+    @Test
+    void shouldStripSourceSiteTermsFromExpandedQueryBeforeGoogleSearch() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setPageRoutingEnabled(false);
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("family", List.of("%s的家庭背景"));
+        List<String> expandEnabledTopics = new ArrayList<>(properties.getApi().getQueryRewrite().getExpandEnabledTopics());
+        expandEnabledTopics.add("family");
+        properties.getApi().getQueryRewrite().setExpandEnabledTopics(expandEnabledTopics);
+
+        PageContent basePage = new PageContent()
+                .setUrl("https://example.com/family-base")
+                .setTitle("Family Base")
+                .setContent("family body");
+        PageContent expandedPage = new PageContent()
+                .setUrl("https://example.com/family-background")
+                .setTitle("Family Background")
+                .setContent("background body");
+        PageSummary baseSummary = new PageSummary()
+                .setSourceUrl("https://example.com/family-base")
+                .setTitle("Family Base")
+                .setSummary("base summary");
+        PageSummary expandedSummary = new PageSummary()
+                .setSourceUrl("https://example.com/family-background")
+                .setTitle("Family Background")
+                .setSummary("background summary");
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("Jensen Huang的家庭背景"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Family Base","link":"https://example.com/family-base","snippet":"family snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("Jensen Huang 背景信息"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Family Background","link":"https://example.com/family-background","snippet":"background snippet"}]}
+                        """)));
+        when(jinaReaderClient.readPages(List.of("https://example.com/family-base"))).thenReturn(List.of(basePage));
+        when(jinaReaderClient.readPages(List.of("https://example.com/family-background"))).thenReturn(List.of(expandedPage));
+        when(summaryGenerationClient.summarizePage("Jensen Huang", basePage)).thenReturn(baseSummary);
+        when(summaryGenerationClient.summarizePage("Jensen Huang", expandedPage)).thenReturn(expandedSummary);
+        when(summaryGenerationClient.expandTopicQueriesFromPageSummaries(
+                "Jensen Huang",
+                "family",
+                List.of(baseSummary)))
+                .thenReturn(new TopicExpansionDecision()
+                        .setShouldExpand(true)
+                        .setExpansionQueries(List.of(
+                                new TopicExpansionQuery().setTerm("Wikipedia 背景信息").setSection("家庭背景").setReason("首轮结果来自百科页")
+                        )));
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries(
+                "Jensen Huang",
+                "family",
+                List.of(baseSummary, expandedSummary)))
+                .thenReturn("公开资料提到其成长背景。");
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor, properties
+        );
+
+        String summary = service.summarizeSection("Jensen Huang", "family", "unused fallback");
+
+        assertThat(summary).isEqualTo("公开资料提到其成长背景。");
+        verify(googleSearchClient).googleSearch("Jensen Huang的家庭背景");
+        verify(googleSearchClient).googleSearch("Jensen Huang 背景信息");
+        verify(googleSearchClient, never()).googleSearch("Jensen Huang Wikipedia 背景信息");
     }
 
     @Test

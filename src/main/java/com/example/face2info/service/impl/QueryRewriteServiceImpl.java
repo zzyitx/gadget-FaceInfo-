@@ -186,8 +186,8 @@ public class QueryRewriteServiceImpl implements QueryRewriteService {
         if (!StringUtils.hasText(normalizedQuery) || !StringUtils.hasText(request.getResolvedName())) {
             return null;
         }
-        List<String> templates = properties.getApi().getQueryRewrite().getBaseQueryTemplates()
-                .get(request.getTopicType().getKey());
+        List<String> templates = properties.getApi().getQueryRewrite()
+                .resolveBaseQueryTemplates(request.getTopicType().getKey());
         if (templates == null || templates.isEmpty()) {
             return null;
         }

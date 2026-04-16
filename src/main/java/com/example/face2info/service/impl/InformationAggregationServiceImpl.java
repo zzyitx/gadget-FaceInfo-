@@ -69,6 +69,16 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String FAMILY_MEMBER_SITUATION_SECTION = "family_member_situation";
     private static final String MISCONDUCT_SECTION = "misconduct";
     private static final String INFERENCE_REASON_PREFIX = "扩展检索依据：";
+    private static final List<String> EXPANSION_SOURCE_SITE_TERMS = List.of(
+            "wikipedia.org",
+            "wikipedia",
+            "wikidata.org",
+            "wikidata",
+            "维基百科",
+            "百度百科",
+            "baike.baidu.com",
+            "baidu baike"
+    );
     private static final Map<String, Map<String, String>> DERIVED_SECTION_TITLE_MAPS = Map.of(
             CHINA_RELATED_STATEMENTS_SECTION, linkedSectionTitles(
                     "涉华言论", "一、涉华言论",
@@ -659,7 +669,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (!StringUtils.hasText(resolvedName) || !StringUtils.hasText(sectionType)) {
             return List.of();
         }
-        List<String> templates = properties.getApi().getQueryRewrite().getBaseQueryTemplates().get(sectionType);
+        // 关键逻辑：本地 application.yml 若遗漏拆分模板，仍需回退到内建基础查询词，
+        // 否则派生主题会重新退回单条长 query，直接缩小搜索召回范围。
+        List<String> templates = properties.getApi().getQueryRewrite().resolveBaseQueryTemplates(sectionType);
         if (templates == null || templates.isEmpty()) {
             return List.of();
         }
@@ -763,7 +775,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             if (query == null || !StringUtils.hasText(query.getTerm())) {
                 continue;
             }
-            String normalizedTerm = query.getTerm().trim();
+            String normalizedTerm = sanitizeExpansionTerm(query.getTerm());
+            if (!StringUtils.hasText(normalizedTerm)) {
+                continue;
+            }
             if (normalizedTerm.length() > maxTermLength) {
                 continue;
             }
@@ -776,6 +791,29 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
         }
         return List.copyOf(deduplicated.values());
+    }
+
+    private String sanitizeExpansionTerm(String term) {
+        if (!StringUtils.hasText(term)) {
+            return null;
+        }
+        String sanitized = term.trim().replaceAll("\\s+", " ");
+        for (String sourceSiteTerm : EXPANSION_SOURCE_SITE_TERMS) {
+            sanitized = stripExpansionSourceSiteToken(sanitized, sourceSiteTerm);
+        }
+        sanitized = sanitized
+                .replaceAll("\\s+", " ")
+                .replaceAll("^[,，;；:：|/\\\\-]+", "")
+                .replaceAll("[,，;；:：|/\\\\-]+$", "")
+                .trim();
+        return StringUtils.hasText(sanitized) ? sanitized : null;
+    }
+
+    private String stripExpansionSourceSiteToken(String term, String sourceSiteTerm) {
+        if (!StringUtils.hasText(term) || !StringUtils.hasText(sourceSiteTerm)) {
+            return term;
+        }
+        return term.replaceAll("(?i)(?<![\\p{L}\\p{N}])" + java.util.regex.Pattern.quote(sourceSiteTerm) + "(?![\\p{L}\\p{N}])", " ");
     }
 
     private List<PageSummary> mergePageSummaries(List<PageSummary> primary, List<PageSummary> secondary) {
