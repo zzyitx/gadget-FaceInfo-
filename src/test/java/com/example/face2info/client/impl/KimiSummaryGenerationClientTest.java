@@ -5,6 +5,10 @@ import com.example.face2info.config.KimiApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SectionSummaryItem;
+import com.example.face2info.entity.internal.SectionedSummary;
+import com.example.face2info.entity.internal.TopicExpansionDecision;
+import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.exception.ApiCallException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Disabled;
@@ -24,6 +28,19 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class KimiSummaryGenerationClientTest {
+
+    @Test
+    void shouldParseTopicExpansionDecision() {
+        TopicExpansionDecision decision = new TopicExpansionDecision()
+                .setShouldExpand(true)
+                .setExpansionQueries(List.of(
+                        new TopicExpansionQuery().setTerm("官网邮箱").setSection("contact_information").setReason("资料提到官网联系页")
+                ));
+
+        assertThat(decision.getShouldExpand()).isTrue();
+        assertThat(decision.getExpansionQueries()).hasSize(1);
+        assertThat(decision.getExpansionQueries().get(0).getTerm()).isEqualTo("官网邮箱");
+    }
 
     @Test
     void shouldParseStructuredPageSummaryFromKimiToolCallArguments() {
@@ -348,6 +365,51 @@ class KimiSummaryGenerationClientTest {
         )))
                 .isInstanceOf(ApiCallException.class)
                 .hasMessageContaining("INVALID_RESPONSE");
+    }
+
+    @Test
+    void shouldExpandQueriesFromPageSummaries() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"shouldExpand\\":true,\\"expansionQueries\\":[{\\"term\\":\\"官网邮箱\\",\\"section\\":\\"contact_information\\",\\"reason\\":\\"资料提到官网联系页\\"}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        TopicExpansionDecision decision = client.expandTopicQueriesFromPageSummaries(
+                "黄仁勋",
+                "contact_information",
+                List.of(new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("官网联系页"))
+        );
+
+        assertThat(decision.getShouldExpand()).isTrue();
+        assertThat(decision.getExpansionQueries()).extracting(TopicExpansionQuery::getTerm)
+                .containsExactly("官网邮箱");
+    }
+
+    @Test
+    void shouldSummarizeFamilyMemberSectionedSummary() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"sections\\":[{\\"section\\":\\"家庭成员\\",\\"summary\\":\\"公开资料显示其已婚并育有子女。\\"}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        SectionedSummary summary = client.summarizeSectionedSectionFromPageSummaries(
+                "黄仁勋",
+                "family_member_situation",
+                List.of(new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("已婚并育有子女"))
+        );
+
+        assertThat(summary.getSections()).hasSize(1);
+        assertThat(summary.getSections().get(0).getSection()).isEqualTo("家庭成员");
     }
 
     @Test

@@ -5,6 +5,8 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SectionedSummary;
+import com.example.face2info.entity.internal.TopicExpansionDecision;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -75,6 +77,16 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
     @Override
     public String summarizeSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
         throw new UnsupportedOperationException("noop summary provider does not support section summary generation");
+    }
+
+    @Override
+    public TopicExpansionDecision expandTopicQueriesFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        throw new UnsupportedOperationException("noop summary provider does not support topic expansion generation");
+    }
+
+    @Override
+    public SectionedSummary summarizeSectionedSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        throw new UnsupportedOperationException("noop summary provider does not support sectioned summary generation");
     }
 
     @Override

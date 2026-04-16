@@ -6,6 +6,10 @@ import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SectionSummaryItem;
+import com.example.face2info.entity.internal.SectionedSummary;
+import com.example.face2info.entity.internal.TopicExpansionDecision;
+import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
@@ -38,6 +42,8 @@ public class DeepSeekSummaryGenerationClient {
     private static final String PAGE_SUMMARY_FUNCTION_NAME = "submit_page_summary";
     private static final String PERSON_PROFILE_FUNCTION_NAME = "submit_person_profile";
     private static final String SECTION_SUMMARY_FUNCTION_NAME = "submit_section_summary";
+    private static final String TOPIC_EXPANSION_FUNCTION_NAME = "submit_topic_expansion";
+    private static final String SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME = "submit_sectioned_family_summary";
     private static final String PROFILE_JUDGEMENT_FUNCTION_NAME = "submit_profile_judgement";
     private static final Pattern XML_INVOKE_PATTERN = Pattern.compile(
             "<invoke\\s+name\\s*=\\s*\"([^\"]+)\"\\s*>(.*?)</invoke>",
@@ -98,6 +104,24 @@ public class DeepSeekSummaryGenerationClient {
         return RetryUtils.execute("DeepSeek 主题摘要", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
             JsonNode body = callDeepSeek(deepseek, buildSectionRequest(deepseek, resolvedName, sectionType, pageSummaries));
             return parseSectionSummary(body);
+        });
+    }
+
+    public TopicExpansionDecision expandTopicQueriesFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        return RetryUtils.execute("DeepSeek 主题扩展推断", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildTopicExpansionRequest(deepseek, resolvedName, sectionType, pageSummaries));
+            return parseTopicExpansionDecision(body);
+        });
+    }
+
+    public SectionedSummary summarizeSectionedSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        return RetryUtils.execute("DeepSeek 主题分段摘要", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildSectionedTopicRequest(deepseek, resolvedName, sectionType, pageSummaries));
+            return parseSectionedSummary(body);
         });
     }
 
@@ -239,6 +263,92 @@ public class DeepSeekSummaryGenerationClient {
                         )
                 )),
                 "tool_choice", Map.of("type", "function", "function", Map.of("name", SECTION_SUMMARY_FUNCTION_NAME))
+        );
+    }
+
+    // 这里强制模型返回 term/section/reason 三元组，服务层才能把扩展理由精确挂到对应小标题下。
+    private Map<String, Object> buildTopicExpansionRequest(DeepSeekApiProperties deepseek,
+                                                           String resolvedName,
+                                                           String sectionType,
+                                                           List<PageSummary> pageSummaries) {
+        return Map.of(
+                "model", deepseek.getModel(),
+                "stream", false,
+                "messages", List.of(
+                        Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
+                        Map.of("role", "user", "content", buildTopicExpansionPrompt(resolvedName, sectionType, pageSummaries))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", TOPIC_EXPANSION_FUNCTION_NAME,
+                                "description", "提交主题扩展搜索建议",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "shouldExpand", Map.of("type", "boolean"),
+                                                "expansionQueries", Map.of(
+                                                        "type", "array",
+                                                        "items", Map.of(
+                                                                "type", "object",
+                                                                "properties", Map.of(
+                                                                        "term", Map.of("type", "string"),
+                                                                        "section", Map.of("type", "string"),
+                                                                        "reason", Map.of("type", "string")
+                                                                ),
+                                                                "required", List.of("term"),
+                                                                "additionalProperties", false
+                                                        )
+                                                )
+                                        ),
+                                        "required", List.of("shouldExpand", "expansionQueries"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", TOPIC_EXPANSION_FUNCTION_NAME))
+        );
+    }
+
+    // 分段摘要只允许落到预设 section 名称，避免不同模型输出自由标题导致前端展示漂移。
+    private Map<String, Object> buildSectionedTopicRequest(DeepSeekApiProperties deepseek,
+                                                           String resolvedName,
+                                                           String sectionType,
+                                                           List<PageSummary> pageSummaries) {
+        return Map.of(
+                "model", deepseek.getModel(),
+                "stream", false,
+                "messages", List.of(
+                        Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
+                        Map.of("role", "user", "content", buildSectionedTopicPrompt(resolvedName, sectionType, pageSummaries))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME,
+                                "description", "提交主题分段摘要",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "sections", Map.of(
+                                                        "type", "array",
+                                                        "items", Map.of(
+                                                                "type", "object",
+                                                                "properties", Map.of(
+                                                                        "section", Map.of("type", "string"),
+                                                                        "summary", Map.of("type", "string")
+                                                                ),
+                                                                "required", List.of("section", "summary"),
+                                                                "additionalProperties", false
+                                                        )
+                                                )
+                                        ),
+                                        "required", List.of("sections"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME))
         );
     }
 
@@ -466,6 +576,28 @@ public class DeepSeekSummaryGenerationClient {
         }
     }
 
+    private TopicExpansionDecision parseTopicExpansionDecision(JsonNode body) {
+        String content = extractStructuredPayload(body, TOPIC_EXPANSION_FUNCTION_NAME);
+        try {
+            JsonNode json = readStructuredJson(content, "DeepSeek 主题扩展推断");
+            return new TopicExpansionDecision()
+                    .setShouldExpand(json.path("shouldExpand").asBoolean(false))
+                    .setExpansionQueries(readExpansionQueries(json.path("expansionQueries")));
+        } catch (JsonProcessingException ex) {
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 主题扩展推断不是合法 JSON", ex);
+        }
+    }
+
+    private SectionedSummary parseSectionedSummary(JsonNode body) {
+        String content = extractStructuredPayload(body, SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME);
+        try {
+            JsonNode json = readStructuredJson(content, "DeepSeek 家族成员分段摘要");
+            return new SectionedSummary().setSections(readSectionSummaryItems(json.path("sections")));
+        } catch (JsonProcessingException ex) {
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 家族成员分段摘要不是合法 JSON", ex);
+        }
+    }
+
     private ResolvedPersonProfile toProfile(JsonNode json,
                                             String fallbackName,
                                             List<PageSummary> pageSummaries,
@@ -653,6 +785,33 @@ public class DeepSeekSummaryGenerationClient {
         return List.copyOf(values);
     }
 
+    private List<TopicExpansionQuery> readExpansionQueries(JsonNode arrayNode) {
+        if (arrayNode == null || !arrayNode.isArray()) {
+            return List.of();
+        }
+        List<TopicExpansionQuery> queries = new java.util.ArrayList<>();
+        for (JsonNode item : arrayNode) {
+            queries.add(new TopicExpansionQuery()
+                    .setTerm(trimToNull(item.path("term").asText(null)))
+                    .setSection(trimToNull(item.path("section").asText(null)))
+                    .setReason(trimToNull(item.path("reason").asText(null))));
+        }
+        return List.copyOf(queries);
+    }
+
+    private List<SectionSummaryItem> readSectionSummaryItems(JsonNode arrayNode) {
+        if (arrayNode == null || !arrayNode.isArray()) {
+            return List.of();
+        }
+        List<SectionSummaryItem> items = new java.util.ArrayList<>();
+        for (JsonNode item : arrayNode) {
+            items.add(new SectionSummaryItem()
+                    .setSection(trimToNull(item.path("section").asText(null)))
+                    .setSummary(trimToNull(item.path("summary").asText(null))));
+        }
+        return List.copyOf(items);
+    }
+
     private PersonBasicInfo readBasicInfo(JsonNode basicInfoNode) {
         if (basicInfoNode == null || basicInfoNode.isMissingNode() || basicInfoNode.isNull()) {
             return new PersonBasicInfo();
@@ -757,6 +916,56 @@ public class DeepSeekSummaryGenerationClient {
             }
         }
         return null;
+    }
+
+    private String buildTopicExpansionPrompt(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
+                .map(summary -> """
+                        sourceUrl: %s
+                        title: %s
+                        summary: %s
+                        """.formatted(summary.getSourceUrl(), summary.getTitle(), summary.getSummary()))
+                .collect(Collectors.joining("\n---\n"));
+        return """
+                请基于以下人物主题篇级摘要，判断是否需要继续追加公开资料搜索。
+                你的任务不是总结主题内容，而是生成下一轮可检索的扩展词。
+                sectionType: %s
+                resolvedName: %s
+                只能返回 JSON。
+                篇级摘要如下：
+                %s
+                """.formatted(sectionType, resolvedName, pageSummaryContent);
+    }
+
+    private String buildSectionedTopicPrompt(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
+        String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
+                .map(summary -> """
+                        sourceUrl: %s
+                        title: %s
+                        summary: %s
+                        """.formatted(summary.getSourceUrl(), summary.getTitle(), summary.getSummary()))
+                .collect(Collectors.joining("\n---\n"));
+        String allowedSections = String.join("、", allowedSectionNames(sectionType));
+        return """
+                请基于以下主题篇级摘要，输出分段摘要 JSON。
+                resolvedName: %s
+                sectionType: %s
+                可用分段标题: %s
+                只能返回 JSON。
+                篇级摘要如下：
+                %s
+                """.formatted(resolvedName, sectionType, allowedSections, pageSummaryContent);
+    }
+
+    private List<String> allowedSectionNames(String sectionType) {
+        return switch (sectionType) {
+            case "china_related_statements" -> List.of("涉华言论", "中国评价", "国际关系", "相关争议");
+            case "political_view" -> List.of("政治倾向", "党派与组织", "政治理念", "政策立场");
+            case "contact_information" -> List.of("公开通讯", "办公电话", "官方邮箱", "认证社交账号", "其他联系方式");
+            case "family_member_situation" -> List.of("家庭成员", "亲属信息", "经商与投资", "争议与纠纷");
+            case "misconduct" -> List.of("违法记录", "行政处罚", "负面事件", "失信信息");
+            default -> List.of(sectionType);
+        };
     }
 
     private String previewContent(String content) {

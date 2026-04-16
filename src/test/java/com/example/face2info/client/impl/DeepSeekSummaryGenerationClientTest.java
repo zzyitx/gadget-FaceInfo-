@@ -5,6 +5,9 @@ import com.example.face2info.config.DeepSeekApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SectionedSummary;
+import com.example.face2info.entity.internal.TopicExpansionDecision;
+import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.exception.ApiCallException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -97,6 +100,51 @@ class DeepSeekSummaryGenerationClientTest {
         ));
 
         assertThat(summary).isEqualTo("雷军的职业发展集中在金山、小米及投资布局。");
+    }
+
+    @Test
+    void shouldExpandQueriesFromDeepSeekResponse() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"shouldExpand\\":true,\\"expansionQueries\\":[{\\"term\\":\\"监管通报\\",\\"section\\":\\"misconduct\\",\\"reason\\":\\"存在监管线索\\"}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        TopicExpansionDecision decision = client.expandTopicQueriesFromPageSummaries(
+                "雷军",
+                "misconduct",
+                List.of(new PageSummary().setSourceUrl("https://example.com/a").setSummary("存在监管线索"))
+        );
+
+        assertThat(decision.getShouldExpand()).isTrue();
+        assertThat(decision.getExpansionQueries()).extracting(TopicExpansionQuery::getTerm)
+                .containsExactly("监管通报");
+    }
+
+    @Test
+    void shouldParseSectionedFamilySummaryFromDeepSeekResponse() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"sections\\":[{\\"section\\":\\"家庭成员\\",\\"summary\\":\\"公开资料显示其已婚。\\"}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        SectionedSummary summary = client.summarizeSectionedSectionFromPageSummaries(
+                "雷军",
+                "family_member_situation",
+                List.of(new PageSummary().setSourceUrl("https://example.com/a").setSummary("公开资料显示其已婚"))
+        );
+
+        assertThat(summary.getSections()).hasSize(1);
+        assertThat(summary.getSections().get(0).getSummary()).isEqualTo("公开资料显示其已婚。");
     }
 
     @Test

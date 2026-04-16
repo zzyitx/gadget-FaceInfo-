@@ -3,6 +3,8 @@ package com.example.face2info.client;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SectionedSummary;
+import com.example.face2info.entity.internal.TopicExpansionDecision;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -31,6 +33,16 @@ public interface SummaryGenerationClient {
      * 基于主题相关的篇级摘要集合生成单段主题摘要。
      */
     String summarizeSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries);
+
+    /**
+     * 基于主题相关的篇级摘要集合生成第二轮搜索扩展词。
+     */
+    TopicExpansionDecision expandTopicQueriesFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries);
+
+    /**
+     * 基于主题相关的篇级摘要集合生成分段摘要。
+     */
+    SectionedSummary summarizeSectionedSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries);
 
     /**
      * 结合篇级总结和最终总结进行综合判断。
