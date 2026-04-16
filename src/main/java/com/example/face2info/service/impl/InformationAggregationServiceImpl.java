@@ -476,7 +476,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 }
                 pageSummaries.add(pageSummary);
             } catch (RuntimeException ex) {
-                log.warn("篇级总结失败 fallbackName={} url={} category={} error={}",
+                log.warn("页面摘要失败 fallbackName={} url={} category={} error={}",
                         fallbackName, page.getUrl(), classifySummaryFailure(ex), ex.getMessage(), ex);
             }
         }
@@ -1247,7 +1247,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             try {
                 return deepSeekSummaryGenerationClient.summarizePage(fallbackName, page);
             } catch (RuntimeException deepSeekEx) {
-                log.warn("篇级总结DeepSeek失败 fallbackName={} url={} category={} error={}",
+                log.warn("页面摘要DeepSeek失败 fallbackName={} url={} category={} error={}",
                         fallbackName,
                         page == null ? null : page.getUrl(),
                         classifySummaryFailure(deepSeekEx),
@@ -1262,7 +1262,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             if (deepSeekSummaryGenerationClient == null) {
                 throw kimiEx;
             }
-            log.warn("篇级总结Kimi失败 fallbackName={} url={} category={} error={}",
+            log.warn("页面摘要Kimi失败 fallbackName={} url={} category={} error={}",
                     fallbackName,
                     page == null ? null : page.getUrl(),
                     classifySummaryFailure(kimiEx),

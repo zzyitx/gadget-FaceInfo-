@@ -15,7 +15,7 @@ import java.util.List;
 public interface SummaryGenerationClient {
 
     /**
-     * 基于单篇正文生成结构化篇级摘要。
+     * 基于单篇正文生成结构化页面摘要。
      */
     PageSummary summarizePage(String fallbackName, PageContent page);
 
@@ -45,7 +45,7 @@ public interface SummaryGenerationClient {
     SectionedSummary summarizeSectionedSectionFromPageSummaries(String resolvedName, String sectionType, List<PageSummary> pageSummaries);
 
     /**
-     * 结合篇级总结和最终总结进行综合判断。
+     * 结合页面摘要集合和最终总结进行综合判断。
      */
     ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
                                                       List<PageSummary> pageSummaries,
