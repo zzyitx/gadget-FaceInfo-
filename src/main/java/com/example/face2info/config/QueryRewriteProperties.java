@@ -20,7 +20,11 @@ public class QueryRewriteProperties {
     private int candidateCount = 3;
     private Map<String, String> topicStrategies = new LinkedHashMap<>();
     private Map<String, List<String>> sensitiveTopicPatterns = new LinkedHashMap<>();
+    private Map<String, List<String>> baseQueryTemplates = new LinkedHashMap<>();
     private Map<String, List<String>> fallbackTemplates = new LinkedHashMap<>();
+    private List<String> expandEnabledTopics = new ArrayList<>();
+    private int expandMaxQueryCount = 4;
+    private int expandMaxTermLength = 16;
     private boolean logOriginalQuery = true;
     private boolean logFinalQuery = true;
 }

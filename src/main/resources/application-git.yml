@@ -147,6 +147,42 @@ face2info:
         controversial_statement:
           - "%s发表了有争议的政治观点"
           - "%s发布了引发争议的公开表态"
+      base-query-templates:
+        china_related_statements:
+          - "%s 涉华言论"
+          - "%s 中国评价"
+          - "%s 中美关系"
+          - "%s 中欧关系"
+        political_view:
+          - "%s 政治倾向"
+          - "%s 政党"
+          - "%s 政治理念"
+          - "%s 政策立场"
+        contact_information:
+          - "%s 公开通讯"
+          - "%s 办公电话"
+          - "%s 官方邮箱"
+          - "%s 认证社交账号"
+          - "%s 联系方式"
+        family_member_situation:
+          - "%s 家庭成员"
+          - "%s 亲属"
+          - "%s 经商"
+          - "%s 在华投资"
+          - "%s 商业纠纷"
+        misconduct:
+          - "%s 违法记录"
+          - "%s 行政处罚"
+          - "%s 负面事件"
+          - "%s 失信行为"
+      expand-enabled-topics:
+        - china_related_statements
+        - political_view
+        - contact_information
+        - family_member_situation
+        - misconduct
+      expand-max-query-count: 4
+      expand-max-term-length: 16
       log-original-query: true
       log-final-query: true
     facecheck:

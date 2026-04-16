@@ -37,6 +37,14 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.getProperty("face2info.api.query-rewrite.topic-strategies.education")).isEqualTo("normalize");
         assertThat(properties.getProperty("face2info.api.query-rewrite.topic-strategies.china_related_statements")).isEqualTo("rewrite");
         assertThat(properties.getProperty("face2info.api.query-rewrite.topic-strategies.political_view")).isEqualTo("rewrite");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.base-query-templates.china_related_statements[0]"))
+                .isEqualTo("%s 涉华言论");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.base-query-templates.family_member_situation[4]"))
+                .isEqualTo("%s 商业纠纷");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.expand-enabled-topics[3]"))
+                .isEqualTo("family_member_situation");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.expand-max-query-count")).isEqualTo("4");
+        assertThat(properties.getProperty("face2info.api.query-rewrite.expand-max-term-length")).isEqualTo("16");
         assertThat(properties.getProperty("face2info.api.query-rewrite.fallback-templates.china_related_statements[0]"))
                 .isEqualTo("%s涉华言论 中国评价 中美关系 中欧关系");
         assertThat(properties.getProperty("face2info.api.query-rewrite.fallback-templates.political_view[0]"))

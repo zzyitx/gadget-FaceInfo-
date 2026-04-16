@@ -157,6 +157,19 @@ class DerivedTopicQueryServiceImplTest {
         assertThat(decision.getStrategy()).isEqualTo(TopicRewriteStrategy.REWRITE);
     }
 
+    @Test
+    void shouldLoadBaseQueryTemplatesForSensitiveTopics() {
+        ApiProperties properties = createProperties();
+
+        assertThat(properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .get("family_member_situation"))
+                .containsExactly("%s 家庭成员", "%s 亲属", "%s 经商", "%s 在华投资", "%s 商业纠纷");
+
+        assertThat(properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .get("china_related_statements"))
+                .containsExactly("%s 涉华言论", "%s 中国评价", "%s 中美关系", "%s 中欧关系");
+    }
+
     private ApiProperties createProperties() {
         ApiProperties properties = new ApiProperties();
         properties.getApi().getQueryRewrite().setEnabled(true);
@@ -177,6 +190,20 @@ class DerivedTopicQueryServiceImplTest {
         properties.getApi().getQueryRewrite().getSensitiveTopicPatterns().put("family_member_situation", List.of("家族成员", "在华投资"));
         properties.getApi().getQueryRewrite().getSensitiveTopicPatterns().put("misconduct", List.of("违法记录", "行政处罚"));
         properties.getApi().getQueryRewrite().getSensitiveTopicPatterns().put("controversial_statement", List.of("反政府言论", "争议言论"));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .put("china_related_statements", List.of("%s 涉华言论", "%s 中国评价", "%s 中美关系", "%s 中欧关系"));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .put("political_view", List.of("%s 政治倾向", "%s 政党", "%s 政治理念", "%s 政策立场"));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .put("contact_information", List.of("%s 公开通讯", "%s 办公电话", "%s 官方邮箱", "%s 认证社交账号", "%s 联系方式"));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .put("family_member_situation", List.of("%s 家庭成员", "%s 亲属", "%s 经商", "%s 在华投资", "%s 商业纠纷"));
+        properties.getApi().getQueryRewrite().getBaseQueryTemplates()
+                .put("misconduct", List.of("%s 违法记录", "%s 行政处罚", "%s 负面事件", "%s 失信"));
+        properties.getApi().getQueryRewrite().getExpandEnabledTopics()
+                .addAll(List.of("china_related_statements", "political_view", "contact_information", "family_member_situation", "misconduct"));
+        properties.getApi().getQueryRewrite().setExpandMaxQueryCount(4);
+        properties.getApi().getQueryRewrite().setExpandMaxTermLength(16);
         properties.getApi().getQueryRewrite().getFallbackTemplates().put("china_related_statements", List.of("%s涉华言论 中国评价 中美关系 中欧关系"));
         properties.getApi().getQueryRewrite().getFallbackTemplates().put("political_view", List.of("%s支持的政治理念"));
         properties.getApi().getQueryRewrite().getFallbackTemplates().put("contact_information", List.of("%s公开通讯 办公电话 官方邮箱 认证社交账号"));
