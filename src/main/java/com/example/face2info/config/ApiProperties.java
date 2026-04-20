@@ -25,13 +25,13 @@ public class ApiProperties {
 
         private SerpApiProperties serp = new SerpApiProperties();
         private GoogleSearchProperties google = new GoogleSearchProperties();
-        private NewsApiProperties news = new NewsApiProperties();
         private JinaApiProperties jina = new JinaApiProperties();
         private KimiApiProperties kimi = new KimiApiProperties();
         private DeepSeekApiProperties deepseek = new DeepSeekApiProperties();
         private SummaryApiProperties summary = new SummaryApiProperties();
         private QueryRewriteProperties queryRewrite = new QueryRewriteProperties();
         private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();
+        private CompreFaceProperties compreface = new CompreFaceProperties();
         private FaceDetectionProperties faceDetection = new FaceDetectionProperties();
         private FaceEnhanceProperties faceEnhance = new FaceEnhanceProperties();
         private MinioProperties minio = new MinioProperties();

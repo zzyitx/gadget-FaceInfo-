@@ -12,9 +12,6 @@ public class FaceInfoResponse {
     @Schema(description = "聚合后的人物主体信息")
     private PersonInfo person;
 
-    @Schema(description = "候选人物相关的新闻列表")
-    private List<NewsItem> news = new ArrayList<>();
-
     @JsonProperty("image_matches")
     @Schema(description = "来自 Serper 搜图结果的图片匹配列表")
     private List<ImageMatch> imageMatches = new ArrayList<>();
@@ -37,15 +34,6 @@ public class FaceInfoResponse {
 
     public FaceInfoResponse setPerson(PersonInfo person) {
         this.person = person;
-        return this;
-    }
-
-    public List<NewsItem> getNews() {
-        return news;
-    }
-
-    public FaceInfoResponse setNews(List<NewsItem> news) {
-        this.news = news == null ? new ArrayList<>() : news;
         return this;
     }
 

@@ -44,9 +44,9 @@ public class RestTemplateConfig {
         return max(
                 properties.getApi().getSerp().getConnectTimeoutMs(),
                 properties.getApi().getGoogle().getConnectTimeoutMs(),
-                properties.getApi().getNews().getConnectTimeoutMs(),
                 properties.getApi().getJina().getConnectTimeoutMs(),
                 properties.getApi().getKimi().getConnectTimeoutMs(),
+                properties.getApi().getCompreface().getConnectTimeoutMs(),
                 properties.getApi().getSummary().getConnectTimeoutMs(),
                 properties.getApi().getFaceDetection().getConnectTimeoutMs(),
                 properties.getApi().getFaceEnhance().getConnectTimeoutMs()
@@ -57,9 +57,9 @@ public class RestTemplateConfig {
         return max(
                 properties.getApi().getSerp().getReadTimeoutMs(),
                 properties.getApi().getGoogle().getReadTimeoutMs(),
-                properties.getApi().getNews().getReadTimeoutMs(),
                 properties.getApi().getJina().getReadTimeoutMs(),
                 properties.getApi().getKimi().getReadTimeoutMs(),
+                properties.getApi().getCompreface().getReadTimeoutMs(),
                 properties.getApi().getSummary().getReadTimeoutMs(),
                 properties.getApi().getFaceDetection().getReadTimeoutMs(),
                 properties.getApi().getFaceEnhance().getReadTimeoutMs()

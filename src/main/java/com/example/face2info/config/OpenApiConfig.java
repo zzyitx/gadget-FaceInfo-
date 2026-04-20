@@ -15,7 +15,7 @@ public class OpenApiConfig {
     public OpenAPI face2InfoOpenApi() {
         return new OpenAPI().info(new Info()
                 .title("Face2Info API")
-                .description("上传人脸照片后聚合人物公开资料、社交账号与相关新闻")
+                .description("上传人脸照片后聚合人物公开资料、社交账号与图片匹配文章来源")
                 .version("1.0.0"));
     }
 }

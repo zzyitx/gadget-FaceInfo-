@@ -2,7 +2,6 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
-import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
@@ -12,6 +11,8 @@ import com.example.face2info.entity.internal.DerivedTopicRequest;
 import com.example.face2info.entity.internal.DerivedTopicType;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSource;
+import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
@@ -126,8 +127,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final GoogleSearchClient googleSearchClient;
     @SuppressWarnings("unused")
     private final SerpApiClient serpApiClient;
-    @SuppressWarnings("unused")
-    private final NewsApiClient newsApiClient;
     private final JinaReaderClient jinaReaderClient;
     private final SummaryGenerationClient summaryGenerationClient;
     private final DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient;
@@ -138,7 +137,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
                                              SerpApiClient serpApiClient,
-                                             NewsApiClient newsApiClient,
                                              JinaReaderClient jinaReaderClient,
                                              SummaryGenerationClient summaryGenerationClient,
                                              @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
@@ -147,7 +145,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              DerivedTopicQueryService derivedTopicQueryService) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
-        this.newsApiClient = newsApiClient;
         this.jinaReaderClient = jinaReaderClient;
         this.summaryGenerationClient = summaryGenerationClient;
         this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
@@ -158,45 +155,41 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
                                       SerpApiClient serpApiClient,
-                                      NewsApiClient newsApiClient,
                                       JinaReaderClient jinaReaderClient,
                                       SummaryGenerationClient summaryGenerationClient,
                                       @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
                                       SerpApiClient serpApiClient,
-                                      NewsApiClient newsApiClient,
                                       JinaReaderClient jinaReaderClient,
                                       SummaryGenerationClient summaryGenerationClient,
                                       @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                       ThreadPoolTaskExecutor executor,
                                       ApiProperties properties) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
                                       SerpApiClient serpApiClient,
-                                      NewsApiClient newsApiClient,
                                       JinaReaderClient jinaReaderClient,
                                       SummaryGenerationClient summaryGenerationClient,
                                       ThreadPoolTaskExecutor executor,
                                       ApiProperties properties) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 null, executor, properties, new PassThroughDerivedTopicQueryService());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
                                       SerpApiClient serpApiClient,
-                                      NewsApiClient newsApiClient,
                                       JinaReaderClient jinaReaderClient,
                                       SummaryGenerationClient summaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
-        this(googleSearchClient, serpApiClient, newsApiClient, jinaReaderClient, summaryGenerationClient,
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 null, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService());
     }
 
@@ -239,15 +232,24 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             result.setPerson(new PersonAggregate()
                     .setDescription(appendSuffix(cleanText(profile.getDescription()), LLM_SUFFIX))
                     .setSummary(appendSuffix(finalSummary, LLM_SUFFIX))
+                    .setSummaryParagraphs(profile.getSummaryParagraphs())
                     // 这三个字段分别对应前端的教育、家庭、职业独立区域，避免继续依赖单一长摘要。
                     .setEducationSummary(profile.getEducationSummary())
+                    .setEducationSummaryParagraphs(profile.getEducationSummaryParagraphs())
                     .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
+                    .setFamilyBackgroundSummaryParagraphs(profile.getFamilyBackgroundSummaryParagraphs())
                     .setCareerSummary(profile.getCareerSummary())
+                    .setCareerSummaryParagraphs(profile.getCareerSummaryParagraphs())
                     .setChinaRelatedStatementsSummary(profile.getChinaRelatedStatementsSummary())
+                    .setChinaRelatedStatementsSummaryParagraphs(profile.getChinaRelatedStatementsSummaryParagraphs())
                     .setPoliticalTendencySummary(profile.getPoliticalTendencySummary())
+                    .setPoliticalTendencySummaryParagraphs(profile.getPoliticalTendencySummaryParagraphs())
                     .setContactInformationSummary(profile.getContactInformationSummary())
+                    .setContactInformationSummaryParagraphs(profile.getContactInformationSummaryParagraphs())
                     .setFamilyMemberSituationSummary(profile.getFamilyMemberSituationSummary())
+                    .setFamilyMemberSituationSummaryParagraphs(profile.getFamilyMemberSituationSummaryParagraphs())
                     .setMisconductSummary(profile.getMisconductSummary())
+                    .setMisconductSummaryParagraphs(profile.getMisconductSummaryParagraphs())
                     .setImageUrl(cleanText(enrichedProfile.imageUrl()))
                     .setBasicInfo(profile.getBasicInfo())
                     .setOfficialWebsite(profile.getOfficialWebsite())
@@ -262,7 +264,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         result.setPerson(buildPersonFromProfile(profile, finalResolvedName, enrichedProfile.imageUrl()));
         result.setSocialAccounts(deduplicateSocialAccounts(joinTask("社交账号", socialFuture, List.of(), result.getErrors())));
-        result.setNews(List.of());
         return result;
     }
 
@@ -315,6 +316,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         .distinct()
                         .toList());
             }
+            enrichProfileParagraphSources(profile, pageSummaries);
         } catch (RuntimeException ex) {
             if (isLlmProfileFailure(ex)) {
                 throw ex;
@@ -327,7 +329,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     .setEvidenceUrls(urls);
         }
 
-        return applyComprehensiveJudgement(fallbackName, pageSummaries, profile, warnings);
+        ResolvedPersonProfile judgedProfile = applyComprehensiveJudgement(fallbackName, pageSummaries, profile, warnings);
+        enrichProfileParagraphSources(judgedProfile, pageSummaries);
+        return judgedProfile;
     }
 
     private ResolvedPersonProfile applyComprehensiveJudgement(String fallbackName,
@@ -371,15 +375,24 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setName(resolvedName)
                 .setDescription(appendSuffix(StringUtils.hasText(shortDescription) ? shortDescription : longSummary, LLM_SUFFIX))
                 .setSummary(appendSuffix(longSummary, LLM_SUFFIX))
+                .setSummaryParagraphs(profile.getSummaryParagraphs())
                 // 这三个字段分别向前端输出独立内容块，方便单独渲染教育、家庭和职业信息。
                 .setEducationSummary(profile.getEducationSummary())
+                .setEducationSummaryParagraphs(profile.getEducationSummaryParagraphs())
                 .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
+                .setFamilyBackgroundSummaryParagraphs(profile.getFamilyBackgroundSummaryParagraphs())
                 .setCareerSummary(profile.getCareerSummary())
+                .setCareerSummaryParagraphs(profile.getCareerSummaryParagraphs())
                 .setChinaRelatedStatementsSummary(profile.getChinaRelatedStatementsSummary())
+                .setChinaRelatedStatementsSummaryParagraphs(profile.getChinaRelatedStatementsSummaryParagraphs())
                 .setPoliticalTendencySummary(profile.getPoliticalTendencySummary())
+                .setPoliticalTendencySummaryParagraphs(profile.getPoliticalTendencySummaryParagraphs())
                 .setContactInformationSummary(profile.getContactInformationSummary())
+                .setContactInformationSummaryParagraphs(profile.getContactInformationSummaryParagraphs())
                 .setFamilyMemberSituationSummary(profile.getFamilyMemberSituationSummary())
+                .setFamilyMemberSituationSummaryParagraphs(profile.getFamilyMemberSituationSummaryParagraphs())
                 .setMisconductSummary(profile.getMisconductSummary())
+                .setMisconductSummaryParagraphs(profile.getMisconductSummaryParagraphs())
                 .setImageUrl(cleanText(imageUrl))
                 .setWikipedia(cleanText(profile.getWikipedia()))
                 .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
@@ -404,14 +417,23 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setResolvedName(profile.getResolvedName())
                 .setDescription(profile.getDescription())
                 .setSummary(profile.getSummary())
+                .setSummaryParagraphs(profile.getSummaryParagraphs())
                 .setEducationSummary(profile.getEducationSummary())
+                .setEducationSummaryParagraphs(profile.getEducationSummaryParagraphs())
                 .setFamilyBackgroundSummary(profile.getFamilyBackgroundSummary())
+                .setFamilyBackgroundSummaryParagraphs(profile.getFamilyBackgroundSummaryParagraphs())
                 .setCareerSummary(profile.getCareerSummary())
+                .setCareerSummaryParagraphs(profile.getCareerSummaryParagraphs())
                 .setChinaRelatedStatementsSummary(profile.getChinaRelatedStatementsSummary())
+                .setChinaRelatedStatementsSummaryParagraphs(profile.getChinaRelatedStatementsSummaryParagraphs())
                 .setPoliticalTendencySummary(profile.getPoliticalTendencySummary())
+                .setPoliticalTendencySummaryParagraphs(profile.getPoliticalTendencySummaryParagraphs())
                 .setContactInformationSummary(profile.getContactInformationSummary())
+                .setContactInformationSummaryParagraphs(profile.getContactInformationSummaryParagraphs())
                 .setFamilyMemberSituationSummary(profile.getFamilyMemberSituationSummary())
+                .setFamilyMemberSituationSummaryParagraphs(profile.getFamilyMemberSituationSummaryParagraphs())
                 .setMisconductSummary(profile.getMisconductSummary())
+                .setMisconductSummaryParagraphs(profile.getMisconductSummaryParagraphs())
                 .setKeyFacts(profile.getKeyFacts())
                 .setTags(profile.getTags())
                 .setEvidenceUrls(profile.getEvidenceUrls())
@@ -440,6 +462,20 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
     }
 
+    private List<ParagraphSummaryItem> summarizeSectionParagraphs(String resolvedName, String sectionType, String query) {
+        try {
+            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, sectionType, query);
+            if (bundle.pageSummaries().isEmpty()) {
+                return List.of();
+            }
+            return summarizeSectionParagraphsWithFallback(resolvedName, sectionType, bundle.pageSummaries());
+        } catch (RuntimeException ex) {
+            log.warn("section paragraph summary failed resolvedName={} sectionType={} query={} error={}",
+                    resolvedName, sectionType, query, ex.getMessage(), ex);
+            return List.of();
+        }
+    }
+
     private static final class PassThroughDerivedTopicQueryService implements DerivedTopicQueryService {
 
         @Override
@@ -448,13 +484,14 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
     }
 
-    private String joinSectionFuture(CompletableFuture<String> future) {
+    private SectionEnrichmentResult joinSectionEnrichmentFuture(CompletableFuture<SectionEnrichmentResult> future) {
         try {
-            return future.join();
+            SectionEnrichmentResult result = future.join();
+            return result == null ? SectionEnrichmentResult.empty() : result;
         } catch (CompletionException ex) {
             Throwable cause = ex.getCause() == null ? ex : ex.getCause();
-            log.warn("section future failed error={}", cause.getMessage(), cause);
-            return null;
+            log.warn("section enrichment future failed error={}", cause.getMessage(), cause);
+            return SectionEnrichmentResult.empty();
         }
     }
 
@@ -533,44 +570,90 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return profile;
         }
 
-        CompletableFuture<String> educationFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, EDUCATION_SECTION, resolvedName + "的教育经历"), executor);
-        CompletableFuture<String> familyFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, FAMILY_SECTION, resolvedName + "的家庭背景"), executor);
-        CompletableFuture<String> careerFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, CAREER_SECTION, resolvedName + "的职业经历"), executor);
+        CompletableFuture<SectionEnrichmentResult> educationFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, EDUCATION_SECTION, resolvedName + "的教育经历"), executor);
+        CompletableFuture<SectionEnrichmentResult> familyFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, FAMILY_SECTION, resolvedName + "的家庭背景"), executor);
+        CompletableFuture<SectionEnrichmentResult> careerFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, CAREER_SECTION, resolvedName + "的职业经历"), executor);
         // 关键逻辑：新增主题统一走派生主题摘要链路，前端直接按独立区域渲染，不再依赖长摘要二次拆分。
-        CompletableFuture<String> chinaRelatedStatementsFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, CHINA_RELATED_STATEMENTS_SECTION,
+        CompletableFuture<SectionEnrichmentResult> chinaRelatedStatementsFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, CHINA_RELATED_STATEMENTS_SECTION,
                         resolvedName + " 涉华言论 中国评价 中美关系 中欧关系"), executor);
-        CompletableFuture<String> politicalViewFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, POLITICAL_VIEW_SECTION,
+        CompletableFuture<SectionEnrichmentResult> politicalViewFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, POLITICAL_VIEW_SECTION,
                         resolvedName + " 政治倾向 政党 政治理念 政策立场"), executor);
-        CompletableFuture<String> contactInformationFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, CONTACT_INFORMATION_SECTION,
+        CompletableFuture<SectionEnrichmentResult> contactInformationFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, CONTACT_INFORMATION_SECTION,
                         resolvedName + " 公开通讯 办公电话 官方邮箱 认证社交账号 联系方式"), executor);
-        CompletableFuture<String> familyMemberSituationFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, FAMILY_MEMBER_SITUATION_SECTION,
+        CompletableFuture<SectionEnrichmentResult> familyMemberSituationFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, FAMILY_MEMBER_SITUATION_SECTION,
                         resolvedName + " 家族成员 亲属 经商 在华投资 商业纠纷"), executor);
-        CompletableFuture<String> misconductFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSection(resolvedName, MISCONDUCT_SECTION,
+        CompletableFuture<SectionEnrichmentResult> misconductFuture = CompletableFuture.supplyAsync(
+                () -> summarizeSectionEnrichment(resolvedName, MISCONDUCT_SECTION,
                         resolvedName + " 违法记录 行政处罚 负面事件 失信"), executor);
 
         ResolvedPersonProfile enriched = copyProfile(profile);
-        enriched.setEducationSummary(firstNonBlankText(joinSectionFuture(educationFuture), profile.getEducationSummary()));
-        enriched.setFamilyBackgroundSummary(firstNonBlankText(joinSectionFuture(familyFuture), profile.getFamilyBackgroundSummary()));
-        enriched.setCareerSummary(firstNonBlankText(joinSectionFuture(careerFuture), profile.getCareerSummary()));
+        SectionEnrichmentResult educationResult = joinSectionEnrichmentFuture(educationFuture);
+        SectionEnrichmentResult familyResult = joinSectionEnrichmentFuture(familyFuture);
+        SectionEnrichmentResult careerResult = joinSectionEnrichmentFuture(careerFuture);
+        SectionEnrichmentResult chinaRelatedStatementsResult = joinSectionEnrichmentFuture(chinaRelatedStatementsFuture);
+        SectionEnrichmentResult politicalViewResult = joinSectionEnrichmentFuture(politicalViewFuture);
+        SectionEnrichmentResult contactInformationResult = joinSectionEnrichmentFuture(contactInformationFuture);
+        SectionEnrichmentResult familyMemberSituationResult = joinSectionEnrichmentFuture(familyMemberSituationFuture);
+        SectionEnrichmentResult misconductResult = joinSectionEnrichmentFuture(misconductFuture);
+
+        enriched.setEducationSummary(firstNonBlankText(educationResult.summary(), profile.getEducationSummary()));
+        enriched.setEducationSummaryParagraphs(pickParagraphs(educationResult.paragraphs(), profile.getEducationSummaryParagraphs()));
+        enriched.setFamilyBackgroundSummary(firstNonBlankText(familyResult.summary(), profile.getFamilyBackgroundSummary()));
+        enriched.setFamilyBackgroundSummaryParagraphs(pickParagraphs(familyResult.paragraphs(), profile.getFamilyBackgroundSummaryParagraphs()));
+        enriched.setCareerSummary(firstNonBlankText(careerResult.summary(), profile.getCareerSummary()));
+        enriched.setCareerSummaryParagraphs(pickParagraphs(careerResult.paragraphs(), profile.getCareerSummaryParagraphs()));
         enriched.setChinaRelatedStatementsSummary(firstNonBlankText(
-                joinSectionFuture(chinaRelatedStatementsFuture), profile.getChinaRelatedStatementsSummary()));
+                chinaRelatedStatementsResult.summary(), profile.getChinaRelatedStatementsSummary()));
+        enriched.setChinaRelatedStatementsSummaryParagraphs(pickParagraphs(
+                chinaRelatedStatementsResult.paragraphs(), profile.getChinaRelatedStatementsSummaryParagraphs()));
         enriched.setPoliticalTendencySummary(firstNonBlankText(
-                joinSectionFuture(politicalViewFuture), profile.getPoliticalTendencySummary()));
+                politicalViewResult.summary(), profile.getPoliticalTendencySummary()));
+        enriched.setPoliticalTendencySummaryParagraphs(pickParagraphs(
+                politicalViewResult.paragraphs(), profile.getPoliticalTendencySummaryParagraphs()));
         enriched.setContactInformationSummary(firstNonBlankText(
-                joinSectionFuture(contactInformationFuture), profile.getContactInformationSummary()));
+                contactInformationResult.summary(), profile.getContactInformationSummary()));
+        enriched.setContactInformationSummaryParagraphs(pickParagraphs(
+                contactInformationResult.paragraphs(), profile.getContactInformationSummaryParagraphs()));
         enriched.setFamilyMemberSituationSummary(firstNonBlankText(
-                joinSectionFuture(familyMemberSituationFuture), profile.getFamilyMemberSituationSummary()));
+                familyMemberSituationResult.summary(), profile.getFamilyMemberSituationSummary()));
+        enriched.setFamilyMemberSituationSummaryParagraphs(pickParagraphs(
+                familyMemberSituationResult.paragraphs(), profile.getFamilyMemberSituationSummaryParagraphs()));
         enriched.setMisconductSummary(firstNonBlankText(
-                joinSectionFuture(misconductFuture), profile.getMisconductSummary()));
+                misconductResult.summary(), profile.getMisconductSummary()));
+        enriched.setMisconductSummaryParagraphs(pickParagraphs(
+                misconductResult.paragraphs(), profile.getMisconductSummaryParagraphs()));
         return enriched;
+    }
+
+    private SectionEnrichmentResult summarizeSectionEnrichment(String resolvedName, String sectionType, String fallbackQuery) {
+        try {
+            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, sectionType, fallbackQuery);
+            if (bundle.pageSummaries() == null || bundle.pageSummaries().isEmpty()) {
+                return SectionEnrichmentResult.empty();
+            }
+            String summary = null;
+            if (isDerivedSectionedTopic(sectionType)) {
+                summary = summarizeSectionedTopic(resolvedName, sectionType, bundle.pageSummaries(), bundle.expansionQueries());
+            }
+            if (!StringUtils.hasText(summary)) {
+                summary = summarizeSectionWithFallback(resolvedName, sectionType, bundle.pageSummaries());
+            }
+            return new SectionEnrichmentResult(
+                    summary,
+                    summarizeSectionParagraphsWithFallback(resolvedName, sectionType, bundle.pageSummaries())
+            );
+        } catch (RuntimeException ex) {
+            log.warn("section enrichment failed resolvedName={} sectionType={} query={} error={}",
+                    resolvedName, sectionType, fallbackQuery, ex.getMessage(), ex);
+            return SectionEnrichmentResult.empty();
+        }
     }
 
     private boolean shouldRunSecondarySearch(ResolvedPersonProfile profile, String resolvedName) {
@@ -876,6 +959,36 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return null;
     }
 
+    private List<ParagraphSummaryItem> summarizeSectionParagraphsWithFallback(String resolvedName,
+                                                                              String sectionType,
+                                                                              List<PageSummary> pageSummaries) {
+        if (pageSummaries == null || pageSummaries.isEmpty()) {
+            return List.of();
+        }
+        try {
+            if (deepSeekSummaryGenerationClient != null) {
+                List<ParagraphSummaryItem> paragraphs = toParagraphSummaryItems(
+                        deepSeekSummaryGenerationClient.summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries)
+                );
+                if (!paragraphs.isEmpty()) {
+                    return paragraphs;
+                }
+            }
+        } catch (RuntimeException ex) {
+            log.warn("deepseek section paragraphs failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
+        }
+        try {
+            return toParagraphSummaryItems(
+                    summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries)
+            );
+        } catch (RuntimeException ex) {
+            log.warn("section paragraphs failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
+            return List.of();
+        }
+    }
+
     // 所有基础派生主题都按固定分段输出，并把扩展检索理由挂到对应分段下，避免理由脱离上下文。
     private String formatSectionedTopicSummary(String sectionType,
                                                SectionedSummary sectionedSummary,
@@ -960,7 +1073,63 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return StringUtils.hasText(content) ? INFERENCE_REASON_PREFIX + content : null;
     }
 
+    private List<ParagraphSummaryItem> toParagraphSummaryItems(SectionedSummary sectionedSummary) {
+        if (sectionedSummary == null || sectionedSummary.getSections() == null || sectionedSummary.getSections().isEmpty()) {
+            return List.of();
+        }
+        List<ParagraphSummaryItem> paragraphs = new ArrayList<>();
+        for (SectionSummaryItem item : sectionedSummary.getSections()) {
+            if (item == null || !StringUtils.hasText(item.getSummary())) {
+                continue;
+            }
+            paragraphs.add(new ParagraphSummaryItem()
+                    .setText(item.getSummary().trim())
+                    .setSourceUrls(item.getSourceUrls())
+                    .setSources(resolveParagraphSources(item.getSources(), item.getSourceUrls())));
+        }
+        return paragraphs;
+    }
+
+    private List<ParagraphSource> resolveParagraphSources(List<ParagraphSource> directSources, List<String> sourceUrls) {
+        if (directSources != null && !directSources.isEmpty()) {
+            return directSources;
+        }
+        if (sourceUrls == null || sourceUrls.isEmpty()) {
+            return List.of();
+        }
+        List<ParagraphSource> sources = new ArrayList<>();
+        for (String sourceUrl : sourceUrls) {
+            if (!StringUtils.hasText(sourceUrl)) {
+                continue;
+            }
+            sources.add(new ParagraphSource()
+                    .setTitle(sourceUrl)
+                    .setUrl(sourceUrl)
+                    .setSource(extractHostLabel(sourceUrl)));
+        }
+        return sources;
+    }
+
+    private String extractHostLabel(String url) {
+        if (!StringUtils.hasText(url)) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(url.trim());
+            return uri.getHost();
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
     private record SectionSearchBundle(List<PageSummary> pageSummaries, List<TopicExpansionQuery> expansionQueries) {
+    }
+
+    private record SectionEnrichmentResult(String summary, List<ParagraphSummaryItem> paragraphs) {
+
+        private static SectionEnrichmentResult empty() {
+            return new SectionEnrichmentResult(null, List.of());
+        }
     }
 
     private static Map<String, String> linkedSectionTitles(String... values) {
@@ -1059,19 +1228,33 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setResolvedName(firstNonBlankText(secondaryProfile.getResolvedName(), baseProfile.getResolvedName(), fallbackName))
                 .setDescription(firstNonBlankText(secondaryProfile.getDescription(), baseProfile.getDescription()))
                 .setSummary(firstNonBlankText(secondaryProfile.getSummary(), baseProfile.getSummary()))
+                .setSummaryParagraphs(pickParagraphs(secondaryProfile.getSummaryParagraphs(), baseProfile.getSummaryParagraphs()))
                 .setEducationSummary(firstNonBlankText(secondaryProfile.getEducationSummary(), baseProfile.getEducationSummary()))
+                .setEducationSummaryParagraphs(pickParagraphs(secondaryProfile.getEducationSummaryParagraphs(), baseProfile.getEducationSummaryParagraphs()))
                 .setFamilyBackgroundSummary(firstNonBlankText(secondaryProfile.getFamilyBackgroundSummary(), baseProfile.getFamilyBackgroundSummary()))
+                .setFamilyBackgroundSummaryParagraphs(pickParagraphs(secondaryProfile.getFamilyBackgroundSummaryParagraphs(), baseProfile.getFamilyBackgroundSummaryParagraphs()))
                 .setCareerSummary(firstNonBlankText(secondaryProfile.getCareerSummary(), baseProfile.getCareerSummary()))
+                .setCareerSummaryParagraphs(pickParagraphs(secondaryProfile.getCareerSummaryParagraphs(), baseProfile.getCareerSummaryParagraphs()))
                 .setChinaRelatedStatementsSummary(firstNonBlankText(
                         secondaryProfile.getChinaRelatedStatementsSummary(), baseProfile.getChinaRelatedStatementsSummary()))
+                .setChinaRelatedStatementsSummaryParagraphs(pickParagraphs(
+                        secondaryProfile.getChinaRelatedStatementsSummaryParagraphs(), baseProfile.getChinaRelatedStatementsSummaryParagraphs()))
                 .setPoliticalTendencySummary(firstNonBlankText(
                         secondaryProfile.getPoliticalTendencySummary(), baseProfile.getPoliticalTendencySummary()))
+                .setPoliticalTendencySummaryParagraphs(pickParagraphs(
+                        secondaryProfile.getPoliticalTendencySummaryParagraphs(), baseProfile.getPoliticalTendencySummaryParagraphs()))
                 .setContactInformationSummary(firstNonBlankText(
                         secondaryProfile.getContactInformationSummary(), baseProfile.getContactInformationSummary()))
+                .setContactInformationSummaryParagraphs(pickParagraphs(
+                        secondaryProfile.getContactInformationSummaryParagraphs(), baseProfile.getContactInformationSummaryParagraphs()))
                 .setFamilyMemberSituationSummary(firstNonBlankText(
                         secondaryProfile.getFamilyMemberSituationSummary(), baseProfile.getFamilyMemberSituationSummary()))
+                .setFamilyMemberSituationSummaryParagraphs(pickParagraphs(
+                        secondaryProfile.getFamilyMemberSituationSummaryParagraphs(), baseProfile.getFamilyMemberSituationSummaryParagraphs()))
                 .setMisconductSummary(firstNonBlankText(
                         secondaryProfile.getMisconductSummary(), baseProfile.getMisconductSummary()))
+                .setMisconductSummaryParagraphs(pickParagraphs(
+                        secondaryProfile.getMisconductSummaryParagraphs(), baseProfile.getMisconductSummaryParagraphs()))
                 .setWikipedia(firstNonBlankText(secondaryProfile.getWikipedia(), baseProfile.getWikipedia()))
                 .setOfficialWebsite(firstNonBlankText(secondaryProfile.getOfficialWebsite(), baseProfile.getOfficialWebsite()))
                 .setTags(pickList(secondaryProfile.getTags(), baseProfile.getTags()))
@@ -1115,6 +1298,69 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return preferredCleaned;
         }
         return fallback == null ? List.of() : fallback.stream().filter(StringUtils::hasText).toList();
+    }
+
+    private List<ParagraphSummaryItem> pickParagraphs(List<ParagraphSummaryItem> preferred, List<ParagraphSummaryItem> fallback) {
+        if (preferred != null && !preferred.isEmpty()) {
+            return preferred;
+        }
+        return fallback == null ? List.of() : fallback;
+    }
+
+    private void enrichProfileParagraphSources(ResolvedPersonProfile profile, List<PageSummary> pageSummaries) {
+        if (profile == null) {
+            return;
+        }
+        Map<String, PageSummary> summariesByUrl = new LinkedHashMap<>();
+        if (pageSummaries != null) {
+            for (PageSummary pageSummary : pageSummaries) {
+                if (pageSummary != null && StringUtils.hasText(pageSummary.getSourceUrl())) {
+                    summariesByUrl.putIfAbsent(pageSummary.getSourceUrl(), pageSummary);
+                }
+            }
+        }
+        profile.setSummaryParagraphs(enrichParagraphs(profile.getSummaryParagraphs(), summariesByUrl));
+        profile.setEducationSummaryParagraphs(enrichParagraphs(profile.getEducationSummaryParagraphs(), summariesByUrl));
+        profile.setFamilyBackgroundSummaryParagraphs(enrichParagraphs(profile.getFamilyBackgroundSummaryParagraphs(), summariesByUrl));
+        profile.setCareerSummaryParagraphs(enrichParagraphs(profile.getCareerSummaryParagraphs(), summariesByUrl));
+        profile.setChinaRelatedStatementsSummaryParagraphs(enrichParagraphs(profile.getChinaRelatedStatementsSummaryParagraphs(), summariesByUrl));
+        profile.setPoliticalTendencySummaryParagraphs(enrichParagraphs(profile.getPoliticalTendencySummaryParagraphs(), summariesByUrl));
+        profile.setContactInformationSummaryParagraphs(enrichParagraphs(profile.getContactInformationSummaryParagraphs(), summariesByUrl));
+        profile.setFamilyMemberSituationSummaryParagraphs(enrichParagraphs(profile.getFamilyMemberSituationSummaryParagraphs(), summariesByUrl));
+        profile.setMisconductSummaryParagraphs(enrichParagraphs(profile.getMisconductSummaryParagraphs(), summariesByUrl));
+    }
+
+    private List<ParagraphSummaryItem> enrichParagraphs(List<ParagraphSummaryItem> paragraphs, Map<String, PageSummary> summariesByUrl) {
+        if (paragraphs == null || paragraphs.isEmpty()) {
+            return List.of();
+        }
+        List<ParagraphSummaryItem> enriched = new ArrayList<>();
+        for (ParagraphSummaryItem paragraph : paragraphs) {
+            if (paragraph == null) {
+                continue;
+            }
+            List<ParagraphSource> directSources = paragraph.getSources();
+            if (directSources == null || directSources.isEmpty()) {
+                directSources = new ArrayList<>();
+                if (paragraph.getSourceUrls() != null) {
+                    for (String sourceUrl : paragraph.getSourceUrls()) {
+                        if (!StringUtils.hasText(sourceUrl)) {
+                            continue;
+                        }
+                        PageSummary pageSummary = summariesByUrl == null ? null : summariesByUrl.get(sourceUrl);
+                        directSources.add(new ParagraphSource()
+                                .setTitle(pageSummary != null && StringUtils.hasText(pageSummary.getTitle()) ? pageSummary.getTitle() : sourceUrl)
+                                .setUrl(sourceUrl)
+                                .setSource(extractHostLabel(sourceUrl)));
+                    }
+                }
+            }
+            enriched.add(new ParagraphSummaryItem()
+                    .setText(paragraph.getText())
+                    .setSourceUrls(paragraph.getSourceUrls())
+                    .setSources(directSources));
+        }
+        return enriched;
     }
 
     private String firstNonBlankText(String... values) {

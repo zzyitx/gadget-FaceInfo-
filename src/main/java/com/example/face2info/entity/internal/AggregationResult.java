@@ -1,6 +1,5 @@
 package com.example.face2info.entity.internal;
 
-import com.example.face2info.entity.response.NewsItem;
 import com.example.face2info.entity.response.SocialAccount;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -9,7 +8,7 @@ import java.util.List;
 
 /**
  * 聚合阶段内部结果对象。
- * 统一承载人物信息、社交账号、新闻以及告警信息。
+ * 统一承载人物信息、社交账号以及告警信息。
  */
 @Schema(description = "服务内部使用的聚合结果")
 public class AggregationResult {
@@ -19,9 +18,6 @@ public class AggregationResult {
 
     @Schema(description = "聚合得到的社交账号列表")
     private List<SocialAccount> socialAccounts = new ArrayList<>();
-
-    @Schema(description = "聚合得到的新闻列表")
-    private List<NewsItem> news = new ArrayList<>();
 
     @Schema(description = "聚合过程中记录的错误信息")
     private List<String> errors = new ArrayList<>();
@@ -44,15 +40,6 @@ public class AggregationResult {
 
     public AggregationResult setSocialAccounts(List<SocialAccount> socialAccounts) {
         this.socialAccounts = socialAccounts;
-        return this;
-    }
-
-    public List<NewsItem> getNews() {
-        return news;
-    }
-
-    public AggregationResult setNews(List<NewsItem> news) {
-        this.news = news;
         return this;
     }
 

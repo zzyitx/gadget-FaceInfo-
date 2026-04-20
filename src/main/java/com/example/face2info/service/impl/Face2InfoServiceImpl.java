@@ -3,6 +3,8 @@ package com.example.face2info.service.impl;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
+import com.example.face2info.entity.internal.ParagraphSource;
+import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.RecognitionEvidence;
@@ -12,6 +14,8 @@ import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
 import com.example.face2info.entity.response.PersonBasicInfoResponse;
 import com.example.face2info.entity.response.PersonInfo;
+import com.example.face2info.entity.response.ArticleSourceBadge;
+import com.example.face2info.entity.response.ParagraphWithSources;
 import com.example.face2info.service.Face2InfoService;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
@@ -197,7 +201,6 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             errors.addAll(combinedErrors);
             FaceInfoResponse response = new FaceInfoResponse()
                     .setPerson(null)
-                    .setNews(aggregationResult == null ? null : aggregationResult.getNews())
                     .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                     .setWarnings(warnings)
                     .setStatus("failed")
@@ -210,14 +213,27 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setName(aggregationResult.getPerson().getName())
                 .setImageUrl(aggregationResult.getPerson().getImageUrl())
                 .setSummary(aggregationResult.getPerson().getSummary())
+                .setSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getSummaryParagraphs()))
                 .setEducationSummary(aggregationResult.getPerson().getEducationSummary())
+                .setEducationSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getEducationSummaryParagraphs()))
                 .setFamilyBackgroundSummary(aggregationResult.getPerson().getFamilyBackgroundSummary())
+                .setFamilyBackgroundSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getFamilyBackgroundSummaryParagraphs()))
                 .setCareerSummary(aggregationResult.getPerson().getCareerSummary())
+                .setCareerSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getCareerSummaryParagraphs()))
                 .setChinaRelatedStatementsSummary(aggregationResult.getPerson().getChinaRelatedStatementsSummary())
+                .setChinaRelatedStatementsSummaryParagraphs(toResponseParagraphs(
+                        aggregationResult.getPerson().getChinaRelatedStatementsSummaryParagraphs()))
                 .setPoliticalTendencySummary(aggregationResult.getPerson().getPoliticalTendencySummary())
+                .setPoliticalTendencySummaryParagraphs(toResponseParagraphs(
+                        aggregationResult.getPerson().getPoliticalTendencySummaryParagraphs()))
                 .setContactInformationSummary(aggregationResult.getPerson().getContactInformationSummary())
+                .setContactInformationSummaryParagraphs(toResponseParagraphs(
+                        aggregationResult.getPerson().getContactInformationSummaryParagraphs()))
                 .setFamilyMemberSituationSummary(aggregationResult.getPerson().getFamilyMemberSituationSummary())
+                .setFamilyMemberSituationSummaryParagraphs(toResponseParagraphs(
+                        aggregationResult.getPerson().getFamilyMemberSituationSummaryParagraphs()))
                 .setMisconductSummary(aggregationResult.getPerson().getMisconductSummary())
+                .setMisconductSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getMisconductSummaryParagraphs()))
                 .setTags(aggregationResult.getPerson().getTags())
                 .setEvidenceUrls(aggregationResult.getPerson().getEvidenceUrls())
                 .setWikipedia(aggregationResult.getPerson().getWikipedia())
@@ -229,7 +245,6 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
         FaceInfoResponse response = new FaceInfoResponse()
                 .setPerson(person)
-                .setNews(aggregationResult.getNews())
                 .setWarnings(warnings)
                 .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                 .setStatus(status)
@@ -320,7 +335,6 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .replace("face_id must not be blank.", BLANK_FACE_ID_ERROR)
                 .replace("Unable to resolve person information.", PERSON_RESOLUTION_ERROR)
                 .replace("Unable to resolve person name from evidence", "无法解析人物名称")
-                .replace("news fetch failed: timeout", "新闻抓取失败：请求超时")
                 .replace("bing_images: timeout", "Bing 图片搜索超时");
     }
 
@@ -344,5 +358,39 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setEducation(basicInfo.getEducation())
                 .setOccupations(basicInfo.getOccupations())
                 .setBiographies(basicInfo.getBiographies());
+    }
+
+    private List<ParagraphWithSources> toResponseParagraphs(List<ParagraphSummaryItem> paragraphs) {
+        List<ParagraphWithSources> response = new ArrayList<>();
+        if (paragraphs == null) {
+            return response;
+        }
+        for (ParagraphSummaryItem paragraph : paragraphs) {
+            if (paragraph == null) {
+                continue;
+            }
+            response.add(new ParagraphWithSources()
+                    .setText(paragraph.getText())
+                    .setSources(toResponseSources(paragraph.getSources())));
+        }
+        return response;
+    }
+
+    private List<ArticleSourceBadge> toResponseSources(List<ParagraphSource> sources) {
+        List<ArticleSourceBadge> response = new ArrayList<>();
+        if (sources == null) {
+            return response;
+        }
+        for (ParagraphSource source : sources) {
+            if (source == null) {
+                continue;
+            }
+            response.add(new ArticleSourceBadge()
+                    .setTitle(source.getTitle())
+                    .setUrl(source.getUrl())
+                    .setSource(source.getSource())
+                    .setPublishedAt(source.getPublishedAt()));
+        }
+        return response;
     }
 }
