@@ -26,6 +26,14 @@ public class ImageMatch {
     @Schema(description = "基于排名、标题和来源计算的匹配置信度分数", example = "96.4")
     private double similarityScore;
 
+    @JsonProperty("aggregated_primary")
+    @Schema(description = "是否为 60% 以上高相似度结果聚合后的代表主图", example = "true")
+    private boolean aggregatedPrimary;
+
+    @JsonProperty("aggregated_count")
+    @Schema(description = "被聚合进当前主图的高相似度图片数量，仅 aggregated_primary=true 时大于 0", example = "4")
+    private int aggregatedCount;
+
     public int getPosition() {
         return position;
     }
@@ -77,6 +85,24 @@ public class ImageMatch {
 
     public ImageMatch setSimilarityScore(double similarityScore) {
         this.similarityScore = similarityScore;
+        return this;
+    }
+
+    public boolean getAggregatedPrimary() {
+        return aggregatedPrimary;
+    }
+
+    public ImageMatch setAggregatedPrimary(boolean aggregatedPrimary) {
+        this.aggregatedPrimary = aggregatedPrimary;
+        return this;
+    }
+
+    public int getAggregatedCount() {
+        return aggregatedCount;
+    }
+
+    public ImageMatch setAggregatedCount(int aggregatedCount) {
+        this.aggregatedCount = aggregatedCount;
         return this;
     }
 }
