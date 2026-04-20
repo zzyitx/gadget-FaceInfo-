@@ -98,14 +98,33 @@ class FaceRecognitionServiceImplTest {
                           "related_content": [{ "title": "Jay Chou live", "link": "https://example.com/d", "source": "Bing", "thumbnail": "https://example.com/d.jpg" }]
                         }
                         """)));
+        when(imageSimilarityService.score(any(), anyString(), anyDouble())).thenAnswer(invocation -> {
+            String thumbnailUrl = invocation.getArgument(1);
+            if ("https://example.com/a.jpg".equals(thumbnailUrl)) {
+                return 58.0D;
+            }
+            if ("https://example.com/about-preview.jpg".equals(thumbnailUrl)) {
+                return 55.0D;
+            }
+            if ("https://example.com/b.jpg".equals(thumbnailUrl)) {
+                return 52.0D;
+            }
+            if ("https://example.com/c.jpg".equals(thumbnailUrl)) {
+                return 48.0D;
+            }
+            if ("https://example.com/d.jpg".equals(thumbnailUrl)) {
+                return 46.0D;
+            }
+            return invocation.getArgument(2);
+        });
 
-        FaceRecognitionServiceImpl service = createService();
+        FaceRecognitionServiceImpl service = createService(false);
 
         RecognitionEvidence result = service.recognize(image);
 
         assertThat(result.getImageMatches()).hasSizeGreaterThanOrEqualTo(3);
         assertThat(result.getImageMatches()).extracting("thumbnailUrl")
-                .contains("https://example.com/a.jpg", "https://example.com/b.jpg", "https://example.com/d.jpg");
+                .contains("https://example.com/a.jpg", "https://example.com/about-preview.jpg", "https://example.com/d.jpg");
         assertThat(result.getSeedQueries()).contains("Jay Chou");
         assertThat(result.getWebEvidences()).extracting(WebEvidence::getUrl)
                 .contains("https://example.com/a", "https://example.com/b", "https://example.com/c", "https://example.com/d");
@@ -153,8 +172,15 @@ class FaceRecognitionServiceImplTest {
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
         when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
                 .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(imageSimilarityService.score(any(), anyString(), anyDouble())).thenAnswer(invocation -> {
+            String thumbnailUrl = invocation.getArgument(1);
+            int start = thumbnailUrl.lastIndexOf('/') + 1;
+            int end = thumbnailUrl.lastIndexOf('.');
+            int index = Integer.parseInt(thumbnailUrl.substring(start, end));
+            return 59.5D - index;
+        });
 
-        FaceRecognitionServiceImpl service = createService();
+        FaceRecognitionServiceImpl service = createService(false);
 
         RecognitionEvidence evidence = service.recognize(image);
 
@@ -164,6 +190,69 @@ class FaceRecognitionServiceImplTest {
                 .isSortedAccordingTo(java.util.Comparator.reverseOrder());
         assertThat(evidence.getImageMatches().get(0).getThumbnailUrl()).isEqualTo("https://thumb.example.com/1.jpg");
         assertThat(evidence.getImageMatches().get(0).getSimilarityScore()).isGreaterThan(evidence.getImageMatches().get(9).getSimilarityScore());
+    }
+
+    @Test
+    void shouldAggregateHighSimilarityMatchesIntoPrimaryImageAndKeepLowSimilarityMatchesVisible() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "knowledgeGraph": { "title": "Lei Jun" },
+                          "organic": [
+                            {
+                              "title": "Lei Jun close portrait",
+                              "link": "https://example.com/1",
+                              "source": "Example",
+                              "thumbnailUrl": "https://thumb.example.com/1.jpg"
+                            },
+                            {
+                              "title": "Lei Jun same face duplicate",
+                              "link": "https://example.com/2",
+                              "source": "Example",
+                              "thumbnailUrl": "https://thumb.example.com/2.jpg"
+                            },
+                            {
+                              "title": "Different crowd shot",
+                              "link": "https://example.com/3",
+                              "source": "Example",
+                              "thumbnailUrl": "https://thumb.example.com/3.jpg"
+                            }
+                          ]
+                        }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(imageSimilarityService.score(any(), anyString(), anyDouble())).thenAnswer(invocation -> {
+            String thumbnailUrl = invocation.getArgument(1);
+            if ("https://thumb.example.com/1.jpg".equals(thumbnailUrl)) {
+                return 88.6D;
+            }
+            if ("https://thumb.example.com/2.jpg".equals(thumbnailUrl)) {
+                return 76.4D;
+            }
+            if ("https://thumb.example.com/3.jpg".equals(thumbnailUrl)) {
+                return 49.2D;
+            }
+            return invocation.getArgument(2);
+        });
+
+        FaceRecognitionServiceImpl service = createService(false);
+
+        RecognitionEvidence evidence = service.recognize(image);
+
+        assertThat(evidence.getImageMatches()).hasSize(2);
+        assertThat(evidence.getImageMatches()).extracting("thumbnailUrl")
+                .containsExactly("https://thumb.example.com/1.jpg", "https://thumb.example.com/3.jpg");
+        assertThat(evidence.getImageMatches().get(0).getAggregatedPrimary()).isTrue();
+        assertThat(evidence.getImageMatches().get(0).getAggregatedCount()).isEqualTo(2);
+        assertThat(evidence.getImageMatches().get(1).getAggregatedPrimary()).isFalse();
+        assertThat(evidence.getImageMatches().get(1).getAggregatedCount()).isEqualTo(0);
     }
 
     @Test
@@ -363,8 +452,14 @@ class FaceRecognitionServiceImplTest {
     }
 
     private FaceRecognitionServiceImpl createService() {
-        when(imageSimilarityService.score(any(), anyString(), anyDouble()))
-                .thenAnswer(invocation -> invocation.getArgument(2));
+        return createService(true);
+    }
+
+    private FaceRecognitionServiceImpl createService(boolean useFallbackScoreStub) {
+        if (useFallbackScoreStub) {
+            when(imageSimilarityService.score(any(), anyString(), anyDouble()))
+                    .thenAnswer(invocation -> invocation.getArgument(2));
+        }
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(4);
         executor.setMaxPoolSize(4);

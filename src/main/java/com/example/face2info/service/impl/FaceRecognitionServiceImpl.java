@@ -39,6 +39,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
     private static final int MAX_IMAGE_MATCHES = 10;
     private static final int MAX_SEED_QUERIES = 3;
+    private static final double AGGREGATED_PRIMARY_THRESHOLD = 60.0;
     private static final double MIN_SIMILARITY_SCORE = 65.0;
     private static final double MAX_SIMILARITY_SCORE = 99.0;
     private static final List<String> TEMP_IMAGE_HOST_KEYWORDS = List.of("tmpfiles", "tempfile");
@@ -324,6 +325,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             matches.add(future.join());
         }
         matches.sort(Comparator.comparingDouble(ImageMatch::getSimilarityScore).reversed());
+        matches = collapseSameFaceMatches(matches);
         List<ImageMatch> top = new ArrayList<>();
         int limit = Math.min(MAX_IMAGE_MATCHES, matches.size());
         for (int i = 0; i < limit; i++) {
@@ -365,6 +367,29 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 .setSource(candidate.source)
                 .setThumbnailUrl(candidate.imageUrl)
                 .setSimilarityScore(roundScore(similarityScore));
+    }
+
+    private List<ImageMatch> collapseSameFaceMatches(List<ImageMatch> matches) {
+        List<ImageMatch> collapsed = new ArrayList<>();
+        ImageMatch aggregatedPrimary = null;
+        int aggregatedCount = 0;
+        for (ImageMatch match : matches) {
+            // 搜索结果阶段把 60% 以上的人脸归并为一张主图，并记录被聚合的总数供前端提示。
+            if (match.getSimilarityScore() >= AGGREGATED_PRIMARY_THRESHOLD) {
+                if (aggregatedPrimary == null) {
+                    aggregatedPrimary = match;
+                }
+                aggregatedCount++;
+                continue;
+            }
+            match.setAggregatedPrimary(false).setAggregatedCount(0);
+            collapsed.add(match);
+        }
+        if (aggregatedPrimary != null) {
+            aggregatedPrimary.setAggregatedPrimary(true).setAggregatedCount(aggregatedCount);
+            collapsed.add(0, aggregatedPrimary);
+        }
+        return collapsed;
     }
 
     /**
