@@ -4,6 +4,8 @@ import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.FaceBoundingBox;
+import com.example.face2info.entity.internal.ParagraphSource;
+import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.RecognitionEvidence;
@@ -264,6 +266,25 @@ class Face2InfoServiceImplTest {
                         .setSummary("Long summary")
                         .setWikipedia("https://example.com/wiki")
                         .setOfficialWebsite("https://example.com")
+                        .setSummaryParagraphs(List.of(
+                                new ParagraphSummaryItem()
+                                        .setText("第一段主体信息。")
+                                        .setSources(List.of(
+                                                new ParagraphSource()
+                                                        .setTitle("文章 A")
+                                                        .setUrl("https://example.com/a")
+                                                        .setSource("Example")
+                                        ))
+                        ))
+                        .setEducationSummaryParagraphs(List.of(
+                                new ParagraphSummaryItem()
+                                        .setText("第一段教育经历。")
+                                        .setSources(List.of(
+                                                new ParagraphSource()
+                                                        .setTitle("教育文章")
+                                                        .setUrl("https://example.com/education")
+                                        ))
+                        ))
                         .setBasicInfo(new com.example.face2info.entity.internal.PersonBasicInfo()
                                 .setBirthDate("1979-01-18")
                                 .setEducation(List.of("Tamkang Senior High School"))
@@ -277,6 +298,13 @@ class Face2InfoServiceImplTest {
         assertThat(response.getPerson().getBasicInfo().getEducation()).containsExactly("Tamkang Senior High School");
         assertThat(response.getPerson().getBasicInfo().getOccupations()).containsExactly("Singer", "Producer");
         assertThat(response.getPerson().getBasicInfo().getBiographies()).containsExactly("Taiwanese Mandopop artist");
+        assertThat(response.getPerson().getSummaryParagraphs()).hasSize(1);
+        assertThat(response.getPerson().getSummaryParagraphs().get(0).getText()).isEqualTo("第一段主体信息。");
+        assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources()).hasSize(1);
+        assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources().get(0).getTitle()).isEqualTo("文章 A");
+        assertThat(response.getPerson().getEducationSummaryParagraphs()).hasSize(1);
+        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getSources().get(0).getUrl())
+                .isEqualTo("https://example.com/education");
     }
 
     @Test
@@ -287,12 +315,12 @@ class Face2InfoServiceImplTest {
         when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
         when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
                 .setPerson(new PersonAggregate().setName("Jay Chou").setSummary("Jay Chou is a singer."))
-                .setErrors(List.of("news fetch failed: timeout")));
+                .setErrors(List.of("bing_images: timeout")));
 
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
         assertThat(response.getStatus()).isEqualTo("partial");
-        assertThat(response.getError()).contains("新闻抓取失败");
+        assertThat(response.getError()).contains("Bing 图片搜索超时");
     }
 
     @Test
@@ -414,11 +442,9 @@ class Face2InfoServiceImplTest {
     @Test
     void shouldKeepResponseListsStableWhenSetterReceivesNull() {
         FaceInfoResponse response = new FaceInfoResponse()
-                .setNews(null)
                 .setImageMatches(null)
                 .setWarnings(null);
 
-        assertThat(response.getNews()).isEmpty();
         assertThat(response.getImageMatches()).isEmpty();
         assertThat(response.getWarnings()).isEmpty();
     }

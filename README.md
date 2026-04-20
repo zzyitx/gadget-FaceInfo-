@@ -1,14 +1,14 @@
 # gadget
 
-`gadget` 是一个基于 Spring Boot 的人物公开信息聚合服务。系统接收用户上传的人脸图片，先执行本地人脸检测，再按检测结果进入识别、搜索和公开信息聚合流程，并以统一的 HTTP API 结构返回结果。
+`gadget` 是一个基于 Spring Boot 的人物公开信息聚合服务。系统接收用户上传的人脸图片，先通过 `CompreFace` 执行人脸检测，再按检测结果进入识别、搜索和公开信息聚合流程，并以统一的 HTTP API 结构返回结果。
 
 ## 核心能力
 
 - 接收前端上传的人脸图片
-- 通过仓库内 `face-detector/` sidecar 执行本地多人脸检测
+- 通过 `CompreFace` 执行本地多人脸检测
 - 单脸场景自动继续进入识别与聚合流程
 - 多脸场景返回 `selection_required`，供前端展示总览图和候选人脸卡片
-- 聚合人物简介、基础信息、相关新闻和公开社交账号
+- 聚合人物简介、基础信息和公开社交账号
 - 对外提供统一的 HTTP API 响应结构
 
 ## 接口说明
@@ -50,7 +50,6 @@
 
 - `Serper`：用于 Google Lens 反向搜图和 Google 搜索
 - `SerpAPI`：当前用于 Yandex 和 Bing 图片搜索
-- `NewsAPI`：用于查询相关新闻
 - `Jina Reader`：用于抓取网页正文
 - `Kimi`：用于正文篇级总结和最终人物总结
 - `GFPGAN` 本地仓库：用于人脸图像高清化（修复老照片/低清人脸）
@@ -58,8 +57,9 @@
 
 检测相关说明：
 
-- 本项目运行时只依赖仓库内的 `face-detector/` sidecar
-- `CompreFace` 只作为检测链路与多人脸流程设计的参考，不作为运行时依赖
+- 本项目运行时依赖本仓库内 `infra/compreface/compose.yaml` 启动的 `CompreFace`
+- 多脸阶段只负责检测与选脸，不做搜索结果图片相似度比对
+- 搜索结果图片回流后，会调用 `CompreFace verification` 做同脸去重和相似度打分
 
 相关配置位于 [application.yml](/D:/ideaProject/gadget/src/main/resources/application.yml)。
 
@@ -69,7 +69,6 @@
 
 - `SERP_API_KEY`
 - `SERPER_API_KEY`
-- `NEWS_API_KEY`
 - `JINA_API_KEY`
 - `KIMI_API_KEY`
 - `SOPHNET_API_KEY`
@@ -88,27 +87,35 @@
 - 每次修改配置时，先更新本地 `application.yml`，再同步更新 `application-git.yml`
 - Git 提交只提交 `application-git.yml`，不要为了提交而删除本地 `application.yml` 中的真实 key
 
-### face-detection 配置
+### CompreFace 配置
 
-脱敏配置文件中需要保留 `face2info.api.face-detection` 结构，至少包含：
+脱敏配置文件中需要保留 `face2info.api.compreface` 结构，至少包含：
 
 - `base-url`
-- `detect-path`
 - `connect-timeout-ms`
 - `read-timeout-ms`
 - `session-ttl-seconds`
+- `detection.api-key`
+- `detection.path`
+- `verification.api-key`
+- `verification.path`
 
 示例：
 
 ```yaml
 face2info:
   api:
-    face-detection:
-      base-url: http://127.0.0.1:8091
-      detect-path: /detect
-      connect-timeout-ms: 3000
-      read-timeout-ms: 10000
+    compreface:
+      base-url: http://127.0.0.1:8000
+      connect-timeout-ms: 5000
+      read-timeout-ms: 30000
       session-ttl-seconds: 600
+      detection:
+        api-key: ${COMPREFACE_DETECTION_API_KEY:}
+        path: /api/v1/detection/detect
+      verification:
+        api-key: ${COMPREFACE_VERIFICATION_API_KEY:}
+        path: /api/v1/verification/verify
 ```
 
 ## 包结构说明
@@ -142,24 +149,46 @@ mvn spring-boot:run
 
 - `http://localhost:8080`
 
-### 启动 face-detector sidecar
+### 准备 CompreFace
+
+当前脚本默认连接一个“已经启动好的 CompreFace 服务”，不要求必须从本仓库的 `infra/compreface` 启动。
+
+例如，你可以像现在这样，直接在独立目录里启动：
 
 ```bash
-cd face-detector
-python -m pip install -r requirements.txt
-uvicorn app:app --host 127.0.0.1 --port 8091 --reload
+cd D:/ideaProject/CompreFace
+docker-compose up -d
 ```
 
-如果需要单独验证 detector，也可以参考 [face-detector/README.md](/D:/ideaProject/gadget/face-detector/README.md)。
+只要 `CompreFace` 管理端最终可通过 `http://127.0.0.1:8000` 访问，下面的初始化脚本就可以直接复用。
+
+### 初始化 CompreFace API Key
+
+在 `gadget` 应用已经存在、且其中已手工创建好 detection 服务后，执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/compreface/init-compreface.ps1 -AdminEmail <管理员邮箱> -AdminPassword <管理员密码>
+```
+
+脚本会：
+
+- 登录 `CompreFace` 管理端
+- 查找已有的 `gadget` 应用
+- 复用现有 `DETECTION` 模型
+- 在缺少 `VERIFY` 模型时自动补建
+- 输出 `COMPREFACE_DETECTION_API_KEY` 和 `COMPREFACE_VERIFICATION_API_KEY`
+
+脚本不会自动改写本地配置文件。执行后，把输出的 key 手动写入本地 `application.yml` 或环境变量。
 
 ## 默认页面行为
 
 默认静态页围绕 `POST /api/face2info` 工作：
 
 - 先上传图片，再调用检测接口生成候选人脸
-- 单脸时：直接展示人物、图片匹配、社交账号和相关文章
+- 单脸时：直接展示人物、图片匹配文章来源和社交账号
 - 多脸时：展示带框总览图和候选人脸卡片
 - 选中某张脸后：调用 `POST /api/face2info/process-selected` 继续后半段流程
+- 搜索结果图片阶段：同一目标脸只保留相似度最高的一张图，其余不同人脸图片继续展示相似度
 
 ## 测试
 
@@ -201,7 +230,7 @@ mvn clean verify
 
 ## GFPGAN 本地人脸高清化
 
-- 检测流程默认会先尝试调用本地 `GFPGAN` 仓库执行 `inference_gfpgan.py`，再进入 `face-detector` 检测
+- 检测流程默认会先尝试调用本地 `GFPGAN` 仓库执行 `inference_gfpgan.py`，再进入 `CompreFace detection`
 - 当 GFPGAN 推理超时、脚本不可用或输出缺失时，会自动降级为原图继续检测，不阻断主流程
 - 关键配置位于 `face2info.api.face-enhance`
   - `provider=gfpgan`

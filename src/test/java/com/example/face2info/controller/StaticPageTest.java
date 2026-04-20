@@ -85,7 +85,7 @@ class StaticPageTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("id=\"personCard\"")))
                 .andExpect(content().string(containsString("id=\"socialCard\"")))
-                .andExpect(content().string(containsString("id=\"newsCard\"")))
+                .andExpect(content().string(not(containsString("id=\"newsCard\""))))
                 .andExpect(content().string(containsString("id=\"debugCard\"")))
                 .andExpect(content().string(containsString("result-layout")))
                 .andExpect(content().string(containsString("main-column")))
@@ -102,9 +102,14 @@ class StaticPageTest {
         mockMvc.perform(get("/result.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(".profile-section-body")))
-                .andExpect(content().string(containsString("white-space: pre-wrap")))
+                .andExpect(content().string(containsString(".profile-section-paragraph")))
+                .andExpect(content().string(containsString(".source-badge")))
                 .andExpect(content().string(containsString("renderProfileSection(")))
-                .andExpect(content().string(containsString("family_member_situation_summary")));
+                .andExpect(content().string(containsString("family_member_situation_summary")))
+                .andExpect(content().string(containsString("family_member_situation_summary_paragraphs")))
+                .andExpect(content().string(containsString("renderParagraphBlock(")))
+                .andExpect(content().string(containsString("normalizeParagraphs(")))
+                .andExpect(content().string(containsString("renderSourceBadges(")));
     }
 
     @Test
@@ -112,18 +117,26 @@ class StaticPageTest {
         mockMvc.perform(get("/result.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("renderImageMatches")))
-                .andExpect(content().string(containsString("renderNews")))
+                .andExpect(content().string(containsString("splitImageMatches")))
+                .andExpect(content().string(not(containsString("renderNews"))))
                 .andExpect(content().string(containsString("sortImageMatches")))
                 .andExpect(content().string(containsString("buildMatchArticles")))
                 .andExpect(content().string(containsString("thumbnail_url")))
                 .andExpect(content().string(containsString("similarity_score")))
+                .andExpect(content().string(containsString("aggregated_count")))
+                .andExpect(content().string(containsString("aggregated_primary")))
                 .andExpect(content().string(containsString("data-link")))
                 .andExpect(content().string(containsString("window.open")))
                 .andExpect(content().string(containsString("match-order")))
                 .andExpect(content().string(containsString("match-score")))
+                .andExpect(content().string(containsString("match-group")))
+                .andExpect(content().string(containsString("match-group-title")))
+                .andExpect(content().string(containsString("match-aggregate-count")))
                 .andExpect(content().string(containsString("match-article-list")))
-                .andExpect(content().string(containsString("independent-news-list")))
-                .andExpect(content().string(containsString("article-source-title")));
+                .andExpect(content().string(not(containsString("independent-news-list"))))
+                .andExpect(content().string(containsString("article-source-title")))
+                .andExpect(content().string(containsString("article-grid")))
+                .andExpect(content().string(not(containsString("newsList.map(renderIndependentNews)"))));
     }
 
     @Test

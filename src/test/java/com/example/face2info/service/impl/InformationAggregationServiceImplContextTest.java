@@ -2,7 +2,6 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
-import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
@@ -42,11 +41,6 @@ class InformationAggregationServiceImplContextTest {
         @Bean
         SerpApiClient serpApiClient() {
             return mock(SerpApiClient.class);
-        }
-
-        @Bean
-        NewsApiClient newsApiClient() {
-            return mock(NewsApiClient.class);
         }
 
         @Bean

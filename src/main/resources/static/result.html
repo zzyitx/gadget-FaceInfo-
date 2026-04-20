@@ -158,8 +158,29 @@
     .person-summary {
       margin: 0;
       font-size: 15px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .summary-paragraph,
+    .profile-section-paragraph {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .summary-paragraph-text,
+    .profile-section-body {
+      color: var(--muted);
+      line-height: 1.75;
       white-space: pre-wrap;
       word-break: break-word;
+      font-size: 15px;
+    }
+
+    .summary-paragraph-text {
+      flex: 1 1 100%;
     }
 
     .profile-sections {
@@ -193,16 +214,37 @@
     }
 
     .profile-section-body {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.75;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 15px;
+      flex: 1 1 100%;
     }
 
     .profile-section-empty {
       color: var(--muted);
+    }
+
+    .source-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .source-badge {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(140, 63, 37, 0.08);
+      border: 1px solid rgba(140, 63, 37, 0.14);
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 12px;
+      line-height: 1.35;
+      font-weight: 700;
+    }
+
+    .source-badge:hover {
+      text-decoration: underline;
     }
 
     .person-avatar-wrap {
@@ -238,6 +280,54 @@
 
     .match-list {
       gap: 12px;
+    }
+
+    .match-group {
+      display: grid;
+      gap: 10px;
+    }
+
+    .match-group + .match-group {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(41, 28, 20, 0.1);
+    }
+
+    .match-group-header {
+      display: grid;
+      gap: 6px;
+    }
+
+    .match-group-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .match-group-title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.4;
+    }
+
+    .match-group-note {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .match-aggregate-count {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(140, 63, 37, 0.1);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
     }
 
     .match-item {
@@ -344,6 +434,29 @@
 
     .article-source-group + .article-source-group {
       margin-top: 18px;
+    }
+
+    .article-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .article-card {
+      padding: 12px 13px;
+      background: rgba(242, 225, 210, 0.28);
+    }
+
+    .article-card p {
+      margin: 8px 0 0;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .article-card a,
+    .article-card strong {
+      display: block;
+      line-height: 1.55;
     }
 
     .article-order-row {
@@ -453,7 +566,7 @@
       <a class="back-link" href="/index.html">返回首页重新上传</a>
     </div>
     <h1>人物详情检索结果</h1>
-    <p class="hero-copy">本页展示所选人像框对应的人物信息、图片匹配、公开社交账号与相关文章。</p>
+    <p class="hero-copy">本页展示所选人像框对应的人物信息、图片匹配及其文章来源、公开社交账号。</p>
     <p class="hero-copy">教育经历、家庭背景、职业经历、涉华言论、政治倾向、地址信息、家族成员情况和污点劣迹都会拆分为独立主题区块展示。</p>
   </section>
 
@@ -468,7 +581,7 @@
         </div>
         <div class="person-intro">
           <div class="person-copy">
-            <p class="person-summary" id="personSummary">请在首页完成上传与选脸后再查看本页。</p>
+            <div class="person-summary" id="personSummary">请在首页完成上传与选脸后再查看本页。</div>
           </div>
           <div class="person-avatar-wrap" id="personAvatarWrap" hidden>
             <img id="personAvatar" alt="人物头像" loading="lazy" referrerpolicy="no-referrer">
@@ -488,14 +601,14 @@
         <div id="socialBody"><p class="empty">暂无公开社交账号。</p></div>
       </section>
 
-      <section class="card" id="newsCard">
+      <section class="card" id="articleCard">
         <div class="section-header">
           <div class="section-title">
             <span class="eyebrow">公开信息</span>
-            <h2>相关文章</h2>
+            <h2>图片匹配文章来源</h2>
           </div>
         </div>
-        <div id="newsBody"><p class="empty">暂无相关文章。</p></div>
+        <div id="articleBody"><p class="empty">暂无图片匹配文章来源。</p></div>
       </section>
 
       <section class="card" id="debugCard">
@@ -532,7 +645,7 @@
   const matchRailCard = document.getElementById("matchRailCard");
   const matchesBody = document.getElementById("matchesBody");
   const socialBody = document.getElementById("socialBody");
-  const newsBody = document.getElementById("newsBody");
+  const articleBody = document.getElementById("articleBody");
 
   matchRailCard.addEventListener("click", handleMatchClick);
   bootstrapResult();
@@ -563,9 +676,11 @@
   function renderFinal(data) {
     const person = data.person || null;
     personTitle.textContent = person && person.name ? person.name : "未知人物";
-    personSummary.textContent = person && (person.description || person.summary)
-      ? (person.description || person.summary)
-      : "暂无人物简介。";
+    const summaryParagraphs = normalizeParagraphs(
+      person && person.summary_paragraphs,
+      person && (person.description || person.summary)
+    );
+    personSummary.innerHTML = renderParagraphBlock(summaryParagraphs, "暂无人物简介。", "summary-paragraph");
 
     const avatarUrl = person && person.image_url ? person.image_url : "";
     if (avatarUrl) {
@@ -606,21 +721,21 @@
     ].join("");
 
     profileSections.innerHTML = [
-      renderProfileSection("教育经历", educationSummary, "暂无教育经历内容。"),
-      renderProfileSection("家庭背景", familyBackgroundSummary, "暂无家庭背景内容。"),
-      renderProfileSection("职业经历", careerSummary, "暂无职业经历内容。"),
-      renderProfileSection("涉华言论", chinaRelatedStatementsSummary, "暂无涉华言论内容。"),
-      renderProfileSection("政治倾向", politicalTendencySummary, "暂无政治倾向内容。"),
-      renderProfileSection("地址信息", contactInformationSummary, "暂无公开通讯、网络身份或核心成员信息。"),
-      renderProfileSection("家族成员情况", familyMemberSituationSummary, "暂无家族成员、经商情况或涉华利益信息。"),
-      renderProfileSection("污点劣迹", misconductSummary, "暂无违法记录、处罚或负面事件信息。")
+      renderProfileSection("教育经历", normalizeParagraphs(person && person.education_summary_paragraphs, educationSummary), "暂无教育经历内容。"),
+      renderProfileSection("家庭背景", normalizeParagraphs(person && person.family_background_summary_paragraphs, familyBackgroundSummary), "暂无家庭背景内容。"),
+      renderProfileSection("职业经历", normalizeParagraphs(person && person.career_summary_paragraphs, careerSummary), "暂无职业经历内容。"),
+      renderProfileSection("涉华言论", normalizeParagraphs(person && person.china_related_statements_summary_paragraphs, chinaRelatedStatementsSummary), "暂无涉华言论内容。"),
+      renderProfileSection("政治倾向", normalizeParagraphs(person && person.political_tendency_summary_paragraphs, politicalTendencySummary), "暂无政治倾向内容。"),
+      renderProfileSection("地址信息", normalizeParagraphs(person && person.contact_information_summary_paragraphs, contactInformationSummary), "暂无公开通讯、网络身份或核心成员信息。"),
+      renderProfileSection("家族成员情况", normalizeParagraphs(person && person.family_member_situation_summary_paragraphs, familyMemberSituationSummary), "暂无家族成员、经商情况或涉华利益信息。"),
+      renderProfileSection("污点劣迹", normalizeParagraphs(person && person.misconduct_summary_paragraphs, misconductSummary), "暂无违法记录、处罚或负面事件信息。")
     ].join("");
 
     const matches = Array.isArray(data.image_matches) ? data.image_matches : [];
     const sortedMatches = sortImageMatches(matches);
     renderImageMatches(sortedMatches, data.status, data.error);
     renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
-    renderNews(sortedMatches, Array.isArray(data.news) ? data.news : []);
+    renderArticleSources(sortedMatches);
   }
 
   function sortImageMatches(matches) {
@@ -642,9 +757,10 @@
       return;
     }
 
+    const groupedMatches = splitImageMatches(matches);
     let hasOpenableLink = false;
-    // 关键逻辑：图片卡片只允许跳转到真实来源链接，禁止回退到 thumbnail_url，避免点开缩略图地址。
-    const html = matches.slice(0, 20).map((item, index) => {
+    const renderMatchCard = (item, index) => {
+      // 关键逻辑：图片卡片只允许跳转到真实来源链接，禁止回退到 thumbnail_url，避免点开缩略图地址。
       const safeTitle = sanitizeDisplayText(item.title, "未命名结果");
       const safeSource = sanitizeDisplayText(item.source, "未知来源");
       const safeLink = sanitizeLink(item.link || "#");
@@ -662,12 +778,63 @@
           </div>
         </div>
       `;
-    }).join("");
+    };
+
+    const sections = [];
+    sections.push(renderMatchGroup(
+      "60% 以上聚合主图",
+      groupedMatches.primaryMatch ? [groupedMatches.primaryMatch] : [],
+      groupedMatches.primaryMatch
+        ? `已聚合 ${groupedMatches.primaryMatch.aggregated_count || 1} 张相似度 60% 以上的图片，当前展示其中相似度最高的主图。`
+        : "当前没有相似度达到 60% 的聚合主图。",
+      groupedMatches.primaryMatch
+        ? `<span class="match-aggregate-count">已聚合 ${escapeHtml(String(groupedMatches.primaryMatch.aggregated_count || 1))} 张</span>`
+        : "",
+      renderMatchCard
+    ));
+    sections.push(renderMatchGroup(
+      "其他低相似度结果",
+      groupedMatches.lowSimilarityMatches,
+      groupedMatches.lowSimilarityMatches.length
+        ? "以下结果相似度低于 60%，按相似度从高到低全部展开展示。"
+        : "当前没有低于 60% 的其他结果。",
+      "",
+      renderMatchCard
+    ));
 
     matchesBody.innerHTML = [
       hasOpenableLink ? '<p class="meta-line">点击带链接的图片结果可以打开对应文章页面。</p>' : '<p class="meta-line">当前图片结果未提供可跳转的文章链接。</p>',
-      `<div class="match-list">${html}</div>`
+      sections.join("")
     ].join("");
+  }
+
+  function splitImageMatches(matches) {
+    return matches.reduce((result, item) => {
+      if (!result.primaryMatch && item && item.aggregated_primary) {
+        result.primaryMatch = item;
+        return result;
+      }
+      result.lowSimilarityMatches.push(item);
+      return result;
+    }, { primaryMatch: null, lowSimilarityMatches: [] });
+  }
+
+  function renderMatchGroup(title, items, note, badgeHtml, renderCard) {
+    const html = items.length
+      ? `<div class="match-list">${items.slice(0, 20).map((item, index) => renderCard(item, index)).join("")}</div>`
+      : '<p class="empty">暂无可展示结果。</p>';
+    return `
+      <section class="match-group">
+        <div class="match-group-header">
+          <div class="match-group-title-row">
+            <h3 class="match-group-title">${escapeHtml(title)}</h3>
+            ${badgeHtml}
+          </div>
+          <p class="match-group-note">${escapeHtml(note)}</p>
+        </div>
+        ${html}
+      </section>
+    `;
   }
 
   function renderSocial(accounts) {
@@ -706,7 +873,7 @@
 
   function renderMatchArticle(item) {
     return `
-      <article class="item match-article-item">
+      <article class="item article-card match-article-item">
         <div class="article-order-row">
           <span class="article-order">${item.order}</span>
           <span class="image-score">相似度 ${item.similarity}</span>
@@ -717,40 +884,11 @@
     `;
   }
 
-  function renderIndependentNews(item) {
-    const safeTitle = sanitizeDisplayText(item.title, "未命名文章");
-    const safeSource = sanitizeDisplayText(item.source, "未知来源");
-    const safeUrl = sanitizeLink(item.url || "#");
-    return `
-      <article class="item">
-        <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">${escapeHtml(safeTitle)}</a>
-        <p>${escapeHtml(safeSource)} | ${escapeHtml(item.published_at || "-")}</p>
-        <p>${escapeHtml(item.summary || "暂无摘要。")}</p>
-        ${safeUrl !== "#" ? `<p><a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">查看原文</a></p>` : ""}
-      </article>
-    `;
-  }
-
-  function renderNews(sortedMatches, newsList) {
+  function renderArticleSources(sortedMatches) {
     const matchArticles = buildMatchArticles(sortedMatches);
-    const matchHtml = matchArticles.length
-      ? `<div class="list match-article-list">${matchArticles.map(renderMatchArticle).join("")}</div>`
+    articleBody.innerHTML = matchArticles.length
+      ? `<div class="article-grid match-article-list">${matchArticles.map(renderMatchArticle).join("")}</div>`
       : '<p class="empty">暂无图片匹配文章来源。</p>';
-
-    const newsHtml = newsList.length
-      ? `<div class="list independent-news-list">${newsList.slice(0, 20).map(renderIndependentNews).join("")}</div>`
-      : '<p class="empty">暂无独立新闻来源。</p>';
-
-    newsBody.innerHTML = [
-      '<section class="article-source-group">',
-      '<h3 class="article-source-title">图片匹配文章来源</h3>',
-      matchHtml,
-      '</section>',
-      '<section class="article-source-group">',
-      '<h3 class="article-source-title">独立新闻来源</h3>',
-      newsHtml,
-      '</section>'
-    ].join("");
   }
 
   function renderError(message) {
@@ -762,16 +900,7 @@
     profileSections.innerHTML = "";
     matchesBody.innerHTML = '<p class="empty">当前未生成图片匹配结果。</p>';
     socialBody.innerHTML = '<p class="empty">当前未生成社交账号结果。</p>';
-    newsBody.innerHTML = [
-      '<section class="article-source-group">',
-      '<h3 class="article-source-title">图片匹配文章来源</h3>',
-      '<p class="empty">当前未生成图片匹配文章来源。</p>',
-      '</section>',
-      '<section class="article-source-group">',
-      '<h3 class="article-source-title">独立新闻来源</h3>',
-      '<p class="empty">当前未生成独立新闻来源。</p>',
-      '</section>'
-    ].join("");
+    articleBody.innerHTML = '<p class="empty">当前未生成图片匹配文章来源。</p>';
     rawResponseEl.textContent = "{}";
   }
 
@@ -834,13 +963,9 @@
         title: sanitizeDisplayText(item.title, null),
         source: sanitizeDisplayText(item.source, null),
         thumbnail_url: item.thumbnail_url ? shorten(item.thumbnail_url) : null,
-        similarity_score: item.similarity_score || null
-      })) : [],
-      news: Array.isArray(data && data.news) ? data.news.slice(0, 20).map(item => ({
-        title: sanitizeDisplayText(item.title, null),
-        source: sanitizeDisplayText(item.source, null),
-        published_at: item.published_at || null,
-        summary: item.summary || null
+        similarity_score: item.similarity_score || null,
+        aggregated_primary: Boolean(item.aggregated_primary),
+        aggregated_count: item.aggregated_count || 0
       })) : []
     };
   }
@@ -858,14 +983,59 @@
     window.open(link, "_blank", "noreferrer");
   }
 
-  function renderProfileSection(title, value, emptyText) {
-    const content = value && String(value).trim() ? escapeHtml(String(value).trim()) : `<span class="profile-section-empty">${escapeHtml(emptyText)}</span>`;
+  function normalizeParagraphs(paragraphs, fallbackText) {
+    if (Array.isArray(paragraphs) && paragraphs.length) {
+      return paragraphs
+        .map(item => ({
+          text: item && typeof item.text === "string" ? item.text.trim() : "",
+          sources: normalizeSources(item && item.sources)
+        }))
+        .filter(item => item.text);
+    }
+    const text = fallbackText && String(fallbackText).trim();
+    return text ? [{ text, sources: [] }] : [];
+  }
+
+  function normalizeSources(sources) {
+    if (!Array.isArray(sources)) return [];
+    return sources
+      .map(item => ({
+        title: sanitizeDisplayText(item && item.title, "来源文章"),
+        url: sanitizeLink(item && item.url ? item.url : "#"),
+        source: sanitizeDisplayText(item && item.source, "")
+      }))
+      .filter(item => item.title || item.url !== "#");
+  }
+
+  function renderSourceBadges(sources) {
+    if (!Array.isArray(sources) || !sources.length) return "";
+    return `<span class="source-badges">${sources.map(item => {
+      const label = item.source ? `${item.title} · ${item.source}` : item.title;
+      return item.url !== "#"
+        ? `<a class="source-badge" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`
+        : `<span class="source-badge">${escapeHtml(label)}</span>`;
+    }).join("")}</span>`;
+  }
+
+  function renderParagraphBlock(paragraphs, emptyText, paragraphClassName, textClassName = "profile-section-body") {
+    if (!Array.isArray(paragraphs) || !paragraphs.length) {
+      return `<span class="profile-section-empty">${escapeHtml(emptyText)}</span>`;
+    }
+    return paragraphs.map(item => `
+      <div class="${escapeHtml(paragraphClassName)}">
+        <span class="${escapeHtml(textClassName)}">${escapeHtml(item.text)}</span>
+        ${renderSourceBadges(item.sources)}
+      </div>
+    `).join("");
+  }
+
+  function renderProfileSection(title, paragraphs, emptyText) {
     return `
       <section class="profile-section">
         <div class="profile-section-header">
           <h3 class="profile-section-title">${escapeHtml(title)}</h3>
         </div>
-        <p class="profile-section-body">${content}</p>
+        ${renderParagraphBlock(paragraphs, emptyText, "profile-section-paragraph")}
       </section>
     `;
   }

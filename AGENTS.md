@@ -12,7 +12,7 @@
 ### 核心功能
 - 接收前端上传的人脸图片
 - 通过反向搜图识别候选人物
-- 聚合人物简介、相关新闻、公开社交账号等信息
+- 聚合人物简介、公开社交账号等信息
 - 输出统一结构的接口响应
 - 通过配置管理外部 API、代理与异步线程池
 
@@ -32,7 +32,7 @@
 1. 前端上传图片到接口
 2. `controller` 接收请求并校验
 3. `service` 编排识别、搜索、聚合流程
-4. `client` 访问外部平台，如 `SerpAPI`、`NewsAPI` 和临时文件 URL 服务
+4. `client` 访问外部平台，如 `SerpAPI` 和临时文件 URL 服务
 5. `entity.internal` 承载中间结果
 6. `entity.response` 统一封装返回给前端
 
@@ -241,7 +241,6 @@ Field: image
 ### 外部依赖
 当前项目说明中已集成或依赖以下外部能力：
 - `SerpAPI`
-- `NewsAPI`
 - 临时文件 URL 服务
 
 ### 配置要求
@@ -275,7 +274,7 @@ Field: image
 ### 推荐提交信息
 ```text
 feat(service): 新增人物信息聚合逻辑
-fix(client): 修复 NewsAPI 超时处理
+fix(client): 修复第三方检索超时处理
 refactor(controller): 简化上传接口参数校验
 test(service): 补充候选人物合并测试
 docs: 更新 README 与 AGENTS 说明

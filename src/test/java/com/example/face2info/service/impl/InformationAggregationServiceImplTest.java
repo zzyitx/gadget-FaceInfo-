@@ -2,7 +2,6 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
-import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
@@ -10,6 +9,7 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
@@ -57,7 +57,6 @@ class InformationAggregationServiceImplTest {
             InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
                     mock(GoogleSearchClient.class),
                     mock(SerpApiClient.class),
-                    mock(NewsApiClient.class),
                     mock(JinaReaderClient.class),
                     mock(SummaryGenerationClient.class),
                     localExecutor
@@ -88,7 +87,7 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/a", "https://example.com/b")));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         );
 
@@ -131,7 +130,7 @@ class InformationAggregationServiceImplTest {
                 .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("DeepSeek final"));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, kimiClient, deepSeekClient, executor, properties
         );
 
@@ -180,7 +179,7 @@ class InformationAggregationServiceImplTest {
                 .thenReturn("education summary");
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, kimiClient, deepSeekClient, executor, createApiProperties(null)
         );
 
@@ -227,7 +226,7 @@ class InformationAggregationServiceImplTest {
                 .thenReturn("education summary");
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         );
 
@@ -298,7 +297,7 @@ class InformationAggregationServiceImplTest {
                 )));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor, properties
         );
 
@@ -373,7 +372,7 @@ class InformationAggregationServiceImplTest {
                 )));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor, properties
         );
 
@@ -457,7 +456,7 @@ class InformationAggregationServiceImplTest {
                 )));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, deepSeekClient, executor, properties
         );
 
@@ -529,7 +528,7 @@ class InformationAggregationServiceImplTest {
                 .thenReturn("公开资料提到其成长背景。");
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor, properties
         );
 
@@ -586,7 +585,7 @@ class InformationAggregationServiceImplTest {
                 )));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor, properties
         );
 
@@ -624,7 +623,7 @@ class InformationAggregationServiceImplTest {
                 .thenThrow(new ApiCallException("INVALID_RESPONSE: kimi invalid"));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, kimiClient, deepSeekClient, executor, createApiProperties(null)
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
@@ -652,7 +651,7 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/b")));
 
         ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).resolveProfileFromEvidence(List.of(
                 new WebEvidence().setUrl("https://example.com/a"),
@@ -688,7 +687,7 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/article")));
 
         ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).resolveProfileFromEvidence(List.of(
                 new WebEvidence().setUrl("https://www.youtube.com/watch?v=phV5czDmlDc").setTitle("Video"),
@@ -714,7 +713,7 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.summarizePage("unknown", pageB)).thenThrow(new RuntimeException("TIMEOUT"));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("unknown"))
@@ -743,7 +742,7 @@ class InformationAggregationServiceImplTest {
         when(jinaReaderClient.readPages(expectedUrls)).thenReturn(List.of());
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, mock(SummaryGenerationClient.class), executor, createApiProperties(null)
         );
 
@@ -771,7 +770,7 @@ class InformationAggregationServiceImplTest {
         when(jinaReaderClient.readPages(expectedUrls)).thenReturn(List.of());
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, mock(SummaryGenerationClient.class), executor, createApiProperties(3)
         );
 
@@ -800,7 +799,7 @@ class InformationAggregationServiceImplTest {
         when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("周杰伦"))
@@ -837,7 +836,7 @@ class InformationAggregationServiceImplTest {
                         .setEvidenceUrls(List.of("https://example.com/a")));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
+                googleSearchClient, mock(SerpApiClient.class), jinaReaderClient, summaryGenerationClient, executor
         );
 
         AggregationResult result = service.aggregate(new RecognitionEvidence()
@@ -877,7 +876,7 @@ class InformationAggregationServiceImplTest {
                 .thenAnswer(invocation -> invocation.getArgument(2));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
@@ -912,7 +911,7 @@ class InformationAggregationServiceImplTest {
                 .thenAnswer(invocation -> invocation.getArgument(2));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of())
@@ -934,7 +933,7 @@ class InformationAggregationServiceImplTest {
                 .setCareerSummary("career summary");
 
         assertThat(new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 mock(JinaReaderClient.class), mock(SummaryGenerationClient.class), executor
         ).buildFinalSummary(profile)).isEqualTo("base summary");
     }
@@ -947,7 +946,7 @@ class InformationAggregationServiceImplTest {
                 .setSummary("base summary");
 
         assertThat(new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 mock(JinaReaderClient.class), mock(SummaryGenerationClient.class), executor
         ).buildFinalSummary(profile)).isEqualTo("base summary");
     }
@@ -985,20 +984,71 @@ class InformationAggregationServiceImplTest {
         when(googleSearchClient.googleSearch("Jay Chou的职业经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Career","link":"https://example.com/career","snippet":"career snippet"}]}
                 """)));
-        when(googleSearchClient.googleSearch("Jay Chou 涉华言论 中国评价 中美关系 中欧关系")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou 涉华言论")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"China Related","link":"https://example.com/china","snippet":"china snippet"}]}
                 """)));
-        when(googleSearchClient.googleSearch("Jay Chou 政治倾向 政党 政治理念 政策立场")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou 中国评价")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 中美关系")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 中欧关系")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 政治倾向")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Political","link":"https://example.com/political","snippet":"political snippet"}]}
                 """)));
-        when(googleSearchClient.googleSearch("Jay Chou 公开通讯 办公电话 官方邮箱 认证社交账号 联系方式")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou 政党")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 政治理念")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 政策立场")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 公开通讯")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Contact","link":"https://example.com/contact","snippet":"contact snippet"}]}
                 """)));
-        when(googleSearchClient.googleSearch("Jay Chou 家族成员 亲属 经商 在华投资 商业纠纷")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou 办公电话")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 官方邮箱")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 认证社交账号")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 联系方式")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 家庭成员")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Family Member","link":"https://example.com/family-member","snippet":"family member snippet"}]}
                 """)));
-        when(googleSearchClient.googleSearch("Jay Chou 违法记录 行政处罚 负面事件 失信")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou 亲属")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 经商")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 在华投资")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 商业纠纷")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 违法记录")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Misconduct","link":"https://example.com/misconduct","snippet":"misconduct snippet"}]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 行政处罚")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 负面事件")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
+                """)));
+        when(googleSearchClient.googleSearch("Jay Chou 失信行为")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                {"organic":[]}
                 """)));
 
         PageContent educationPage = new PageContent().setUrl("https://example.com/education").setTitle("Education").setContent("education body");
@@ -1050,9 +1100,33 @@ class InformationAggregationServiceImplTest {
                 .thenReturn("family member situation summary");
         when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "misconduct", List.of(misconductSummary)))
                 .thenReturn("misconduct summary");
+        when(summaryGenerationClient.summarizeSectionedSectionFromPageSummaries("Jay Chou", "education", List.of(educationSummary)))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem()
+                                .setSection("教育经历")
+                                .setSummary("第一段教育经历。")
+                                .setSources(List.of(
+                                        new ParagraphSource().setTitle("Education").setUrl("https://example.com/education")
+                                )),
+                        new SectionSummaryItem()
+                                .setSection("教育经历")
+                                .setSummary("第二段教育经历。")
+                                .setSources(List.of(
+                                        new ParagraphSource().setTitle("Education").setUrl("https://example.com/education")
+                                ))
+                )));
+        when(summaryGenerationClient.summarizeSectionedSectionFromPageSummaries("Jay Chou", "family", List.of(familySummary)))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem()
+                                .setSection("家庭背景")
+                                .setSummary("第一段家庭背景。")
+                                .setSources(List.of(
+                                        new ParagraphSource().setTitle("Family").setUrl("https://example.com/family")
+                                ))
+                )));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
@@ -1068,6 +1142,14 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getContactInformationSummary()).isEqualTo("contact information summary");
         assertThat(result.getPerson().getFamilyMemberSituationSummary()).isEqualTo("family member situation summary");
         assertThat(result.getPerson().getMisconductSummary()).isEqualTo("misconduct summary");
+        assertThat(result.getPerson().getEducationSummaryParagraphs()).hasSize(2);
+        assertThat(result.getPerson().getEducationSummaryParagraphs().get(0).getText()).isEqualTo("第一段教育经历。");
+        assertThat(result.getPerson().getEducationSummaryParagraphs().get(0).getSources())
+                .extracting(ParagraphSource::getUrl)
+                .containsExactly("https://example.com/education");
+        assertThat(result.getPerson().getFamilyBackgroundSummaryParagraphs()).hasSize(1);
+        assertThat(result.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getSources().get(0).getTitle())
+                .isEqualTo("Family");
     }
 
     @Test
@@ -1096,7 +1178,7 @@ class InformationAggregationServiceImplTest {
         when(googleSearchClient.googleSearch("Jay Chou的职业经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class),
+                googleSearchClient, mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
@@ -1130,7 +1212,7 @@ class InformationAggregationServiceImplTest {
                 draftProfile)).thenReturn(judgedProfile);
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         );
 
@@ -1216,7 +1298,7 @@ class InformationAggregationServiceImplTest {
                 .thenAnswer(invocation -> invocation.getArgument(2));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                googleSearchClient, mock(SerpApiClient.class), mock(NewsApiClient.class), jinaReaderClient, summaryGenerationClient, executor
+                googleSearchClient, mock(SerpApiClient.class), jinaReaderClient, summaryGenerationClient, executor
         );
 
         AggregationResult result = service.aggregate(new RecognitionEvidence()
@@ -1260,7 +1342,7 @@ class InformationAggregationServiceImplTest {
                 .thenAnswer(invocation -> invocation.getArgument(2));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
@@ -1276,7 +1358,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldReturnPlaceholderSocialAccountWithoutCallingNewsApi() {
+    void shouldReturnPlaceholderSocialAccountWithoutStandaloneNewsLookup() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -1287,7 +1369,7 @@ class InformationAggregationServiceImplTest {
                 .setSummary("Jay Chou is a singer."));
 
         AggregationResult result = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jay Chou"))
@@ -1295,7 +1377,6 @@ class InformationAggregationServiceImplTest {
 
         assertThat(result.getSocialAccounts()).hasSize(1);
         assertThat(result.getSocialAccounts().get(0).getUsername()).isEqualTo("功能正在开发中");
-        assertThat(result.getNews()).isEmpty();
     }
 
     @Test
@@ -1319,7 +1400,7 @@ class InformationAggregationServiceImplTest {
         }).when(summaryGenerationClient).summarizePersonFromPageSummaries("Jay Chou", pageSummaries);
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
-                mock(GoogleSearchClient.class), mock(SerpApiClient.class), mock(NewsApiClient.class),
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
                 jinaReaderClient, summaryGenerationClient, executor);
 
         Instant start = Instant.now();
@@ -1330,7 +1411,6 @@ class InformationAggregationServiceImplTest {
 
         assertThat(elapsed).isLessThan(1000);
         assertThat(result.getSocialAccounts()).hasSize(1);
-        assertThat(result.getNews()).isEmpty();
         assertThat(result.getErrors()).isEmpty();
     }
 

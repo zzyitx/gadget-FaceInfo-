@@ -2,7 +2,6 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
-import com.example.face2info.client.NewsApiClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.entity.internal.DerivedTopicRequest;
@@ -62,7 +61,6 @@ class InformationAggregationDerivedTopicIntegrationTest {
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
                 googleSearchClient,
                 mock(SerpApiClient.class),
-                mock(NewsApiClient.class),
                 jinaReaderClient,
                 summaryGenerationClient,
                 null,
