@@ -1,27 +1,29 @@
 package com.example.face2info.service.impl;
 
+import com.example.face2info.client.CompreFaceVerificationClient;
 import com.example.face2info.service.ImageSimilarityService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.Graphics2D;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.util.OptionalDouble;
 
 @Slf4j
 @Service
 public class ImageSimilarityServiceImpl implements ImageSimilarityService {
 
-    private static final int HASH_SIZE = 8;
     private static final int CONNECT_TIMEOUT_MS = 4000;
     private static final int READ_TIMEOUT_MS = 4000;
+    private final CompreFaceVerificationClient compreFaceVerificationClient;
+
+    public ImageSimilarityServiceImpl(CompreFaceVerificationClient compreFaceVerificationClient) {
+        this.compreFaceVerificationClient = compreFaceVerificationClient;
+    }
 
     @Override
     public double score(MultipartFile originalImage, String candidateImageUrl, double fallbackScore) {
@@ -29,59 +31,41 @@ public class ImageSimilarityServiceImpl implements ImageSimilarityService {
             return fallbackScore;
         }
         try {
-            BufferedImage origin = ImageIO.read(new ByteArrayInputStream(originalImage.getBytes()));
-            BufferedImage candidate = readFromUrl(candidateImageUrl);
-            if (origin == null || candidate == null) {
+            byte[] candidateImage = readFromUrl(candidateImageUrl);
+            if (candidateImage.length == 0) {
                 return fallbackScore;
             }
-            long hashA = averageHash(origin);
-            long hashB = averageHash(candidate);
-            int distance = Long.bitCount(hashA ^ hashB);
-            double score = (1.0 - (distance / 64.0)) * 100.0;
-            return round(score);
+            // 统一走 CompreFace 人脸比对，避免本地哈希算法对姿态/清晰度变化过于敏感。
+            OptionalDouble similarity = compreFaceVerificationClient.verify(
+                    originalImage.getBytes(),
+                    candidateImage,
+                    resolveContentType(originalImage)
+            );
+            if (similarity.isEmpty()) {
+                return fallbackScore;
+            }
+            return round(similarity.getAsDouble() * 100.0D);
         } catch (Exception ex) {
             log.debug("图像相似度计算失败，使用回退分 url={} error={}", candidateImageUrl, ex.getMessage());
             return fallbackScore;
         }
     }
 
-    private BufferedImage readFromUrl(String candidateImageUrl) throws IOException {
+    private byte[] readFromUrl(String candidateImageUrl) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) URI.create(candidateImageUrl).toURL().openConnection();
         connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
         connection.setReadTimeout(READ_TIMEOUT_MS);
         connection.setInstanceFollowRedirects(true);
         connection.setRequestProperty("User-Agent", "Mozilla/5.0");
         try (InputStream inputStream = connection.getInputStream()) {
-            return ImageIO.read(inputStream);
+            return inputStream.readAllBytes();
         } finally {
             connection.disconnect();
         }
     }
 
-    private long averageHash(BufferedImage source) {
-        BufferedImage resized = new BufferedImage(HASH_SIZE, HASH_SIZE, BufferedImage.TYPE_BYTE_GRAY);
-        Graphics2D graphics = resized.createGraphics();
-        try {
-            graphics.drawImage(source, 0, 0, HASH_SIZE, HASH_SIZE, null);
-        } finally {
-            graphics.dispose();
-        }
-
-        int[] pixels = new int[HASH_SIZE * HASH_SIZE];
-        resized.getRaster().getPixels(0, 0, HASH_SIZE, HASH_SIZE, pixels);
-        double average = 0.0;
-        for (int pixel : pixels) {
-            average += pixel;
-        }
-        average /= pixels.length;
-
-        long hash = 0L;
-        for (int i = 0; i < pixels.length; i++) {
-            if (pixels[i] >= average) {
-                hash |= (1L << i);
-            }
-        }
-        return hash;
+    private String resolveContentType(MultipartFile originalImage) {
+        return StringUtils.hasText(originalImage.getContentType()) ? originalImage.getContentType() : "image/jpeg";
     }
 
     private double round(double value) {

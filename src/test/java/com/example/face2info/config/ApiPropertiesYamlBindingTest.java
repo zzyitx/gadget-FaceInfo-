@@ -50,4 +50,19 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.getProperty("face2info.api.query-rewrite.fallback-templates.political_view[0]"))
                 .isEqualTo("%s支持的政治理念");
     }
+
+    @Test
+    void shouldExposeComprefaceStructureInApplicationGitYaml() {
+        YamlPropertiesFactoryBean factory = new YamlPropertiesFactoryBean();
+        factory.setResources(new ClassPathResource("application-git.yml"));
+        Properties properties = factory.getObject();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("face2info.api.compreface.base-url")).isEqualTo("http://127.0.0.1:8000");
+        assertThat(properties.getProperty("face2info.api.compreface.session-ttl-seconds")).isEqualTo("600");
+        assertThat(properties.getProperty("face2info.api.compreface.detection.path"))
+                .isEqualTo("/api/v1/detection/detect");
+        assertThat(properties.getProperty("face2info.api.compreface.verification.path"))
+                .isEqualTo("/api/v1/verification/verify");
+    }
 }
