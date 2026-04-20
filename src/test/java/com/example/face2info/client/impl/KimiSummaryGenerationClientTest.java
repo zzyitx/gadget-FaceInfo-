@@ -282,6 +282,40 @@ class KimiSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldParseParagraphSourcesFromFinalProfile() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "{\\"resolvedName\\":\\"Jay Chou\\",\\"summary\\":\\"Jay Chou is a Mandopop singer-songwriter.\\",\\"summaryParagraphs\\":[{\\"text\\":\\"第一段主体信息。\\",\\"sourceUrls\\":[\\"https://example.com/a\\",\\"https://example.com/b\\"]}],\\"educationSummaryParagraphs\\":[{\\"text\\":\\"第一段教育经历。\\",\\"sourceUrls\\":[\\"https://example.com/b\\"]}]}"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A"),
+                new PageSummary().setSourceUrl("https://example.com/b").setSummary("Summary B")
+        ));
+
+        assertThat(profile.getSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getText()).isEqualTo("第一段主体信息。");
+        assertThat(profile.getSummaryParagraphs().get(0).getSourceUrls())
+                .containsExactly("https://example.com/a", "https://example.com/b");
+        assertThat(profile.getEducationSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getEducationSummaryParagraphs().get(0).getSourceUrls())
+                .containsExactly("https://example.com/b");
+    }
+
+    @Test
     void shouldParseStructuredBasicInfoFromFinalProfile() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
@@ -396,7 +430,7 @@ class KimiSummaryGenerationClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
                 .andRespond(withSuccess("""
-                        {"choices":[{"message":{"content":"{\\"sections\\":[{\\"section\\":\\"家庭成员\\",\\"summary\\":\\"公开资料显示其已婚并育有子女。\\"}]}"}}]}
+                        {"choices":[{"message":{"content":"{\\"sections\\":[{\\"section\\":\\"家庭成员\\",\\"summary\\":\\"公开资料显示其已婚并育有子女。\\",\\"sourceUrls\\":[\\"https://example.com/a\\"]}]}"}}]}
                         """, MediaType.APPLICATION_JSON));
 
         KimiSummaryGenerationClient client =
@@ -410,6 +444,7 @@ class KimiSummaryGenerationClientTest {
 
         assertThat(summary.getSections()).hasSize(1);
         assertThat(summary.getSections().get(0).getSection()).isEqualTo("家庭成员");
+        assertThat(summary.getSections().get(0).getSourceUrls()).containsExactly("https://example.com/a");
     }
 
     @Test

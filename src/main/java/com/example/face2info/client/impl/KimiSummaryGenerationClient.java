@@ -5,6 +5,7 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.KimiApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SectionSummaryItem;
@@ -375,14 +376,23 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         Map.entry("resolvedName", Map.of("type", "string")),
                         Map.entry("description", Map.of("type", "string")),
                         Map.entry("summary", Map.of("type", "string")),
+                        Map.entry("summaryParagraphs", paragraphArraySchema()),
                         Map.entry("educationSummary", Map.of("type", "string")),
+                        Map.entry("educationSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("familyBackgroundSummary", Map.of("type", "string")),
+                        Map.entry("familyBackgroundSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("careerSummary", Map.of("type", "string")),
+                        Map.entry("careerSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("chinaRelatedStatementsSummary", Map.of("type", "string")),
+                        Map.entry("chinaRelatedStatementsSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("politicalTendencySummary", Map.of("type", "string")),
+                        Map.entry("politicalTendencySummaryParagraphs", paragraphArraySchema()),
                         Map.entry("contactInformationSummary", Map.of("type", "string")),
+                        Map.entry("contactInformationSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("familyMemberSituationSummary", Map.of("type", "string")),
+                        Map.entry("familyMemberSituationSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("misconductSummary", Map.of("type", "string")),
+                        Map.entry("misconductSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("keyFacts", Map.of("type", "array", "items", Map.of("type", "string"))),
                         Map.entry("tags", Map.of("type", "array", "items", Map.of("type", "string"))),
                         Map.entry("wikipedia", Map.of("type", "string")),
@@ -487,8 +497,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 1. 只能通过函数 submit_person_profile 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
+                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls。sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 篇级摘要如下：
@@ -521,8 +532,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 1. 只能通过函数 submit_profile_judgement 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
+                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls。sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 draftResolvedName: %s
@@ -756,14 +768,23 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 .setResolvedName(firstNonBlank(trimToNull(json.path("resolvedName").asText(null)), fallbackName))
                 .setDescription(trimToNull(json.path("description").asText(null)))
                 .setSummary(trimToNull(json.path("summary").asText(null)))
+                .setSummaryParagraphs(readParagraphSummaryItems(json.path("summaryParagraphs")))
                 .setEducationSummary(trimToNull(json.path("educationSummary").asText(null)))
+                .setEducationSummaryParagraphs(readParagraphSummaryItems(json.path("educationSummaryParagraphs")))
                 .setFamilyBackgroundSummary(trimToNull(json.path("familyBackgroundSummary").asText(null)))
+                .setFamilyBackgroundSummaryParagraphs(readParagraphSummaryItems(json.path("familyBackgroundSummaryParagraphs")))
                 .setCareerSummary(trimToNull(json.path("careerSummary").asText(null)))
+                .setCareerSummaryParagraphs(readParagraphSummaryItems(json.path("careerSummaryParagraphs")))
                 .setChinaRelatedStatementsSummary(trimToNull(json.path("chinaRelatedStatementsSummary").asText(null)))
+                .setChinaRelatedStatementsSummaryParagraphs(readParagraphSummaryItems(json.path("chinaRelatedStatementsSummaryParagraphs")))
                 .setPoliticalTendencySummary(trimToNull(json.path("politicalTendencySummary").asText(null)))
+                .setPoliticalTendencySummaryParagraphs(readParagraphSummaryItems(json.path("politicalTendencySummaryParagraphs")))
                 .setContactInformationSummary(trimToNull(json.path("contactInformationSummary").asText(null)))
+                .setContactInformationSummaryParagraphs(readParagraphSummaryItems(json.path("contactInformationSummaryParagraphs")))
                 .setFamilyMemberSituationSummary(trimToNull(json.path("familyMemberSituationSummary").asText(null)))
+                .setFamilyMemberSituationSummaryParagraphs(readParagraphSummaryItems(json.path("familyMemberSituationSummaryParagraphs")))
                 .setMisconductSummary(trimToNull(json.path("misconductSummary").asText(null)))
+                .setMisconductSummaryParagraphs(readParagraphSummaryItems(json.path("misconductSummaryParagraphs")))
                 .setKeyFacts(readStringList(json.path("keyFacts")))
                 .setTags(readStringList(json.path("tags")))
                 .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
@@ -782,29 +803,56 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             if (!StringUtils.hasText(profile.getSummary())) {
                 profile.setSummary(draftProfile.getSummary());
             }
+            if ((profile.getSummaryParagraphs() == null || profile.getSummaryParagraphs().isEmpty()) && draftProfile.getSummaryParagraphs() != null) {
+                profile.setSummaryParagraphs(draftProfile.getSummaryParagraphs());
+            }
             if (!StringUtils.hasText(profile.getEducationSummary())) {
                 profile.setEducationSummary(draftProfile.getEducationSummary());
+            }
+            if ((profile.getEducationSummaryParagraphs() == null || profile.getEducationSummaryParagraphs().isEmpty()) && draftProfile.getEducationSummaryParagraphs() != null) {
+                profile.setEducationSummaryParagraphs(draftProfile.getEducationSummaryParagraphs());
             }
             if (!StringUtils.hasText(profile.getFamilyBackgroundSummary())) {
                 profile.setFamilyBackgroundSummary(draftProfile.getFamilyBackgroundSummary());
             }
+            if ((profile.getFamilyBackgroundSummaryParagraphs() == null || profile.getFamilyBackgroundSummaryParagraphs().isEmpty()) && draftProfile.getFamilyBackgroundSummaryParagraphs() != null) {
+                profile.setFamilyBackgroundSummaryParagraphs(draftProfile.getFamilyBackgroundSummaryParagraphs());
+            }
             if (!StringUtils.hasText(profile.getCareerSummary())) {
                 profile.setCareerSummary(draftProfile.getCareerSummary());
+            }
+            if ((profile.getCareerSummaryParagraphs() == null || profile.getCareerSummaryParagraphs().isEmpty()) && draftProfile.getCareerSummaryParagraphs() != null) {
+                profile.setCareerSummaryParagraphs(draftProfile.getCareerSummaryParagraphs());
             }
             if (!StringUtils.hasText(profile.getChinaRelatedStatementsSummary())) {
                 profile.setChinaRelatedStatementsSummary(draftProfile.getChinaRelatedStatementsSummary());
             }
+            if ((profile.getChinaRelatedStatementsSummaryParagraphs() == null || profile.getChinaRelatedStatementsSummaryParagraphs().isEmpty()) && draftProfile.getChinaRelatedStatementsSummaryParagraphs() != null) {
+                profile.setChinaRelatedStatementsSummaryParagraphs(draftProfile.getChinaRelatedStatementsSummaryParagraphs());
+            }
             if (!StringUtils.hasText(profile.getPoliticalTendencySummary())) {
                 profile.setPoliticalTendencySummary(draftProfile.getPoliticalTendencySummary());
+            }
+            if ((profile.getPoliticalTendencySummaryParagraphs() == null || profile.getPoliticalTendencySummaryParagraphs().isEmpty()) && draftProfile.getPoliticalTendencySummaryParagraphs() != null) {
+                profile.setPoliticalTendencySummaryParagraphs(draftProfile.getPoliticalTendencySummaryParagraphs());
             }
             if (!StringUtils.hasText(profile.getContactInformationSummary())) {
                 profile.setContactInformationSummary(draftProfile.getContactInformationSummary());
             }
+            if ((profile.getContactInformationSummaryParagraphs() == null || profile.getContactInformationSummaryParagraphs().isEmpty()) && draftProfile.getContactInformationSummaryParagraphs() != null) {
+                profile.setContactInformationSummaryParagraphs(draftProfile.getContactInformationSummaryParagraphs());
+            }
             if (!StringUtils.hasText(profile.getFamilyMemberSituationSummary())) {
                 profile.setFamilyMemberSituationSummary(draftProfile.getFamilyMemberSituationSummary());
             }
+            if ((profile.getFamilyMemberSituationSummaryParagraphs() == null || profile.getFamilyMemberSituationSummaryParagraphs().isEmpty()) && draftProfile.getFamilyMemberSituationSummaryParagraphs() != null) {
+                profile.setFamilyMemberSituationSummaryParagraphs(draftProfile.getFamilyMemberSituationSummaryParagraphs());
+            }
             if (!StringUtils.hasText(profile.getMisconductSummary())) {
                 profile.setMisconductSummary(draftProfile.getMisconductSummary());
+            }
+            if ((profile.getMisconductSummaryParagraphs() == null || profile.getMisconductSummaryParagraphs().isEmpty()) && draftProfile.getMisconductSummaryParagraphs() != null) {
+                profile.setMisconductSummaryParagraphs(draftProfile.getMisconductSummaryParagraphs());
             }
             if ((profile.getKeyFacts() == null || profile.getKeyFacts().isEmpty()) && draftProfile.getKeyFacts() != null) {
                 profile.setKeyFacts(draftProfile.getKeyFacts());
@@ -885,6 +933,15 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             case "contactInformationSummary" -> profile.setContactInformationSummary(trimToNull(valueNode.asText(null)));
             case "familyMemberSituationSummary" -> profile.setFamilyMemberSituationSummary(trimToNull(valueNode.asText(null)));
             case "misconductSummary" -> profile.setMisconductSummary(trimToNull(valueNode.asText(null)));
+            case "summaryParagraphs" -> profile.setSummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "educationSummaryParagraphs" -> profile.setEducationSummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "familyBackgroundSummaryParagraphs" -> profile.setFamilyBackgroundSummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "careerSummaryParagraphs" -> profile.setCareerSummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "chinaRelatedStatementsSummaryParagraphs" -> profile.setChinaRelatedStatementsSummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "politicalTendencySummaryParagraphs" -> profile.setPoliticalTendencySummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "contactInformationSummaryParagraphs" -> profile.setContactInformationSummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "familyMemberSituationSummaryParagraphs" -> profile.setFamilyMemberSituationSummaryParagraphs(readParagraphSummaryItems(valueNode));
+            case "misconductSummaryParagraphs" -> profile.setMisconductSummaryParagraphs(readParagraphSummaryItems(valueNode));
             case "keyFacts" -> profile.setKeyFacts(readStringList(valueNode));
             case "tags" -> profile.setTags(readStringList(valueNode));
             case "wikipedia" -> profile.setWikipedia(trimToNull(valueNode.asText(null)));
@@ -964,9 +1021,38 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         for (JsonNode item : arrayNode) {
             items.add(new SectionSummaryItem()
                     .setSection(trimToNull(item.path("section").asText(null)))
-                    .setSummary(trimToNull(item.path("summary").asText(null))));
+                    .setSummary(trimToNull(item.path("summary").asText(null)))
+                    .setSourceUrls(readStringList(item.path("sourceUrls"))));
         }
         return List.copyOf(items);
+    }
+
+    private List<ParagraphSummaryItem> readParagraphSummaryItems(JsonNode arrayNode) {
+        if (arrayNode == null || !arrayNode.isArray()) {
+            return List.of();
+        }
+        List<ParagraphSummaryItem> items = new java.util.ArrayList<>();
+        for (JsonNode item : arrayNode) {
+            items.add(new ParagraphSummaryItem()
+                    .setText(trimToNull(item.path("text").asText(null)))
+                    .setSourceUrls(readStringList(item.path("sourceUrls"))));
+        }
+        return List.copyOf(items);
+    }
+
+    private Map<String, Object> paragraphArraySchema() {
+        return Map.of(
+                "type", "array",
+                "items", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "text", Map.of("type", "string"),
+                                "sourceUrls", Map.of("type", "array", "items", Map.of("type", "string"))
+                        ),
+                        "required", List.of("text", "sourceUrls"),
+                        "additionalProperties", false
+                )
+        );
     }
 
     // 这里强制模型返回 term/section/reason 三元组，服务层才能把扩展理由精确挂到对应小标题下。

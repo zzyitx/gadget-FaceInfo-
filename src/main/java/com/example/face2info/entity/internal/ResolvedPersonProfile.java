@@ -41,6 +41,33 @@ public class ResolvedPersonProfile {
     @Schema(description = "解析后的污点劣迹摘要，用于前端独立区域展示")
     private String misconductSummary;
 
+    @Schema(description = "人物主体摘要段落")
+    private List<ParagraphSummaryItem> summaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "教育经历摘要段落")
+    private List<ParagraphSummaryItem> educationSummaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "家庭背景摘要段落")
+    private List<ParagraphSummaryItem> familyBackgroundSummaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "职业经历摘要段落")
+    private List<ParagraphSummaryItem> careerSummaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "涉华言论摘要段落")
+    private List<ParagraphSummaryItem> chinaRelatedStatementsSummaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "政治倾向摘要段落")
+    private List<ParagraphSummaryItem> politicalTendencySummaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "地址信息摘要段落")
+    private List<ParagraphSummaryItem> contactInformationSummaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "家族成员情况摘要段落")
+    private List<ParagraphSummaryItem> familyMemberSituationSummaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "污点劣迹摘要段落")
+    private List<ParagraphSummaryItem> misconductSummaryParagraphs = new ArrayList<>();
+
     @Schema(description = "解析出的关键事实")
     private List<String> keyFacts = new ArrayList<>();
 
@@ -155,6 +182,87 @@ public class ResolvedPersonProfile {
 
     public ResolvedPersonProfile setMisconductSummary(String misconductSummary) {
         this.misconductSummary = misconductSummary;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getSummaryParagraphs() {
+        return summaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setSummaryParagraphs(List<ParagraphSummaryItem> summaryParagraphs) {
+        this.summaryParagraphs = summaryParagraphs == null ? new ArrayList<>() : summaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getEducationSummaryParagraphs() {
+        return educationSummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setEducationSummaryParagraphs(List<ParagraphSummaryItem> educationSummaryParagraphs) {
+        this.educationSummaryParagraphs = educationSummaryParagraphs == null ? new ArrayList<>() : educationSummaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getFamilyBackgroundSummaryParagraphs() {
+        return familyBackgroundSummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setFamilyBackgroundSummaryParagraphs(List<ParagraphSummaryItem> familyBackgroundSummaryParagraphs) {
+        this.familyBackgroundSummaryParagraphs = familyBackgroundSummaryParagraphs == null ? new ArrayList<>() : familyBackgroundSummaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getCareerSummaryParagraphs() {
+        return careerSummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setCareerSummaryParagraphs(List<ParagraphSummaryItem> careerSummaryParagraphs) {
+        this.careerSummaryParagraphs = careerSummaryParagraphs == null ? new ArrayList<>() : careerSummaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getChinaRelatedStatementsSummaryParagraphs() {
+        return chinaRelatedStatementsSummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setChinaRelatedStatementsSummaryParagraphs(List<ParagraphSummaryItem> chinaRelatedStatementsSummaryParagraphs) {
+        this.chinaRelatedStatementsSummaryParagraphs = chinaRelatedStatementsSummaryParagraphs == null ? new ArrayList<>() : chinaRelatedStatementsSummaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getPoliticalTendencySummaryParagraphs() {
+        return politicalTendencySummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setPoliticalTendencySummaryParagraphs(List<ParagraphSummaryItem> politicalTendencySummaryParagraphs) {
+        this.politicalTendencySummaryParagraphs = politicalTendencySummaryParagraphs == null ? new ArrayList<>() : politicalTendencySummaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getContactInformationSummaryParagraphs() {
+        return contactInformationSummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setContactInformationSummaryParagraphs(List<ParagraphSummaryItem> contactInformationSummaryParagraphs) {
+        this.contactInformationSummaryParagraphs = contactInformationSummaryParagraphs == null ? new ArrayList<>() : contactInformationSummaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getFamilyMemberSituationSummaryParagraphs() {
+        return familyMemberSituationSummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setFamilyMemberSituationSummaryParagraphs(List<ParagraphSummaryItem> familyMemberSituationSummaryParagraphs) {
+        this.familyMemberSituationSummaryParagraphs = familyMemberSituationSummaryParagraphs == null ? new ArrayList<>() : familyMemberSituationSummaryParagraphs;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getMisconductSummaryParagraphs() {
+        return misconductSummaryParagraphs;
+    }
+
+    public ResolvedPersonProfile setMisconductSummaryParagraphs(List<ParagraphSummaryItem> misconductSummaryParagraphs) {
+        this.misconductSummaryParagraphs = misconductSummaryParagraphs == null ? new ArrayList<>() : misconductSummaryParagraphs;
         return this;
     }
 

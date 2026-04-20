@@ -161,7 +161,7 @@ class DeepSeekSummaryGenerationClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
                 .andRespond(withSuccess("""
-                        {"choices":[{"message":{"content":"{\\"sections\\":[{\\"section\\":\\"家庭成员\\",\\"summary\\":\\"公开资料显示其已婚。\\"}]}"}}]}
+                        {"choices":[{"message":{"content":"{\\"sections\\":[{\\"section\\":\\"家庭成员\\",\\"summary\\":\\"公开资料显示其已婚。\\",\\"sourceUrls\\":[\\"https://example.com/a\\"]}]}"}}]}
                         """, MediaType.APPLICATION_JSON));
 
         DeepSeekSummaryGenerationClient client =
@@ -175,6 +175,31 @@ class DeepSeekSummaryGenerationClientTest {
 
         assertThat(summary.getSections()).hasSize(1);
         assertThat(summary.getSections().get(0).getSummary()).isEqualTo("公开资料显示其已婚。");
+        assertThat(summary.getSections().get(0).getSourceUrls()).containsExactly("https://example.com/a");
+    }
+
+    @Test
+    void shouldParseParagraphSourcesFromDeepSeekFinalProfile() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Lei Jun\\",\\"summary\\":\\"主体摘要\\",\\"summaryParagraphs\\":[{\\"text\\":\\"第一段主体信息。\\",\\"sourceUrls\\":[\\"https://example.com/a\\"]}],\\"careerSummaryParagraphs\\":[{\\"text\\":\\"第一段职业经历。\\",\\"sourceUrls\\":[\\"https://example.com/b\\"]}]}"} }]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Lei Jun", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A"),
+                new PageSummary().setSourceUrl("https://example.com/b").setSummary("Summary B")
+        ));
+
+        assertThat(profile.getSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getText()).isEqualTo("第一段主体信息。");
+        assertThat(profile.getSummaryParagraphs().get(0).getSourceUrls()).containsExactly("https://example.com/a");
+        assertThat(profile.getCareerSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getCareerSummaryParagraphs().get(0).getSourceUrls()).containsExactly("https://example.com/b");
     }
 
     @Test
