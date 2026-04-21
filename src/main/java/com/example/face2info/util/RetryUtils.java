@@ -27,6 +27,12 @@ public final class RetryUtils {
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 return callable.call();
+            } catch (ApiCallException ex) {
+                ApiCallException wrapped = new ApiCallException(name + " 调用失败：" + ex.getMessage(), ex);
+                if (isNonRetryable(ex)) {
+                    throw wrapped;
+                }
+                lastException = wrapped;
             } catch (HttpStatusCodeException ex) {
                 HttpStatusCode status = ex.getStatusCode();
                 if (status.is4xxClientError()) {
@@ -48,5 +54,15 @@ public final class RetryUtils {
             }
         }
         throw lastException == null ? new ApiCallException(name + " 调用失败。") : lastException;
+    }
+
+    private static boolean isNonRetryable(ApiCallException ex) {
+        if (ex == null || ex.getMessage() == null) {
+            return false;
+        }
+        String message = ex.getMessage();
+        return message.contains("INVALID_RESPONSE")
+                || message.contains("EMPTY_RESPONSE")
+                || message.contains("CONFIG_MISSING");
     }
 }

@@ -5,6 +5,7 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -94,6 +95,12 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
                                                              List<PageSummary> pageSummaries,
                                                              ResolvedPersonProfile draftProfile) {
         return draftProfile == null ? new ResolvedPersonProfile().setResolvedName(fallbackName) : draftProfile;
+    }
+
+    @Override
+    public SearchLanguageInferenceResult inferSearchLanguageProfile(String resolvedName,
+                                                                    ResolvedPersonProfile profile) {
+        throw new UnsupportedOperationException("noop summary provider does not support search language inference");
     }
 }
 

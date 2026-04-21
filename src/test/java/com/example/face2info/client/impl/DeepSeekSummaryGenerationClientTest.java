@@ -4,7 +4,9 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.DeepSeekApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
 import com.example.face2info.entity.internal.TopicExpansionQuery;
@@ -27,6 +29,21 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class DeepSeekSummaryGenerationClientTest {
+
+    @Test
+    void shouldParseSearchLanguageInferenceResult() {
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(new RestTemplate(), createProperties("test-key"), new ObjectMapper());
+
+        SearchLanguageInferenceResult result = client.parseSearchLanguageInferenceResult("""
+                {"primaryNationality":"JP","recommendedLanguages":["zh","en","ja"],"localizedNames":{"zh":"宫崎骏","en":"Hayao Miyazaki","ja":"宮崎 駿"},"reason":"biography mentions Japanese animator","confidence":0.88}
+                """);
+
+        assertThat(result.getPrimaryNationality()).isEqualTo("JP");
+        assertThat(result.getRecommendedLanguages()).containsExactly("zh", "en", "ja");
+        assertThat(result.getLocalizedNames().get("ja")).isEqualTo("宮崎 駿");
+        assertThat(result.getConfidence()).isEqualTo(0.88);
+    }
 
     @Test
     void shouldParsePageSummaryFromDeepSeekResponse() {
@@ -203,6 +220,32 @@ class DeepSeekSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldParseStructuredSourcesObjectsFromDeepSeekFinalProfile() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\\"resolvedName\\\":\\\"Lei Jun\\\",\\\"summary\\\":\\\"主体摘要\\\",\\\"summaryParagraphs\\\":[{\\\"text\\\":\\\"第一段主体信息。\\\",\\\"sources\\\":[{\\\"title\\\":\\\"文章 A\\\",\\\"url\\\":\\\"https://example.com/a\\\",\\\"source\\\":\\\"Example\\\",\\\"publishedAt\\\":\\\"2025-01-02\\\"}]}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Lei Jun", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getText()).isEqualTo("第一段主体信息。");
+        assertThat(profile.getSummaryParagraphs().get(0).getSources()).hasSize(1);
+        ParagraphSource source = profile.getSummaryParagraphs().get(0).getSources().get(0);
+        assertThat(source.getTitle()).isEqualTo("文章 A");
+        assertThat(source.getUrl()).isEqualTo("https://example.com/a");
+        assertThat(source.getSource()).isEqualTo("Example");
+        assertThat(source.getPublishedAt()).isEqualTo("2025-01-02");
+    }
+
+    @Test
     void shouldRetryWhenDeepSeekTimesOut() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
@@ -343,6 +386,76 @@ class DeepSeekSummaryGenerationClientTest {
                 .isInstanceOf(ApiCallException.class)
                 .hasMessageContaining("INVALID_RESPONSE")
                 .hasMessageContaining("未返回 JSON");
+    }
+
+    @Test
+    void shouldFallbackToPlainTextSummaryWhenDeepSeekReturnsMeaningfulNarrativeContent() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "\\n特朗普主义是第45任、47任（现任）美国总统唐纳德·特朗普的意识形态，是民粹主义和民族主义结合的政治风格。特朗普主义包括民粹主义思想策略、注重情感、右翼威权民粹主义、基督教特朗普主义、经济民族主义、贸易保护主义等多种元素。"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        PageSummary summary = client.summarizePage("Steve Martin", new PageContent()
+                .setUrl("https://zh.wikipedia.org/zh-cn/%E7%89%B9%E6%9C%97%E6%99%AE%E4%B8%BB%E4%B9%89")
+                .setTitle("特朗普主义")
+                .setContent("body"));
+
+        assertThat(summary.getSummary()).isEqualTo("特朗普主义是第45任、47任（现任）美国总统唐纳德·特朗普的意识形态，是民粹主义和民族主义结合的政治风格。特朗普主义包括民粹主义思想策略、注重情感、右翼威权民粹主义、基督教特朗普主义、经济民族主义、贸易保护主义等多种元素。");
+        assertThat(summary.getSourceUrl()).isEqualTo("https://zh.wikipedia.org/zh-cn/%E7%89%B9%E6%9C%97%E6%99%AE%E4%B8%BB%E4%B9%89");
+        assertThat(summary.getTitle()).isEqualTo("特朗普主义");
+        assertThat(summary.getKeyFacts()).isEmpty();
+        assertThat(summary.getTags()).isEmpty();
+    }
+
+    @Test
+    void shouldNotRetrySectionedSummaryWhenDeepSeekReturnsInvalidResponse() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "我需要完整的正文才能继续提供帮助。"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key", 2, 1L), new ObjectMapper());
+
+        assertThatThrownBy(() -> client.summarizeSectionedSectionFromPageSummaries(
+                "黄仁勋",
+                "misconduct",
+                List.of(new PageSummary()
+                        .setSourceUrl("https://example.com/a")
+                        .setTitle("A")
+                        .setSummary("根据公开报道整理出的负面事件摘要"))
+        ))
+                .isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("DeepSeek 主题分段摘要 调用失败")
+                .hasMessageContaining("INVALID_RESPONSE")
+                .hasMessageContaining("未返回 JSON");
+
+        server.verify();
     }
 
     private ApiProperties createProperties(String apiKey) {

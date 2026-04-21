@@ -4,7 +4,9 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.KimiApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
@@ -28,6 +30,21 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class KimiSummaryGenerationClientTest {
+
+    @Test
+    void shouldParseSearchLanguageInferenceResult() {
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(new RestTemplate(), createProperties("test-key"), new ObjectMapper());
+
+        SearchLanguageInferenceResult result = client.parseSearchLanguageInferenceResult("""
+                {"primaryNationality":"JP","recommendedLanguages":["zh","en","ja"],"localizedNames":{"zh":"宫崎骏","en":"Hayao Miyazaki","ja":"宮崎 駿"},"reason":"biography mentions Japanese animator","confidence":0.88}
+                """);
+
+        assertThat(result.getPrimaryNationality()).isEqualTo("JP");
+        assertThat(result.getRecommendedLanguages()).containsExactly("zh", "en", "ja");
+        assertThat(result.getLocalizedNames().get("ja")).isEqualTo("宮崎 駿");
+        assertThat(result.getConfidence()).isEqualTo(0.88);
+    }
 
     @Test
     void shouldParseTopicExpansionDecision() {
@@ -313,6 +330,39 @@ class KimiSummaryGenerationClientTest {
         assertThat(profile.getEducationSummaryParagraphs()).hasSize(1);
         assertThat(profile.getEducationSummaryParagraphs().get(0).getSourceUrls())
                 .containsExactly("https://example.com/b");
+    }
+
+    @Test
+    void shouldParseStructuredSourcesObjectsFromKimiFinalProfile() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "{\\\"resolvedName\\\":\\\"Jay Chou\\\",\\\"summary\\\":\\\"主体摘要\\\",\\\"summaryParagraphs\\\":[{\\\"text\\\":\\\"第一段主体信息。\\\",\\\"sources\\\":[{\\\"title\\\":\\\"文章 A\\\",\\\"url\\\":\\\"https://example.com/a\\\",\\\"source\\\":\\\"Example\\\",\\\"publishedAt\\\":\\\"2025-01-02\\\"}]}]}"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getSources()).hasSize(1);
+        ParagraphSource source = profile.getSummaryParagraphs().get(0).getSources().get(0);
+        assertThat(source.getTitle()).isEqualTo("文章 A");
+        assertThat(source.getUrl()).isEqualTo("https://example.com/a");
+        assertThat(source.getSource()).isEqualTo("Example");
+        assertThat(source.getPublishedAt()).isEqualTo("2025-01-02");
     }
 
     @Test

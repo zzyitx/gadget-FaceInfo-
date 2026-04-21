@@ -4,9 +4,11 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.DeepSeekApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
@@ -46,6 +48,7 @@ public class DeepSeekSummaryGenerationClient {
     private static final String TOPIC_EXPANSION_FUNCTION_NAME = "submit_topic_expansion";
     private static final String SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME = "submit_sectioned_family_summary";
     private static final String PROFILE_JUDGEMENT_FUNCTION_NAME = "submit_profile_judgement";
+    private static final String SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME = "submit_search_language_inference";
     private static final Pattern XML_INVOKE_PATTERN = Pattern.compile(
             "<invoke\\s+name\\s*=\\s*\"([^\"]+)\"\\s*>(.*?)</invoke>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
@@ -58,6 +61,12 @@ public class DeepSeekSummaryGenerationClient {
             "<[^>]*parameter\\s+name\\s*=\\s*\"([^\"]+)\"[^>]*>(.*?)</[^>]*parameter>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
+    private static final Pattern PAGE_SUMMARY_REFUSAL_PATTERN = Pattern.compile(
+            "(暂时无法|无法直接|不能提供|无法提供|需要去思考|需要完整的正文|无法给出|无法总结|抱歉).*"
+                    + "(摘要|结构化|帮助|正文|JSON|结果)?",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
+    private static final Pattern MEANINGFUL_TEXT_PATTERN = Pattern.compile("[\\p{IsHan}A-Za-z0-9]");
 
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
@@ -137,6 +146,16 @@ public class DeepSeekSummaryGenerationClient {
         });
     }
 
+    public SearchLanguageInferenceResult inferSearchLanguageProfile(String resolvedName,
+                                                                    ResolvedPersonProfile profile) {
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        return RetryUtils.execute("DeepSeek 搜索语言推断", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildSearchLanguageInferenceRequest(deepseek, resolvedName, profile));
+            return parseSearchLanguageInferenceResult(extractStructuredPayload(body, SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME));
+        });
+    }
+
     private void validateConfig(DeepSeekApiProperties deepseek) {
         if (!StringUtils.hasText(deepseek.getApiKey())
                 || !StringUtils.hasText(deepseek.getBaseUrl())
@@ -213,6 +232,39 @@ public class DeepSeekSummaryGenerationClient {
                         )
                 )),
                 "tool_choice", Map.of("type", "function", "function", Map.of("name", PERSON_PROFILE_FUNCTION_NAME))
+        );
+    }
+
+    private Map<String, Object> buildSearchLanguageInferenceRequest(DeepSeekApiProperties deepseek,
+                                                                    String resolvedName,
+                                                                    ResolvedPersonProfile profile) {
+        return Map.of(
+                "model", deepseek.getModel(),
+                "stream", false,
+                "messages", List.of(
+                        Map.of("role", "system", "content", firstNonBlank(deepseek.getSystemPrompt(), "你是人物公开信息聚合助手，只能输出 JSON。")),
+                        Map.of("role", "user", "content", buildSearchLanguageInferencePrompt(resolvedName, profile))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME,
+                                "description", "提交人物搜索语言推断结果",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "primaryNationality", Map.of("type", "string"),
+                                                "recommendedLanguages", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                "localizedNames", Map.of("type", "object"),
+                                                "reason", Map.of("type", "string"),
+                                                "confidence", Map.of("type", "number")
+                                        ),
+                                        "required", List.of("recommendedLanguages", "localizedNames", "confidence"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME))
         );
     }
 
@@ -518,6 +570,42 @@ public class DeepSeekSummaryGenerationClient {
         );
     }
 
+    private String buildSearchLanguageInferencePrompt(String resolvedName, ResolvedPersonProfile profile) {
+        return """
+                你是公开人物检索助手，只能通过函数 %s 返回 JSON，不允许输出解释。
+                任务：根据人物已有资料，推断国籍、推荐搜索语言和多语言姓名。
+                约束：
+                1. recommendedLanguages 至少包含 zh 和 en。
+                2. 如果证据不足，primaryNationality 返回 unknown。
+                3. localizedNames 的 key 是语言代码，value 是适合公开搜索的姓名。
+                4. confidence 返回 0 到 1 之间的小数。
+                人物名：%s
+                资料：
+                %s
+                """.formatted(
+                SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME,
+                resolvedName,
+                summarizeInferenceInput(profile)
+        );
+    }
+
+    private String summarizeInferenceInput(ResolvedPersonProfile profile) {
+        if (profile == null) {
+            return "";
+        }
+        return """
+                resolvedName: %s
+                description: %s
+                summary: %s
+                biographies: %s
+                """.formatted(
+                profile.getResolvedName(),
+                profile.getDescription(),
+                profile.getSummary(),
+                profile.getBasicInfo() == null ? List.of() : profile.getBasicInfo().getBiographies()
+        );
+    }
+
     private String buildSectionPrompt(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {
         String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
                 .map(summary -> """
@@ -554,19 +642,37 @@ public class DeepSeekSummaryGenerationClient {
         String content = extractStructuredPayload(body, PAGE_SUMMARY_FUNCTION_NAME);
         try {
             JsonNode json = readStructuredJson(content, "DeepSeek 页面摘要");
-            String summary = json.path("summary").asText(null);
-            if (!StringUtils.hasText(summary)) {
-                throw new ApiCallException("EMPTY_RESPONSE: DeepSeek 页面摘要为空");
+            return buildPageSummaryFromJson(page, json);
+        } catch (ApiCallException ex) {
+            String plainTextSummary = extractPlainTextPageSummary(content);
+            if (StringUtils.hasText(plainTextSummary)) {
+                log.warn("DeepSeek 页面摘要未返回 JSON，回退使用纯文本摘要 url={} preview={}",
+                        page == null ? null : page.getUrl(),
+                        previewContent(plainTextSummary));
+                return new PageSummary()
+                        .setSourceUrl(page == null ? null : page.getUrl())
+                        .setTitle(page == null ? null : page.getTitle())
+                        .setSummary(plainTextSummary)
+                        .setKeyFacts(List.of())
+                        .setTags(List.of());
             }
-            return new PageSummary()
-                    .setSourceUrl(firstNonBlank(trimToNull(json.path("sourceUrl").asText(null)), page == null ? null : page.getUrl()))
-                    .setTitle(firstNonBlank(trimToNull(json.path("title").asText(null)), page == null ? null : page.getTitle()))
-                    .setSummary(summary.trim())
-                    .setKeyFacts(readStringList(json.path("keyFacts")))
-                    .setTags(readStringList(json.path("tags")));
+            throw ex;
         } catch (JsonProcessingException ex) {
             throw new ApiCallException("INVALID_RESPONSE: DeepSeek 页面摘要不是合法 JSON", ex);
         }
+    }
+
+    private PageSummary buildPageSummaryFromJson(PageContent page, JsonNode json) {
+        String summary = json.path("summary").asText(null);
+        if (!StringUtils.hasText(summary)) {
+            throw new ApiCallException("EMPTY_RESPONSE: DeepSeek 页面摘要为空");
+        }
+        return new PageSummary()
+                .setSourceUrl(firstNonBlank(trimToNull(json.path("sourceUrl").asText(null)), page == null ? null : page.getUrl()))
+                .setTitle(firstNonBlank(trimToNull(json.path("title").asText(null)), page == null ? null : page.getTitle()))
+                .setSummary(summary.trim())
+                .setKeyFacts(readStringList(json.path("keyFacts")))
+                .setTags(readStringList(json.path("tags")));
     }
 
     private ResolvedPersonProfile parseProfileFromPageSummaries(String fallbackName,
@@ -619,10 +725,10 @@ public class DeepSeekSummaryGenerationClient {
     private SectionedSummary parseSectionedSummary(JsonNode body) {
         String content = extractStructuredPayload(body, SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME);
         try {
-            JsonNode json = readStructuredJson(content, "DeepSeek 家族成员分段摘要");
+            JsonNode json = readStructuredJson(content, "DeepSeek 主题分段摘要");
             return new SectionedSummary().setSections(readSectionSummaryItems(json.path("sections")));
         } catch (JsonProcessingException ex) {
-            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 家族成员分段摘要不是合法 JSON", ex);
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 主题分段摘要不是合法 JSON", ex);
         }
     }
 
@@ -740,6 +846,30 @@ public class DeepSeekSummaryGenerationClient {
             }
         }
         return profile;
+    }
+
+    SearchLanguageInferenceResult parseSearchLanguageInferenceResult(String content) {
+        try {
+            JsonNode json = objectMapper.readTree(content);
+            Map<String, String> localizedNames = new LinkedHashMap<>();
+            JsonNode namesNode = json.path("localizedNames");
+            if (namesNode.isObject()) {
+                namesNode.fields().forEachRemaining(entry -> {
+                    String value = trimToNull(entry.getValue().asText(null));
+                    if (StringUtils.hasText(entry.getKey()) && StringUtils.hasText(value)) {
+                        localizedNames.put(entry.getKey().trim(), value);
+                    }
+                });
+            }
+            return new SearchLanguageInferenceResult()
+                    .setPrimaryNationality(trimToNull(json.path("primaryNationality").asText(null)))
+                    .setRecommendedLanguages(readStringList(json.path("recommendedLanguages")))
+                    .setLocalizedNames(localizedNames)
+                    .setReason(trimToNull(json.path("reason").asText(null)))
+                    .setConfidence(json.path("confidence").isNumber() ? json.path("confidence").asDouble() : null);
+        } catch (JsonProcessingException ex) {
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek 搜索语言推断不是合法 JSON", ex);
+        }
     }
 
     private void recoverContaminatedProfileFields(ResolvedPersonProfile profile) {
@@ -894,7 +1024,27 @@ public class DeepSeekSummaryGenerationClient {
         for (JsonNode item : arrayNode) {
             items.add(new ParagraphSummaryItem()
                     .setText(trimToNull(item.path("text").asText(null)))
-                    .setSourceUrls(readStringList(item.path("sourceUrls"))));
+                    .setSourceUrls(readStringList(item.path("sourceUrls")))
+                    // 关键逻辑：兼容模型直接返回完整 sources 对象，避免前端参考脚标因只解析 sourceUrls 而丢失。
+                    .setSources(readParagraphSources(item.path("sources"))));
+        }
+        return List.copyOf(items);
+    }
+
+    private List<ParagraphSource> readParagraphSources(JsonNode arrayNode) {
+        if (arrayNode == null || !arrayNode.isArray()) {
+            return List.of();
+        }
+        List<ParagraphSource> items = new java.util.ArrayList<>();
+        for (JsonNode item : arrayNode) {
+            items.add(new ParagraphSource()
+                    .setTitle(trimToNull(item.path("title").asText(null)))
+                    .setUrl(trimToNull(item.path("url").asText(null)))
+                    .setSource(trimToNull(item.path("source").asText(null)))
+                    .setPublishedAt(firstNonBlank(
+                            trimToNull(item.path("publishedAt").asText(null)),
+                            trimToNull(item.path("published_at").asText(null))
+                    )));
         }
         return List.copyOf(items);
     }
@@ -1053,6 +1203,8 @@ public class DeepSeekSummaryGenerationClient {
                 resolvedName: %s
                 sectionType: %s
                 可用分段标题: %s
+                只能基于这里提供的篇级摘要归纳，不能要求补充完整正文，不能输出解释性文本。
+                如果某个分段证据不足，也必须继续返回 JSON，并把该分段 summary 写成“未见可靠公开信息”或“公开资料有限”。
                 只能返回 JSON。
                 篇级摘要如下：
                 %s
@@ -1077,6 +1229,31 @@ public class DeepSeekSummaryGenerationClient {
         }
         String singleLine = normalized.replaceAll("\\s+", " ");
         return singleLine.length() <= 120 ? singleLine : singleLine.substring(0, 120) + "...";
+    }
+
+    private String extractPlainTextPageSummary(String content) {
+        String normalized = normalizeJsonContent(content);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        if (normalized.startsWith("{") || normalized.startsWith("[") || normalized.contains("<invoke")) {
+            return null;
+        }
+        String cleaned = stripProtocolArtifacts(normalized);
+        if (!StringUtils.hasText(cleaned) || cleaned.contains("｜DSML｜")) {
+            return null;
+        }
+        cleaned = cleaned.replaceAll("\\s+", " ").trim();
+        if (cleaned.length() < 8) {
+            return null;
+        }
+        if (PAGE_SUMMARY_REFUSAL_PATTERN.matcher(cleaned).find()) {
+            return null;
+        }
+        if (!MEANINGFUL_TEXT_PATTERN.matcher(cleaned).find()) {
+            return null;
+        }
+        return cleaned;
     }
 
     private String extractXmlInvokePayload(String content, String expectedFunctionName) {

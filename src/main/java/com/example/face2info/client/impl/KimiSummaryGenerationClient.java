@@ -5,9 +5,11 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.KimiApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
@@ -53,6 +55,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     private static final String SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME = "submit_sectioned_family_summary";
     private static final String FACE_ENHANCE_FUNCTION_NAME = "submit_enhanced_face_image";
     private static final String PROFILE_JUDGEMENT_FUNCTION_NAME = "submit_profile_judgement";
+    private static final String SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME = "submit_search_language_inference";
     private static final Pattern SERIALIZED_PARAMETER_PATTERN = Pattern.compile(
             "<[^>]*parameter\\s+name\\s*=\\s*\"([^\"]+)\"[^>]*>(.*?)</[^>]*parameter>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
@@ -185,6 +188,17 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                     judged.getResolvedName(),
                     judged.getSummary() == null ? 0 : judged.getSummary().length());
             return judged;
+        });
+    }
+
+    @Override
+    public SearchLanguageInferenceResult inferSearchLanguageProfile(String resolvedName,
+                                                                    ResolvedPersonProfile profile) {
+        KimiApiProperties kimi = properties.getApi().getKimi();
+        validateConfig(kimi);
+        return RetryUtils.execute("Kimi 搜索语言推断", kimi.getMaxRetries(), kimi.getBackoffInitialMs(), () -> {
+            JsonNode body = callKimi(kimi, buildSearchLanguageInferenceRequest(kimi, resolvedName, profile));
+            return parseSearchLanguageInferenceResult(extractStructuredPayload(body, SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME));
         });
     }
 
@@ -366,6 +380,38 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "function",
                         "function", Map.of("name", SECTION_SUMMARY_FUNCTION_NAME)
                 )
+        );
+    }
+
+    private Map<String, Object> buildSearchLanguageInferenceRequest(KimiApiProperties kimi,
+                                                                    String resolvedName,
+                                                                    ResolvedPersonProfile profile) {
+        return Map.of(
+                "model", kimi.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", kimi.getSystemPrompt()),
+                        Map.of("role", "user", "content", buildSearchLanguageInferencePrompt(resolvedName, profile))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME,
+                                "description", "提交人物搜索语言推断结果",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "primaryNationality", Map.of("type", "string"),
+                                                "recommendedLanguages", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                "localizedNames", Map.of("type", "object"),
+                                                "reason", Map.of("type", "string"),
+                                                "confidence", Map.of("type", "number")
+                                        ),
+                                        "required", List.of("recommendedLanguages", "localizedNames", "confidence"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME))
         );
     }
 
@@ -557,6 +603,42 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         );
     }
 
+    private String buildSearchLanguageInferencePrompt(String resolvedName, ResolvedPersonProfile profile) {
+        return """
+                你是公开人物检索助手，只能通过函数 %s 返回 JSON，不允许输出解释。
+                任务：根据人物已有资料，推断国籍、推荐搜索语言和多语言姓名。
+                约束：
+                1. recommendedLanguages 至少包含 zh 和 en。
+                2. 如果证据不足，primaryNationality 返回 unknown。
+                3. localizedNames 的 key 是语言代码，value 是适合公开搜索的姓名。
+                4. confidence 返回 0 到 1 之间的小数。
+                人物名：%s
+                资料：
+                %s
+                """.formatted(
+                SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME,
+                resolvedName,
+                summarizeInferenceInput(profile)
+        );
+    }
+
+    private String summarizeInferenceInput(ResolvedPersonProfile profile) {
+        if (profile == null) {
+            return "";
+        }
+        return """
+                resolvedName: %s
+                description: %s
+                summary: %s
+                biographies: %s
+                """.formatted(
+                profile.getResolvedName(),
+                profile.getDescription(),
+                profile.getSummary(),
+                profile.getBasicInfo() == null ? List.of() : profile.getBasicInfo().getBiographies()
+        );
+    }
+
     private String buildSectionPrompt(String resolvedName,
                                       String sectionType,
                                       List<PageSummary> pageSummaries) {
@@ -721,6 +803,31 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         } catch (JsonProcessingException ex) {
             log.warn("Kimi 综合判断结果解析失败 fallbackName={} error={}", fallbackName, ex.getMessage(), ex);
             throw new ApiCallException("INVALID_RESPONSE: Kimi 综合判断内容不是合法 JSON", ex);
+        }
+    }
+
+    SearchLanguageInferenceResult parseSearchLanguageInferenceResult(String content) {
+        try {
+            JsonNode json = readStructuredJson(content, "Kimi 搜索语言推断");
+            Map<String, String> localizedNames = new LinkedHashMap<>();
+            JsonNode namesNode = json.path("localizedNames");
+            if (namesNode.isObject()) {
+                namesNode.fields().forEachRemaining(entry -> {
+                    String value = trimToNull(entry.getValue().asText(null));
+                    if (StringUtils.hasText(entry.getKey()) && StringUtils.hasText(value)) {
+                        localizedNames.put(entry.getKey().trim(), value);
+                    }
+                });
+            }
+            return new SearchLanguageInferenceResult()
+                    .setPrimaryNationality(trimToNull(json.path("primaryNationality").asText(null)))
+                    .setRecommendedLanguages(readStringList(json.path("recommendedLanguages")))
+                    .setLocalizedNames(localizedNames)
+                    .setReason(trimToNull(json.path("reason").asText(null)))
+                    .setConfidence(json.path("confidence").isNumber() ? json.path("confidence").asDouble() : null);
+        } catch (JsonProcessingException ex) {
+            log.warn("Kimi 搜索语言推断解析失败 error={}", ex.getMessage(), ex);
+            throw new ApiCallException("INVALID_RESPONSE: Kimi 搜索语言推断不是合法 JSON", ex);
         }
     }
 
@@ -1035,7 +1142,27 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
         for (JsonNode item : arrayNode) {
             items.add(new ParagraphSummaryItem()
                     .setText(trimToNull(item.path("text").asText(null)))
-                    .setSourceUrls(readStringList(item.path("sourceUrls"))));
+                    .setSourceUrls(readStringList(item.path("sourceUrls")))
+                    // 关键逻辑：兼容模型直接返回完整 sources 对象，避免前端参考脚标因只解析 sourceUrls 而丢失。
+                    .setSources(readParagraphSources(item.path("sources"))));
+        }
+        return List.copyOf(items);
+    }
+
+    private List<ParagraphSource> readParagraphSources(JsonNode arrayNode) {
+        if (arrayNode == null || !arrayNode.isArray()) {
+            return List.of();
+        }
+        List<ParagraphSource> items = new java.util.ArrayList<>();
+        for (JsonNode item : arrayNode) {
+            items.add(new ParagraphSource()
+                    .setTitle(trimToNull(item.path("title").asText(null)))
+                    .setUrl(trimToNull(item.path("url").asText(null)))
+                    .setSource(trimToNull(item.path("source").asText(null)))
+                    .setPublishedAt(firstNonBlank(
+                            trimToNull(item.path("publishedAt").asText(null)),
+                            trimToNull(item.path("published_at").asText(null))
+                    )));
         }
         return List.copyOf(items);
     }
