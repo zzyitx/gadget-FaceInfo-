@@ -115,7 +115,7 @@ face2info:
         path: /api/v1/detection/detect
       verification:
         api-key: ${COMPREFACE_VERIFICATION_API_KEY:}
-        path: /api/v1/verify/verify
+        path: /api/v1/verification/verify
 ```
 
 ## 包结构说明
@@ -162,9 +162,9 @@ docker-compose up -d
 
 只要 `CompreFace` 管理端最终可通过 `http://127.0.0.1:8000` 访问，下面的初始化脚本就可以直接复用。
 
-### 初始化 CompreFace API Key
+### 首次配置 CompreFace
 
-在 `gadget` 应用已经存在、且其中已手工创建好 detection 服务后，执行：
+在 `CompreFace` 管理端可访问后，执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/compreface/init-compreface.ps1 -AdminEmail <管理员邮箱> -AdminPassword <管理员密码>
@@ -173,10 +173,12 @@ powershell -ExecutionPolicy Bypass -File scripts/compreface/init-compreface.ps1 
 脚本会：
 
 - 登录 `CompreFace` 管理端
-- 查找已有的 `gadget` 应用
-- 复用现有 `DETECTION` 模型
+- 首次缺失时自动创建 `gadget` 应用
+- 在缺少 `DETECTION` 模型时自动补建
 - 在缺少 `VERIFY` 模型时自动补建
 - 输出 `COMPREFACE_DETECTION_API_KEY` 和 `COMPREFACE_VERIFICATION_API_KEY`
+
+脚本支持重复执行：已存在的应用或模型会直接复用，缺失项才会补建。
 
 脚本不会自动改写本地配置文件。执行后，把输出的 key 手动写入本地 `application.yml` 或环境变量。
 

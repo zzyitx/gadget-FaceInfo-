@@ -105,27 +105,45 @@ $applications = Get-CollectionItems -Response $applicationsResponse
 $app = @($applications | Where-Object { $_.name -eq $ApplicationName } | Select-Object -First 1)
 
 if ($app.Count -eq 0 -or -not $app[0].id) {
-    throw "Application '$ApplicationName' was not found. Create it once in CompreFace UI, then rerun this script."
+    Write-Host "Application not found, creating: $ApplicationName"
+    $app = @(Invoke-CompreFaceJson -Method Post -Uri "$BaseUrl/admin/app" -Headers $headers -Body @{
+            name = $ApplicationName
+        })
 }
 
 $appGuid = $app[0].id
-Write-Host "Using existing application: $ApplicationName, appGuid=$appGuid"
+if (-not $appGuid) {
+    throw "Application '$ApplicationName' is missing id. Check CompreFace admin response."
+}
+Write-Host "Using application: $ApplicationName, appGuid=$appGuid"
 
 Write-Host "Querying existing models under application: $ApplicationName"
 $modelsResponse = Invoke-CompreFaceJson -Method Get -Uri "$BaseUrl/admin/app/$appGuid/model" -Headers $headers -Body $null
 $models = Get-CollectionItems -Response $modelsResponse
 
-# 多次执行脚本时必须复用现有 detection，避免把手工创建好的模型和 key 覆盖掉。
+# 首次配置缺失 detection 时自动补建；多次执行时继续复用已有模型。
 $detectionModel = Find-ModelByTypeOrName -Models $models -ExpectedType "DETECTION" -PreferredName $DetectionModelName
 if ($null -eq $detectionModel) {
-    throw "Detection model was not found under application '$ApplicationName'. Please create it in CompreFace UI first, then rerun this script."
+    Write-Host "Detection model not found, creating: $DetectionModelName"
+    $detectionModel = Invoke-CompreFaceJson -Method Post -Uri "$BaseUrl/admin/app/$appGuid/model" -Headers $headers -Body @{
+        name = $DetectionModelName
+        type = "DETECTION"
+    }
 }
 
 if (-not $detectionModel.apiKey) {
-    throw "Detection model exists, but no apiKey was returned from CompreFace."
+    # 新建模型的 apiKey 可能不会直接出现在创建响应里，这里重查一次避免把半成品配置输出给调用方。
+    Write-Host "Reloading models to resolve detection apiKey."
+    $modelsResponse = Invoke-CompreFaceJson -Method Get -Uri "$BaseUrl/admin/app/$appGuid/model" -Headers $headers -Body $null
+    $models = Get-CollectionItems -Response $modelsResponse
+    $detectionModel = Find-ModelByTypeOrName -Models $models -ExpectedType "DETECTION" -PreferredName $DetectionModelName
 }
 
-# verification 缺失时才补建，这样脚本既能兼容已有 detection，也能安全重复执行。
+if (-not $detectionModel.apiKey) {
+    throw "Detection model is missing apiKey. Check CompreFace model state and rerun the script."
+}
+
+# verification 缺失时自动补建，这样脚本既适合首次配置，也能安全重复执行。
 $verificationModel = Find-ModelByTypeOrName -Models $models -ExpectedType "VERIFY" -PreferredName $VerificationModelName
 if ($null -eq $verificationModel) {
     Write-Host "Verification model not found, creating: $VerificationModelName"
@@ -136,6 +154,13 @@ if ($null -eq $verificationModel) {
 }
 else {
     Write-Host "Using existing verification model: $($verificationModel.name)"
+}
+
+if (-not $verificationModel.apiKey) {
+    Write-Host "Reloading models to resolve verification apiKey."
+    $modelsResponse = Invoke-CompreFaceJson -Method Get -Uri "$BaseUrl/admin/app/$appGuid/model" -Headers $headers -Body $null
+    $models = Get-CollectionItems -Response $modelsResponse
+    $verificationModel = Find-ModelByTypeOrName -Models $models -ExpectedType "VERIFY" -PreferredName $VerificationModelName
 }
 
 if (-not $verificationModel.apiKey) {
