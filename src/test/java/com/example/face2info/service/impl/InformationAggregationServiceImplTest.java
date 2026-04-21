@@ -131,7 +131,7 @@ class InformationAggregationServiceImplTest {
         when(deepSeekClient.summarizePage("unknown", longPage)).thenReturn(deepSeekSummary);
         when(deepSeekClient.summarizePersonFromPageSummaries("unknown", List.of(deepSeekSummary)))
                 .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("DeepSeek final"));
-        when(deepSeekClient.applyComprehensiveJudgement(eq("unknown"), eq(List.of(deepSeekSummary)), any(ResolvedPersonProfile.class)))
+        when(deepSeekClient.applyComprehensiveJudgement(eq("Jay Chou"), eq(List.of(deepSeekSummary)), any(ResolvedPersonProfile.class)))
                 .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("DeepSeek final"));
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
@@ -905,7 +905,7 @@ class InformationAggregationServiceImplTest {
                         new WebEvidence().setUrl("https://example.com/b")
                 )));
 
-        assertThat(result.getPerson().getName()).isEqualTo("unknown");
+        assertThat(result.getPerson().getName()).isNull();
         assertThat(result.getPerson().getSummary()).isNull();
         assertThat(result.getPerson().getDescription()).isNull();
         assertThat(result.getWarnings()).containsExactly("正文智能处理暂时不可用");
@@ -1393,7 +1393,7 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
         when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(pageSummary))).thenReturn(draftProfile);
         when(summaryGenerationClient.applyComprehensiveJudgement(
-                "Jay Chou",
+                "Uncertain Name",
                 List.of(pageSummary),
                 draftProfile)).thenReturn(judgedProfile);
 
@@ -1409,9 +1409,75 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getName()).isEqualTo("Jay Chou");
         assertThat(result.getPerson().getSummary()).isEqualTo("judged summary (由大模型总结)");
         verify(summaryGenerationClient).applyComprehensiveJudgement(
-                "Jay Chou",
+                "Uncertain Name",
                 List.of(pageSummary),
                 draftProfile);
+    }
+
+    @Test
+    void shouldShareKimiResolvedNameWithDeepSeekJudgement() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setPageRoutingEnabled(false);
+
+        PageContent seedPage = new PageContent().setUrl("https://example.com/seed").setTitle("Nvidia").setContent("seed body");
+        PageSummary seedSummary = new PageSummary().setSourceUrl("https://example.com/seed").setTitle("Nvidia").setSummary("seed summary");
+        ResolvedPersonProfile kimiProfile = new ResolvedPersonProfile()
+                .setResolvedName("黄仁勋")
+                .setSummary("base summary")
+                .setEvidenceUrls(List.of("https://example.com/seed"));
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/seed"))).thenReturn(List.of(seedPage));
+        when(kimiClient.summarizePage("Nvidia", seedPage)).thenReturn(seedSummary);
+        when(deepSeekClient.summarizePersonFromPageSummaries("Nvidia", List.of(seedSummary)))
+                .thenThrow(new ApiCallException("EMPTY_RESPONSE: DeepSeek 返回内容为空"));
+        when(kimiClient.summarizePersonFromPageSummaries("Nvidia", List.of(seedSummary))).thenReturn(kimiProfile);
+        when(deepSeekClient.applyComprehensiveJudgement("黄仁勋", List.of(seedSummary), kimiProfile)).thenReturn(kimiProfile);
+
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class),
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                kimiClient,
+                deepSeekClient,
+                executor,
+                properties
+        ).resolveProfileFromEvidence(
+                List.of(new WebEvidence().setUrl("https://example.com/seed")),
+                "Nvidia",
+                new ArrayList<>()
+        );
+
+        assertThat(profile.getResolvedName()).isEqualTo("黄仁勋");
+        verify(deepSeekClient).applyComprehensiveJudgement("黄仁勋", List.of(seedSummary), kimiProfile);
+    }
+
+    @Test
+    void shouldNotFallbackToSeedQueryWhenResolvedNameMissing() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent page = new PageContent().setUrl("https://example.com/a").setTitle("Nvidia").setContent("body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/a").setTitle("Nvidia").setSummary("page summary");
+        ResolvedPersonProfile unnamedProfile = new ResolvedPersonProfile().setSummary("base summary");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(summaryGenerationClient.summarizePage("Nvidia", page)).thenReturn(pageSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Nvidia", List.of(pageSummary))).thenReturn(unnamedProfile);
+        when(summaryGenerationClient.applyComprehensiveJudgement("Nvidia", List.of(pageSummary), unnamedProfile))
+                .thenReturn(unnamedProfile);
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Nvidia"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getErrors()).contains("未能从识别证据中解析人物名称");
+        assertThat(result.getPerson().getName()).isNull();
     }
 
     @Test

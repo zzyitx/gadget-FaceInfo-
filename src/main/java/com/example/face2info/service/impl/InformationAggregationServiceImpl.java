@@ -320,7 +320,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                                      List<String> warnings) {
         List<String> urls = selectTopUrls(evidences);
         if (urls.isEmpty()) {
-            return new ResolvedPersonProfile().setResolvedName(fallbackName);
+            return new ResolvedPersonProfile();
         }
 
         List<PageContent> pages = List.of();
@@ -334,7 +334,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
         if (pages.isEmpty()) {
             return new ResolvedPersonProfile()
-                    .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
         }
 
@@ -342,7 +341,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (pageSummaries.isEmpty()) {
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
-                    .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
         }
 
@@ -351,7 +349,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             profile = summarizePersonFromPageSummariesWithFallback(fallbackName, pageSummaries, true);
             if (profile == null) {
                 warnings.add(SUMMARY_WARNING);
-                return new ResolvedPersonProfile().setResolvedName(fallbackName).setEvidenceUrls(urls);
+                return new ResolvedPersonProfile().setEvidenceUrls(urls);
             }
             if (profile.getEvidenceUrls() == null || profile.getEvidenceUrls().isEmpty()) {
                 profile.setEvidenceUrls(pageSummaries.stream()
@@ -369,11 +367,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     fallbackName, pageSummaries.size(), classifySummaryFailure(ex), ex.getMessage(), ex);
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
-                    .setResolvedName(fallbackName)
                     .setEvidenceUrls(urls);
         }
 
-        ResolvedPersonProfile judgedProfile = applyComprehensiveJudgement(fallbackName, pageSummaries, profile, warnings);
+        ResolvedPersonProfile judgedProfile = applyComprehensiveJudgement(resolvedNameForModelCall(fallbackName, profile),
+                pageSummaries, profile, warnings);
         enrichProfileParagraphSources(judgedProfile, pageSummaries);
         return judgedProfile;
     }
@@ -382,12 +380,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                                               List<PageSummary> pageSummaries,
                                                               ResolvedPersonProfile profile,
                                                               List<String> warnings) {
+        String effectiveName = resolvedNameForModelCall(fallbackName, profile);
         if (deepSeekSummaryGenerationClient == null) {
             return applyComprehensiveJudgementWithSingleProvider(fallbackName, pageSummaries, profile, warnings);
         }
         try {
             ResolvedPersonProfile judged = deepSeekSummaryGenerationClient.applyComprehensiveJudgement(
-                    fallbackName,
+                    effectiveName,
                     pageSummaries,
                     profile
             );
@@ -398,7 +397,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     classifySummaryFailure(deepSeekEx), deepSeekEx.getMessage(), deepSeekEx);
             try {
                 ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
-                        fallbackName,
+                        effectiveName,
                         pageSummaries,
                         profile
                 );
@@ -1525,26 +1524,25 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
 
         ResolvedPersonProfile judgedSecondaryProfile = applyComprehensiveJudgement(
-                resolvedName,
+                resolvedNameForModelCall(resolvedName, secondaryProfile),
                 pageSummaries,
                 secondaryProfile,
                 warnings
         );
-        return mergeProfiles(baseProfile, judgedSecondaryProfile, resolvedName);
+        return mergeProfiles(baseProfile, judgedSecondaryProfile);
     }
 
     private ResolvedPersonProfile mergeProfiles(ResolvedPersonProfile baseProfile,
-                                                ResolvedPersonProfile secondaryProfile,
-                                                String fallbackName) {
+                                                ResolvedPersonProfile secondaryProfile) {
         if (baseProfile == null) {
-            return secondaryProfile == null ? new ResolvedPersonProfile().setResolvedName(fallbackName) : secondaryProfile;
+            return secondaryProfile == null ? new ResolvedPersonProfile() : secondaryProfile;
         }
         if (secondaryProfile == null) {
             return baseProfile;
         }
 
         return new ResolvedPersonProfile()
-                .setResolvedName(firstNonBlankText(secondaryProfile.getResolvedName(), baseProfile.getResolvedName(), fallbackName))
+                .setResolvedName(firstNonBlankText(secondaryProfile.getResolvedName(), baseProfile.getResolvedName()))
                 .setDescription(firstNonBlankText(secondaryProfile.getDescription(), baseProfile.getDescription()))
                 .setSummary(firstNonBlankText(secondaryProfile.getSummary(), baseProfile.getSummary()))
                 .setSummaryParagraphs(pickParagraphs(secondaryProfile.getSummaryParagraphs(), baseProfile.getSummaryParagraphs()))
@@ -1806,7 +1804,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (profile != null && StringUtils.hasText(profile.getResolvedName())) {
             return profile.getResolvedName();
         }
-        return firstSeedQuery(evidence);
+        return null;
     }
 
     private String firstSeedQuery(RecognitionEvidence evidence) {
@@ -1832,6 +1830,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return null;
         }
         return value.replaceAll("\\s+", " ").trim();
+    }
+
+    private String resolvedNameForModelCall(String fallbackName, ResolvedPersonProfile profile) {
+        if (profile != null && StringUtils.hasText(profile.getResolvedName())) {
+            return profile.getResolvedName();
+        }
+        return fallbackName;
     }
 
     private String appendSuffix(String content, String suffix) {
