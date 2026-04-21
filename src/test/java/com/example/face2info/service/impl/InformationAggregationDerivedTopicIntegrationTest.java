@@ -42,7 +42,7 @@ class InformationAggregationDerivedTopicIntegrationTest {
                 request != null
                         && request.getTopicType() != null
                         && "Jay Chou".equals(request.getResolvedName())
-                        && "Jay Chou的教育经历".equals(request.getRawQuery())
+                        && "Jay Chou 教育经历".equals(request.getRawQuery())
         ))).thenReturn(new TopicQueryDecision().setFinalQuery("Jay Chou 的教育经历"));
 
         ObjectMapper mapper = new ObjectMapper();
@@ -76,7 +76,7 @@ class InformationAggregationDerivedTopicIntegrationTest {
                 request != null
                         && request.getTopicType() != null
                         && "Jay Chou".equals(request.getResolvedName())
-                        && "Jay Chou的教育经历".equals(request.getRawQuery())
+                        && "Jay Chou 教育经历".equals(request.getRawQuery())
         ));
         verify(googleSearchClient).googleSearch("Jay Chou 的教育经历");
     }

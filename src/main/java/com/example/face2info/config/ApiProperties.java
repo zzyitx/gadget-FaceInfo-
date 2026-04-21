@@ -28,6 +28,7 @@ public class ApiProperties {
         private JinaApiProperties jina = new JinaApiProperties();
         private KimiApiProperties kimi = new KimiApiProperties();
         private DeepSeekApiProperties deepseek = new DeepSeekApiProperties();
+        private RealtimeTranslationApiProperties realtimeTranslation = new RealtimeTranslationApiProperties();
         private SummaryApiProperties summary = new SummaryApiProperties();
         private QueryRewriteProperties queryRewrite = new QueryRewriteProperties();
         private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();

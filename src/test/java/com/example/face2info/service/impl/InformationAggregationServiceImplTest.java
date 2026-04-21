@@ -2,6 +2,7 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
+import com.example.face2info.client.RealtimeTranslationClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
@@ -13,6 +14,7 @@ import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.SerpApiResponse;
@@ -29,6 +31,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,6 +39,8 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -141,6 +146,94 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldRunSecondaryProfileSearchInMultipleLanguages() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(jinaReaderClient.readPages(List.of("https://example.com/seed"))).thenReturn(List.of(
+                new PageContent().setUrl("https://example.com/seed").setTitle("Seed").setContent("seed body")
+        ));
+        when(summaryGenerationClient.summarizePage(anyString(), any(PageContent.class)))
+                .thenReturn(new PageSummary().setSourceUrl("https://example.com/seed").setTitle("Seed").setSummary("seed summary"));
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(anyString(), anyList()))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("黄仁勋（Jensen Huang）").setSummary("base summary"));
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setPrimaryNationality("US")
+                        .setRecommendedLanguages(List.of("zh", "en"))
+                        .setLocalizedNames(Map.of("zh", "黄仁勋", "en", "Jensen Huang"))
+                        .setConfidence(0.9));
+        when(googleSearchClient.googleSearch("黄仁勋")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jensen Huang")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor,
+                createApiProperties(null)
+        );
+
+        service.aggregate(new RecognitionEvidence()
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/seed")))
+                .setSeedQueries(List.of("黄仁勋")));
+
+        verify(googleSearchClient, atLeastOnce()).googleSearch("黄仁勋");
+        verify(googleSearchClient, atLeastOnce()).googleSearch("Jensen Huang");
+    }
+
+    @Test
+    void shouldDeduplicateRepeatedUrlsAcrossChineseAndEnglishRounds() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        RealtimeTranslationClient translationClient = mock(RealtimeTranslationClient.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setPrimaryNationality("US")
+                        .setRecommendedLanguages(List.of("zh", "en"))
+                        .setLocalizedNames(Map.of("zh", "黄仁勋", "en", "Jensen Huang"))
+                        .setConfidence(0.9));
+        when(googleSearchClient.googleSearch("黄仁勋 涉华言论"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"China Related","link":"https://example.com/china","snippet":"zh snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("Jensen Huang china-related statements"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"China Related EN","link":"https://example.com/china","snippet":"en snippet"}]}
+                        """)));
+        when(jinaReaderClient.readPages(List.of("https://example.com/china")))
+                .thenReturn(List.of(new PageContent().setUrl("https://example.com/china").setTitle("China Related").setContent("body")));
+        when(summaryGenerationClient.summarizePage(anyString(), any(PageContent.class)))
+                .thenReturn(new PageSummary().setSourceUrl("https://example.com/china").setTitle("China Related").setSummary("summary"));
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries(eq("黄仁勋"), eq("china_related_statements"), anyList()))
+                .thenReturn("summary");
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                null,
+                executor,
+                createApiProperties(null),
+                new MultilingualQueryPlanningServiceImpl(translationClient)
+        );
+
+        String summary = service.summarizeSection("黄仁勋", "china_related_statements", "黄仁勋 涉华言论");
+
+        assertThat(summary).isEqualTo("summary");
+        verify(jinaReaderClient, times(1)).readPages(List.of("https://example.com/china"));
+    }
+
+    @Test
     void shouldFallbackToKimiWhenDeepSeekSectionSummaryFails() {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
@@ -163,10 +256,12 @@ class InformationAggregationServiceImplTest {
 
         ObjectMapper mapper = new ObjectMapper();
         try {
-            when(googleSearchClient.googleSearch("Jay Chou的教育经历"))
+            when(googleSearchClient.googleSearch("Jay Chou 教育经历"))
                     .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                             {"organic":[{"title":"Education","link":"https://example.com/education","snippet":"education snippet"}]}
                             """)));
+            when(googleSearchClient.googleSearch("Jay Chou education"))
+                    .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
@@ -190,6 +285,90 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldFallbackToKimiWhenDeepSeekPageSummaryFails() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setPageRoutingEnabled(true);
+        properties.getApi().getSummary().setLongContentThreshold(20);
+
+        PageContent page = new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Long article body for DeepSeek routing.");
+        PageSummary kimiSummary = new PageSummary()
+                .setSourceUrl("https://example.com/a")
+                .setTitle("A")
+                .setSummary("Kimi summary");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(deepSeekClient.summarizePage("unknown", page))
+                .thenThrow(new ApiCallException("INVALID_RESPONSE: DeepSeek 页面摘要未返回 JSON"));
+        when(kimiClient.summarizePage("unknown", page)).thenReturn(kimiSummary);
+        when(deepSeekClient.summarizePersonFromPageSummaries("unknown", List.of(kimiSummary)))
+                .thenThrow(new ApiCallException("INVALID_RESPONSE: deepseek final invalid"));
+        when(kimiClient.summarizePersonFromPageSummaries("unknown", List.of(kimiSummary)))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("Final Summary")
+                        .setEvidenceUrls(List.of("https://example.com/a")));
+
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class),
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                kimiClient,
+                deepSeekClient,
+                executor,
+                properties
+        ).resolveProfileFromEvidence(List.of(new WebEvidence().setUrl("https://example.com/a")), "unknown");
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        assertThat(profile.getSummary()).isEqualTo("Final Summary");
+        verify(deepSeekClient).summarizePage("unknown", page);
+        verify(kimiClient).summarizePage("unknown", page);
+        verify(kimiClient).summarizePersonFromPageSummaries("unknown", List.of(kimiSummary));
+    }
+
+    @Test
+    void shouldRunSectionBaseQueriesInMultipleLanguages() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        ApiProperties properties = createApiProperties(null);
+        ObjectMapper mapper = new ObjectMapper();
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setPrimaryNationality("JP")
+                        .setRecommendedLanguages(List.of("zh", "en", "ja"))
+                        .setLocalizedNames(Map.of("zh", "宫崎骏", "en", "Hayao Miyazaki", "ja", "宮崎 駿"))
+                        .setConfidence(0.92));
+        when(googleSearchClient.googleSearch("宫崎骏 教育经历"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Hayao Miyazaki education"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("宮崎 駿 学歴"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor,
+                properties
+        );
+
+        service.summarizeSection("宫崎骏（Hayao Miyazaki）", "education", "宫崎骏 教育经历");
+
+        verify(googleSearchClient, atLeastOnce()).googleSearch("宫崎骏 教育经历");
+        verify(googleSearchClient, atLeastOnce()).googleSearch("Hayao Miyazaki education");
+        verify(googleSearchClient, atLeastOnce()).googleSearch("宮崎 駿 学歴");
+    }
+
+    @Test
     void shouldStillRunSectionSummaryWhenOnlyPartOfPageSummariesSucceed() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
@@ -209,13 +388,15 @@ class InformationAggregationServiceImplTest {
                 .setSummary("education summary b");
 
         ObjectMapper mapper = new ObjectMapper();
-        when(googleSearchClient.googleSearch("Jay Chou的教育经历"))
+        when(googleSearchClient.googleSearch("Jay Chou 教育经历"))
                 .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                         {"organic":[
                           {"title":"Education A","link":"https://example.com/education-a","snippet":"snippet a"},
                           {"title":"Education B","link":"https://example.com/education-b","snippet":"snippet b"}
                         ]}
                         """)));
+        when(googleSearchClient.googleSearch("Jay Chou education"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
         when(jinaReaderClient.readPages(List.of("https://example.com/education-a", "https://example.com/education-b")))
                 .thenReturn(List.of(pageA, pageB));
         when(summaryGenerationClient.summarizePage("Jay Chou", pageA))
@@ -500,10 +681,12 @@ class InformationAggregationServiceImplTest {
                 .setSummary("background summary");
 
         ObjectMapper mapper = new ObjectMapper();
-        when(googleSearchClient.googleSearch("Jensen Huang的家庭背景"))
+        when(googleSearchClient.googleSearch("Jensen Huang 家庭背景"))
                 .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                         {"organic":[{"title":"Family Base","link":"https://example.com/family-base","snippet":"family snippet"}]}
                         """)));
+        when(googleSearchClient.googleSearch("Jensen Huang family background"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
         when(googleSearchClient.googleSearch("Jensen Huang 背景信息"))
                 .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                         {"organic":[{"title":"Family Background","link":"https://example.com/family-background","snippet":"background snippet"}]}
@@ -532,10 +715,10 @@ class InformationAggregationServiceImplTest {
                 jinaReaderClient, summaryGenerationClient, executor, properties
         );
 
-        String summary = service.summarizeSection("Jensen Huang", "family", "unused fallback");
+        String summary = service.summarizeSection("Jensen Huang", "family", "Jensen Huang 家庭背景");
 
         assertThat(summary).isEqualTo("公开资料提到其成长背景。");
-        verify(googleSearchClient).googleSearch("Jensen Huang的家庭背景");
+        verify(googleSearchClient).googleSearch("Jensen Huang 家庭背景");
         verify(googleSearchClient).googleSearch("Jensen Huang 背景信息");
         verify(googleSearchClient, never()).googleSearch("Jensen Huang Wikipedia 背景信息");
     }
@@ -975,15 +1158,18 @@ class InformationAggregationServiceImplTest {
 
         ObjectMapper mapper = new ObjectMapper();
         when(googleSearchClient.googleSearch("Jay Chou")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
-        when(googleSearchClient.googleSearch("Jay Chou的教育经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou 教育经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Education","link":"https://example.com/education","snippet":"education snippet"}]}
                 """)));
-        when(googleSearchClient.googleSearch("Jay Chou的家庭背景")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou education")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou 家庭背景")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Family","link":"https://example.com/family","snippet":"family snippet"}]}
                 """)));
-        when(googleSearchClient.googleSearch("Jay Chou的职业经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+        when(googleSearchClient.googleSearch("Jay Chou family background")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou 职业经历")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"Career","link":"https://example.com/career","snippet":"career snippet"}]}
                 """)));
+        when(googleSearchClient.googleSearch("Jay Chou career")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
         when(googleSearchClient.googleSearch("Jay Chou 涉华言论")).thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                 {"organic":[{"title":"China Related","link":"https://example.com/china","snippet":"china snippet"}]}
                 """)));

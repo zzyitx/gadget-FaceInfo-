@@ -2,6 +2,7 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
+import com.example.face2info.client.RealtimeTranslationClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
@@ -16,6 +17,8 @@ import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageProfile;
+import com.example.face2info.entity.internal.SearchQueryTask;
 import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.SerpApiResponse;
@@ -27,10 +30,13 @@ import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.service.DerivedTopicQueryService;
 import com.example.face2info.service.InformationAggregationService;
+import com.example.face2info.service.MultilingualQueryPlanningService;
+import com.example.face2info.service.SearchLanguageProfileService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.lang.Nullable;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -133,6 +139,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final ThreadPoolTaskExecutor executor;
     private final ApiProperties properties;
     private final DerivedTopicQueryService derivedTopicQueryService;
+    private final SearchLanguageProfileService searchLanguageProfileService;
+    private final MultilingualQueryPlanningService multilingualQueryPlanningService;
 
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -142,7 +150,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                              @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor,
                                              ApiProperties properties,
-                                             DerivedTopicQueryService derivedTopicQueryService) {
+                                             DerivedTopicQueryService derivedTopicQueryService,
+                                             SearchLanguageProfileService searchLanguageProfileService,
+                                             MultilingualQueryPlanningService multilingualQueryPlanningService) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.jinaReaderClient = jinaReaderClient;
@@ -151,6 +161,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.executor = executor;
         this.properties = properties;
         this.derivedTopicQueryService = derivedTopicQueryService;
+        this.searchLanguageProfileService = searchLanguageProfileService;
+        this.multilingualQueryPlanningService = multilingualQueryPlanningService;
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -160,7 +172,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
-                deepSeekSummaryGenerationClient, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService());
+                deepSeekSummaryGenerationClient, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService(),
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -171,7 +184,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       ThreadPoolTaskExecutor executor,
                                       ApiProperties properties) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
-                deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService());
+                deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService(),
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -181,7 +195,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       ThreadPoolTaskExecutor executor,
                                       ApiProperties properties) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
-                null, executor, properties, new PassThroughDerivedTopicQueryService());
+                null, executor, properties, new PassThroughDerivedTopicQueryService(),
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -190,7 +205,34 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       SummaryGenerationClient summaryGenerationClient,
                                       ThreadPoolTaskExecutor executor) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
-                null, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService());
+                null, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService(),
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor,
+                                      ApiProperties properties,
+                                      DerivedTopicQueryService derivedTopicQueryService) {
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
+                deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor,
+                                      ApiProperties properties,
+                                      MultilingualQueryPlanningService multilingualQueryPlanningService) {
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
+                deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService(),
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), multilingualQueryPlanningService);
     }
 
     @Override
@@ -218,13 +260,15 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             throw ex;
         }
         String resolvedName = resolveNameOrFallback(profile, evidence);
+        SearchLanguageProfile languageProfile = searchLanguageProfileService.resolveProfile(resolvedName, profile);
         EnrichedProfile enrichedProfile = enrichProfileByResolvedName(
                 profile,
                 resolvedName,
+                languageProfile,
                 result.getWarnings()
         );
         profile = enrichedProfile.profile();
-        profile = enrichProfileSectionsByResolvedName(profile, resolvedName);
+        profile = enrichProfileSectionsByResolvedName(profile, resolvedName, languageProfile);
         resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
@@ -444,7 +488,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     String summarizeSection(String resolvedName, String sectionType, String query) {
         try {
-            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, sectionType, query);
+            SearchLanguageProfile languageProfile = searchLanguageProfileService.resolveProfile(
+                    resolvedName,
+                    new ResolvedPersonProfile().setResolvedName(resolvedName)
+            );
+            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, languageProfile, sectionType, query);
             if (bundle.pageSummaries().isEmpty()) {
                 return null;
             }
@@ -464,7 +512,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private List<ParagraphSummaryItem> summarizeSectionParagraphs(String resolvedName, String sectionType, String query) {
         try {
-            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, sectionType, query);
+            SearchLanguageProfile languageProfile = searchLanguageProfileService.resolveProfile(
+                    resolvedName,
+                    new ResolvedPersonProfile().setResolvedName(resolvedName)
+            );
+            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, languageProfile, sectionType, query);
             if (bundle.pageSummaries().isEmpty()) {
                 return List.of();
             }
@@ -482,6 +534,12 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         public TopicQueryDecision resolveQuery(DerivedTopicRequest request) {
             return new TopicQueryDecision().setFinalQuery(request == null ? null : request.getRawQuery());
         }
+    }
+
+    @FunctionalInterface
+    private interface SectionEnrichmentSupplier {
+
+        SectionEnrichmentResult get();
     }
 
     private SectionEnrichmentResult joinSectionEnrichmentFuture(CompletableFuture<SectionEnrichmentResult> future) {
@@ -532,26 +590,20 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private EnrichedProfile enrichProfileByResolvedName(ResolvedPersonProfile profile,
                                                         String resolvedName,
+                                                        SearchLanguageProfile languageProfile,
                                                         List<String> warnings) {
         if (!shouldRunSecondarySearch(profile, resolvedName)) {
             return new EnrichedProfile(profile, null);
         }
 
-        SerpApiResponse searchResponse;
-        try {
-            searchResponse = googleSearchClient.googleSearch(resolvedName);
-        } catch (RuntimeException ex) {
-            log.warn("secondary search failed resolvedName={} error={}", resolvedName, ex.getMessage(), ex);
-            warnings.add(SECONDARY_SEARCH_WARNING);
+        List<SearchQueryTask> tasks = multilingualQueryPlanningService.planSecondaryProfileQueries(languageProfile);
+        List<SerpApiResponse> searchResponses = executeSearchTasks(tasks, resolvedName, "secondary_profile");
+        if (searchResponses.isEmpty()) {
             return new EnrichedProfile(profile, null);
         }
 
-        if (searchResponse == null || searchResponse.getRoot() == null) {
-            return new EnrichedProfile(profile, null);
-        }
-
-        String imageUrl = extractKnowledgeGraphImageUrl(searchResponse.getRoot());
-        List<WebEvidence> webEvidences = extractSearchOrganicWebEvidence(searchResponse.getRoot());
+        String imageUrl = extractKnowledgeGraphImageUrl(searchResponses);
+        List<WebEvidence> webEvidences = extractSearchOrganicWebEvidence(searchResponses);
         if (webEvidences.isEmpty()) {
             return new EnrichedProfile(profile, imageUrl);
         }
@@ -565,33 +617,35 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return new EnrichedProfile(mergedProfile, imageUrl);
     }
 
-    private ResolvedPersonProfile enrichProfileSectionsByResolvedName(ResolvedPersonProfile profile, String resolvedName) {
+    private ResolvedPersonProfile enrichProfileSectionsByResolvedName(ResolvedPersonProfile profile,
+                                                                      String resolvedName,
+                                                                      SearchLanguageProfile languageProfile) {
         if (profile == null || !StringUtils.hasText(resolvedName) || !StringUtils.hasText(profile.getSummary())) {
             return profile;
         }
 
-        CompletableFuture<SectionEnrichmentResult> educationFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, EDUCATION_SECTION, resolvedName + "的教育经历"), executor);
-        CompletableFuture<SectionEnrichmentResult> familyFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, FAMILY_SECTION, resolvedName + "的家庭背景"), executor);
-        CompletableFuture<SectionEnrichmentResult> careerFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, CAREER_SECTION, resolvedName + "的职业经历"), executor);
+        CompletableFuture<SectionEnrichmentResult> educationFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, EDUCATION_SECTION, resolvedName + "的教育经历"));
+        CompletableFuture<SectionEnrichmentResult> familyFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, FAMILY_SECTION, resolvedName + "的家庭背景"));
+        CompletableFuture<SectionEnrichmentResult> careerFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, CAREER_SECTION, resolvedName + "的职业经历"));
         // 关键逻辑：新增主题统一走派生主题摘要链路，前端直接按独立区域渲染，不再依赖长摘要二次拆分。
-        CompletableFuture<SectionEnrichmentResult> chinaRelatedStatementsFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, CHINA_RELATED_STATEMENTS_SECTION,
-                        resolvedName + " 涉华言论 中国评价 中美关系 中欧关系"), executor);
-        CompletableFuture<SectionEnrichmentResult> politicalViewFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, POLITICAL_VIEW_SECTION,
-                        resolvedName + " 政治倾向 政党 政治理念 政策立场"), executor);
-        CompletableFuture<SectionEnrichmentResult> contactInformationFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, CONTACT_INFORMATION_SECTION,
-                        resolvedName + " 公开通讯 办公电话 官方邮箱 认证社交账号 联系方式"), executor);
-        CompletableFuture<SectionEnrichmentResult> familyMemberSituationFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, FAMILY_MEMBER_SITUATION_SECTION,
-                        resolvedName + " 家族成员 亲属 经商 在华投资 商业纠纷"), executor);
-        CompletableFuture<SectionEnrichmentResult> misconductFuture = CompletableFuture.supplyAsync(
-                () -> summarizeSectionEnrichment(resolvedName, MISCONDUCT_SECTION,
-                        resolvedName + " 违法记录 行政处罚 负面事件 失信"), executor);
+        CompletableFuture<SectionEnrichmentResult> chinaRelatedStatementsFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, CHINA_RELATED_STATEMENTS_SECTION,
+                        resolvedName + " 涉华言论 中国评价 中美关系 中欧关系"));
+        CompletableFuture<SectionEnrichmentResult> politicalViewFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, POLITICAL_VIEW_SECTION,
+                        resolvedName + " 政治倾向 政党 政治理念 政策立场"));
+        CompletableFuture<SectionEnrichmentResult> contactInformationFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, CONTACT_INFORMATION_SECTION,
+                        resolvedName + " 公开通讯 办公电话 官方邮箱 认证社交账号 联系方式"));
+        CompletableFuture<SectionEnrichmentResult> familyMemberSituationFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, FAMILY_MEMBER_SITUATION_SECTION,
+                        resolvedName + " 家族成员 亲属 经商 在华投资 商业纠纷"));
+        CompletableFuture<SectionEnrichmentResult> misconductFuture = submitSectionEnrichmentTask(
+                () -> summarizeSectionEnrichment(resolvedName, languageProfile, MISCONDUCT_SECTION,
+                        resolvedName + " 违法记录 行政处罚 负面事件 失信"));
 
         ResolvedPersonProfile enriched = copyProfile(profile);
         SectionEnrichmentResult educationResult = joinSectionEnrichmentFuture(educationFuture);
@@ -632,9 +686,12 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return enriched;
     }
 
-    private SectionEnrichmentResult summarizeSectionEnrichment(String resolvedName, String sectionType, String fallbackQuery) {
+    private SectionEnrichmentResult summarizeSectionEnrichment(String resolvedName,
+                                                              SearchLanguageProfile languageProfile,
+                                                              String sectionType,
+                                                              String fallbackQuery) {
         try {
-            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, sectionType, fallbackQuery);
+            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, languageProfile, sectionType, fallbackQuery);
             if (bundle.pageSummaries() == null || bundle.pageSummaries().isEmpty()) {
                 return SectionEnrichmentResult.empty();
             }
@@ -666,10 +723,40 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return cleanText(firstNonBlank(root.path("knowledgeGraph"), "imageUrl"));
     }
 
+    private String extractKnowledgeGraphImageUrl(List<SerpApiResponse> responses) {
+        if (responses == null) {
+            return null;
+        }
+        for (SerpApiResponse response : responses) {
+            if (response == null || response.getRoot() == null) {
+                continue;
+            }
+            String imageUrl = extractKnowledgeGraphImageUrl(response.getRoot());
+            if (StringUtils.hasText(imageUrl)) {
+                return imageUrl;
+            }
+        }
+        return null;
+    }
+
     private List<WebEvidence> extractSearchOrganicWebEvidence(com.fasterxml.jackson.databind.JsonNode root) {
         List<WebEvidence> evidences = new ArrayList<>();
         collectKnowledgeGraphEvidence(evidences, root.path("knowledgeGraph"));
         collectOrganicEvidence(evidences, root.path("organic"));
+        return deduplicateWebEvidencePrioritized(evidences);
+    }
+
+    private List<WebEvidence> extractSearchOrganicWebEvidence(List<SerpApiResponse> responses) {
+        List<WebEvidence> evidences = new ArrayList<>();
+        if (responses == null) {
+            return evidences;
+        }
+        for (SerpApiResponse response : responses) {
+            if (response == null || response.getRoot() == null) {
+                continue;
+            }
+            evidences.addAll(extractSearchOrganicWebEvidence(response.getRoot()));
+        }
         return deduplicateWebEvidencePrioritized(evidences);
     }
 
@@ -727,23 +814,44 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     // 派生主题统一走“两阶段搜索”：先跑基础拆分 query，再根据首轮摘要做模型扩展。
-    private SectionSearchBundle collectSectionSearchBundle(String resolvedName, String sectionType, String fallbackQuery) {
+    private SectionSearchBundle collectSectionSearchBundle(String resolvedName,
+                                                           SearchLanguageProfile languageProfile,
+                                                           String sectionType,
+                                                           String fallbackQuery) {
         List<String> baseQueries = buildBaseQueries(resolvedName, sectionType);
         if (baseQueries.isEmpty() && StringUtils.hasText(fallbackQuery)) {
-            baseQueries = List.of(fallbackQuery);
+            baseQueries = List.of(extractFallbackTerm(languageProfile, resolvedName, fallbackQuery));
         }
-        List<PageSummary> firstRound = collectPageSummariesForQueries(resolvedName, sectionType, baseQueries);
+        List<SearchQueryTask> firstRoundTasks = multilingualQueryPlanningService.planSectionQueries(
+                languageProfile,
+                sectionType,
+                extractQueryTerms(resolvedName, baseQueries)
+        );
+        List<PageSummary> firstRound = collectPageSummariesForTasks(
+                resolvedName,
+                sectionType,
+                firstRoundTasks,
+                new LinkedHashSet<>()
+        );
         List<TopicExpansionQuery> expansionQueries = sanitizeExpansionQueries(
                 expandTopicQueriesWithFallback(resolvedName, sectionType, firstRound)
         );
-        List<String> secondRoundQueries = expansionQueries.stream()
+        List<String> secondRoundTerms = expansionQueries.stream()
                 .map(TopicExpansionQuery::getTerm)
                 .filter(StringUtils::hasText)
-                .map(term -> resolvedName + " " + term)
                 .toList();
         List<PageSummary> mergedPageSummaries = mergePageSummaries(
                 firstRound,
-                collectPageSummariesForQueries(resolvedName, sectionType, secondRoundQueries)
+                collectPageSummariesForTasks(
+                        resolvedName,
+                        sectionType,
+                        multilingualQueryPlanningService.planExpansionQueries(languageProfile, sectionType, secondRoundTerms),
+                        firstRound.stream()
+                                .map(PageSummary::getSourceUrl)
+                                .filter(StringUtils::hasText)
+                                .map(this::normalizeDedupUrl)
+                                .collect(Collectors.toCollection(LinkedHashSet::new))
+                )
         );
         return new SectionSearchBundle(mergedPageSummaries, expansionQueries);
     }
@@ -777,6 +885,205 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return collected;
     }
 
+    private List<PageSummary> collectPageSummariesForTasks(String resolvedName,
+                                                           String sectionType,
+                                                           List<SearchQueryTask> tasks,
+                                                           Set<String> seenUrls) {
+        if (tasks == null || tasks.isEmpty()) {
+            return List.of();
+        }
+        List<PageSummary> collected = new ArrayList<>();
+        for (SerpApiResponse response : executeSearchTasks(tasks, resolvedName, sectionType)) {
+            collected.addAll(collectPageSummariesFromSearchResponse(resolvedName, sectionType, response, seenUrls));
+        }
+        return collected;
+    }
+
+    private List<SerpApiResponse> executeSearchTasks(List<SearchQueryTask> tasks, String resolvedName, String sectionType) {
+        if (tasks == null || tasks.isEmpty()) {
+            return List.of();
+        }
+        // 线程池工作线程内如果再次并发提交同池任务，容易在高峰期形成自我阻塞，这里直接串行回退保证链路可完成。
+        if (isExecutorWorkerThread()) {
+            List<SerpApiResponse> responses = new ArrayList<>();
+            for (SearchQueryTask task : tasks) {
+                SerpApiResponse response = runSearchTaskSync(task, resolvedName, sectionType);
+                if (response != null && response.getRoot() != null) {
+                    responses.add(response);
+                }
+            }
+            return responses;
+        }
+        List<CompletableFuture<SerpApiResponse>> futures = new ArrayList<>();
+        for (SearchQueryTask task : tasks) {
+            try {
+                futures.add(CompletableFuture.supplyAsync(() -> {
+                    try {
+                        String finalQuery = resolveSectionQuery(resolvedName, sectionType, task.getQueryText());
+                        log.info("section search round={} language={} query=\"{}\" resolvedName={} sectionType={}",
+                                task.getSourceReason(), task.getLanguageCode(), finalQuery, resolvedName, sectionType);
+                        return googleSearchClient.googleSearch(finalQuery);
+                    } catch (RuntimeException ex) {
+                        log.warn("multilingual search failed round={} language={} query={} error={}",
+                                task.getSourceReason(), task.getLanguageCode(), task.getQueryText(), ex.getMessage(), ex);
+                        return null;
+                    }
+                }, executor));
+            } catch (TaskRejectedException ex) {
+                log.warn("multilingual search executor saturated, fallback to sync round={} language={} query={} error={}",
+                        task.getSourceReason(), task.getLanguageCode(), task.getQueryText(), ex.getMessage());
+                futures.add(CompletableFuture.completedFuture(runSearchTaskSync(task, resolvedName, sectionType)));
+            }
+        }
+
+        List<SerpApiResponse> responses = new ArrayList<>();
+        for (CompletableFuture<SerpApiResponse> future : futures) {
+            try {
+                SerpApiResponse response = future.join();
+                if (response != null && response.getRoot() != null) {
+                    responses.add(response);
+                }
+            } catch (CompletionException ex) {
+                Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                log.warn("multilingual search future failed error={}", cause.getMessage(), cause);
+            }
+        }
+        return responses;
+    }
+
+    private boolean isExecutorWorkerThread() {
+        String threadNamePrefix = executor.getThreadNamePrefix();
+        String currentThreadName = Thread.currentThread().getName();
+        return StringUtils.hasText(threadNamePrefix) && StringUtils.hasText(currentThreadName)
+                && currentThreadName.startsWith(threadNamePrefix);
+    }
+
+    private SerpApiResponse runSearchTaskSync(SearchQueryTask task, String resolvedName, String sectionType) {
+        try {
+            String finalQuery = resolveSectionQuery(resolvedName, sectionType, task.getQueryText());
+            log.info("section search round={} language={} query=\"{}\" resolvedName={} sectionType={}",
+                    task.getSourceReason(), task.getLanguageCode(), finalQuery, resolvedName, sectionType);
+            return googleSearchClient.googleSearch(finalQuery);
+        } catch (RuntimeException ex) {
+            log.warn("multilingual search failed in sync fallback round={} language={} query={} error={}",
+                    task.getSourceReason(), task.getLanguageCode(), task.getQueryText(), ex.getMessage(), ex);
+            return null;
+        }
+    }
+
+    private CompletableFuture<SectionEnrichmentResult> submitSectionEnrichmentTask(SectionEnrichmentSupplier supplier) {
+        try {
+            return CompletableFuture.supplyAsync(supplier::get, executor);
+        } catch (TaskRejectedException ex) {
+            // 富化摘要属于降级可接受链路，线程池打满时同步执行比直接丢弃分段结果更稳妥。
+            log.warn("section enrichment executor saturated, fallback to sync error={}", ex.getMessage());
+            return CompletableFuture.completedFuture(supplier.get());
+        }
+    }
+
+    private List<String> extractQueryTerms(String resolvedName, List<String> queries) {
+        if (queries == null || queries.isEmpty()) {
+            return List.of();
+        }
+        List<String> terms = new ArrayList<>();
+        for (String query : queries) {
+            String term = extractFallbackTerm(null, resolvedName, query);
+            if (StringUtils.hasText(term)) {
+                terms.add(term);
+            }
+        }
+        return terms;
+    }
+
+    private String extractFallbackTerm(SearchLanguageProfile languageProfile, String resolvedName, String query) {
+        if (!StringUtils.hasText(query)) {
+            return null;
+        }
+        String normalized = query.trim();
+        List<String> candidates = new ArrayList<>();
+        if (languageProfile != null && languageProfile.getLocalizedNames() != null) {
+            candidates.addAll(languageProfile.getLocalizedNames().values());
+        }
+        if (StringUtils.hasText(resolvedName)) {
+            candidates.add(resolvedName);
+            candidates.add(resolvedName.replaceAll("（.*?）", "").trim());
+        }
+        for (String candidate : candidates) {
+            if (StringUtils.hasText(candidate) && normalized.startsWith(candidate.trim())) {
+                normalized = normalized.substring(candidate.trim().length()).trim();
+                break;
+            }
+        }
+        normalized = normalized
+                .replaceFirst("^[的\\s:：,，;；/\\\\-]+", "")
+                .replaceFirst("^['’]s\\s+", "")
+                .trim();
+        return StringUtils.hasText(normalized) ? normalized : query.trim();
+    }
+
+    private List<PageSummary> collectPageSummariesFromSearchResponse(String resolvedName,
+                                                                     String sectionType,
+                                                                     SerpApiResponse searchResponse,
+                                                                     Set<String> seenUrls) {
+        try {
+            if (searchResponse == null || searchResponse.getRoot() == null) {
+                return List.of();
+            }
+            List<WebEvidence> evidences = extractSearchOrganicWebEvidence(searchResponse.getRoot());
+            if (evidences == null || evidences.isEmpty()) {
+                return List.of();
+            }
+            List<WebEvidence> filtered = evidences.stream()
+                    .filter(item -> item != null && StringUtils.hasText(item.getUrl()))
+                    .filter(item -> !seenUrls.contains(normalizeDedupUrl(item.getUrl())))
+                    .toList();
+            if (filtered.isEmpty()) {
+                return List.of();
+            }
+            List<String> urls = selectTopUrls(filtered);
+            if (urls.isEmpty()) {
+                return List.of();
+            }
+            List<PageContent> pages = List.of();
+            try {
+                pages = jinaReaderClient.readPages(urls);
+            } catch (RuntimeException ex) {
+                log.warn("section jina read failed resolvedName={} sectionType={} urlCount={} error={}",
+                        resolvedName, sectionType, urls.size(), ex.getMessage(), ex);
+            }
+            if (pages == null || pages.isEmpty()) {
+                pages = buildFallbackPages(filtered, urls);
+            }
+            if (pages == null || pages.isEmpty()) {
+                return List.of();
+            }
+            List<PageSummary> summaries = collectPageSummaries(resolvedName, pages);
+            List<PageSummary> deduplicated = new ArrayList<>();
+            for (PageSummary summary : summaries) {
+                if (summary == null || !StringUtils.hasText(summary.getSourceUrl())) {
+                    continue;
+                }
+                String normalizedUrl = normalizeDedupUrl(summary.getSourceUrl());
+                if (seenUrls.add(normalizedUrl)) {
+                    deduplicated.add(summary);
+                }
+            }
+            return deduplicated;
+        } catch (RuntimeException ex) {
+            log.warn("section search response processing failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
+            return List.of();
+        }
+    }
+
+    private String normalizeDedupUrl(String url) {
+        return StringUtils.hasText(url) ? url.trim() : "";
+    }
+
+    private static RealtimeTranslationClient noopTranslationClient() {
+        return (query, targetLanguageCode) -> null;
+    }
+
     private List<PageSummary> collectPageSummariesForSingleQuery(String resolvedName, String sectionType, String query) {
         if (!StringUtils.hasText(query)) {
             return List.of();
@@ -784,6 +1091,18 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         try {
             String finalQuery = resolveSectionQuery(resolvedName, sectionType, query);
             SerpApiResponse searchResponse = googleSearchClient.googleSearch(finalQuery);
+            return collectPageSummariesFromSearchResponse(resolvedName, sectionType, searchResponse);
+        } catch (RuntimeException ex) {
+            log.warn("section query failed resolvedName={} sectionType={} query={} error={}",
+                    resolvedName, sectionType, query, ex.getMessage(), ex);
+            return List.of();
+        }
+    }
+
+    private List<PageSummary> collectPageSummariesFromSearchResponse(String resolvedName,
+                                                                     String sectionType,
+                                                                     SerpApiResponse searchResponse) {
+        try {
             if (searchResponse == null || searchResponse.getRoot() == null) {
                 return List.of();
             }
@@ -796,8 +1115,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             try {
                 pages = jinaReaderClient.readPages(urls);
             } catch (RuntimeException ex) {
-                log.warn("section jina read failed resolvedName={} sectionType={} query={} urlCount={} error={}",
-                        resolvedName, sectionType, finalQuery, urls.size(), ex.getMessage(), ex);
+                log.warn("section jina read failed resolvedName={} sectionType={} urlCount={} error={}",
+                        resolvedName, sectionType, urls.size(), ex.getMessage(), ex);
             }
             if (pages == null || pages.isEmpty()) {
                 pages = buildFallbackPages(evidences, urls);
@@ -807,8 +1126,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
             return collectPageSummaries(resolvedName, pages);
         } catch (RuntimeException ex) {
-            log.warn("section query failed resolvedName={} sectionType={} query={} error={}",
-                    resolvedName, sectionType, query, ex.getMessage(), ex);
+            log.warn("section search response processing failed resolvedName={} sectionType={} error={}",
+                    resolvedName, sectionType, ex.getMessage(), ex);
             return List.of();
         }
     }

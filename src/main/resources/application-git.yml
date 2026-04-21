@@ -59,6 +59,15 @@ face2info:
       max-retries: 2
       backoff-initial-ms: 500
       system-prompt: ${DEEPSEEK_SYSTEM_PROMPT:你是一个人物信息提取助手，输出结构化文本时只输出JSON。}
+    realtime-translation:
+      base-url: ${REALTIME_TRANSLATION_API_BASE_URL:https://www.sophnet.com/api/open-apis/anthropic/v1/messages}
+      api-key: ${SOPHNET_API_KEY:}
+      model: ${REALTIME_TRANSLATION_MODEL:DeepSeek-R1-Distill-Qwen-7B}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 30000
+      max-retries: 2
+      backoff-initial-ms: 500
+      system-prompt: ${REALTIME_TRANSLATION_SYSTEM_PROMPT:你是搜索查询翻译助手。只返回翻译后的单行查询词，不要解释、不要加引号、不要补充说明。}
     summary:
       enabled: true
       provider: kimi

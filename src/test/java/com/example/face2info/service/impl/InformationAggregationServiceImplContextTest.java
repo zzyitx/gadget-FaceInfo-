@@ -6,6 +6,8 @@ import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.service.DerivedTopicQueryService;
+import com.example.face2info.service.MultilingualQueryPlanningService;
+import com.example.face2info.service.SearchLanguageProfileService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -56,6 +58,16 @@ class InformationAggregationServiceImplContextTest {
         @Bean
         DerivedTopicQueryService derivedTopicQueryService() {
             return mock(DerivedTopicQueryService.class);
+        }
+
+        @Bean
+        SearchLanguageProfileService searchLanguageProfileService() {
+            return new SearchLanguageProfileServiceImpl(summaryGenerationClient());
+        }
+
+        @Bean
+        MultilingualQueryPlanningService multilingualQueryPlanningService() {
+            return new MultilingualQueryPlanningServiceImpl();
         }
 
         @Bean
