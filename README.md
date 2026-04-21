@@ -115,7 +115,7 @@ face2info:
         path: /api/v1/detection/detect
       verification:
         api-key: ${COMPREFACE_VERIFICATION_API_KEY:}
-        path: /api/v1/verification/verify
+        path: /api/v1/verify/verify
 ```
 
 ## 包结构说明

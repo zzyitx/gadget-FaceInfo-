@@ -30,7 +30,7 @@ public class CompreFaceProperties {
     @Setter
     public static class Verification {
         private String apiKey;
-        private String path = "/api/v1/verification/verify";
+        private String path = "/api/v1/verify/verify";
         private double detProbThreshold = 0.8D;
         private int limit = 1;
         private int predictionCount = 1;

@@ -63,6 +63,6 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.getProperty("face2info.api.compreface.detection.path"))
                 .isEqualTo("/api/v1/detection/detect");
         assertThat(properties.getProperty("face2info.api.compreface.verification.path"))
-                .isEqualTo("/api/v1/verification/verify");
+                .isEqualTo("/api/v1/verify/verify");
     }
 }
