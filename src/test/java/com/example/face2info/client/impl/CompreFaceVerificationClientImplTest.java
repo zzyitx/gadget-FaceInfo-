@@ -24,7 +24,7 @@ class CompreFaceVerificationClientImplTest {
     void shouldReturnHighestSimilarity() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
-        server.expect(requestTo("http://127.0.0.1:8000/api/v1/verify/verify?limit=1&det_prob_threshold=0.8&prediction_count=1&status=false"))
+        server.expect(requestTo("http://127.0.0.1:8000/api/v1/verification/verify?limit=1&det_prob_threshold=0.8&prediction_count=1&status=false"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("x-api-key", "verify-key"))
                 .andRespond(withSuccess("""
@@ -54,7 +54,7 @@ class CompreFaceVerificationClientImplTest {
         properties.getApi().setCompreface(new CompreFaceProperties());
         properties.getApi().getCompreface().setBaseUrl("http://127.0.0.1:8000");
         properties.getApi().getCompreface().getVerification().setApiKey("verify-key");
-        properties.getApi().getCompreface().getVerification().setPath("/api/v1/verify/verify");
+        properties.getApi().getCompreface().getVerification().setPath("/api/v1/verification/verify");
         properties.getApi().getCompreface().getVerification().setLimit(1);
         properties.getApi().getCompreface().getVerification().setDetProbThreshold(0.8D);
         properties.getApi().getCompreface().getVerification().setPredictionCount(1);

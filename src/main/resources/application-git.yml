@@ -209,7 +209,7 @@ face2info:
         status: false
       verification:
         api-key: ${COMPREFACE_VERIFICATION_API_KEY:}
-        path: /api/v1/verify/verify
+        path: /api/v1/verification/verify
         det-prob-threshold: 0.8
         limit: 1
         prediction-count: 1
