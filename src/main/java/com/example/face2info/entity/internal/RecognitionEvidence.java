@@ -15,6 +15,9 @@ public class RecognitionEvidence {
     @Schema(description = "图像匹配结果列表")
     private List<ImageMatch> imageMatches = new ArrayList<>();
 
+    @Schema(description = "供文章来源区完整展示的原始图像匹配结果列表")
+    private List<ImageMatch> articleImageMatches = new ArrayList<>();
+
     @Schema(description = "网页证据列表")
     private List<WebEvidence> webEvidences = new ArrayList<>();
 
@@ -30,6 +33,15 @@ public class RecognitionEvidence {
 
     public RecognitionEvidence setImageMatches(List<ImageMatch> imageMatches) {
         this.imageMatches = imageMatches;
+        return this;
+    }
+
+    public List<ImageMatch> getArticleImageMatches() {
+        return articleImageMatches;
+    }
+
+    public RecognitionEvidence setArticleImageMatches(List<ImageMatch> articleImageMatches) {
+        this.articleImageMatches = articleImageMatches;
         return this;
     }
 

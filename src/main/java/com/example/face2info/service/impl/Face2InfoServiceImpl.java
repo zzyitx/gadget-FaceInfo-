@@ -202,6 +202,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             FaceInfoResponse response = new FaceInfoResponse()
                     .setPerson(null)
                     .setImageMatches(evidence == null ? null : evidence.getImageMatches())
+                    .setArticleImageMatches(evidence == null ? null : evidence.getArticleImageMatches())
                     .setWarnings(warnings)
                     .setStatus("failed")
                     .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
@@ -247,6 +248,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setPerson(person)
                 .setWarnings(warnings)
                 .setImageMatches(evidence == null ? null : evidence.getImageMatches())
+                .setArticleImageMatches(evidence == null ? null : evidence.getArticleImageMatches())
                 .setStatus(status)
                 .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
         imageResultCacheService.cacheFaceInfoResponse(image, response);

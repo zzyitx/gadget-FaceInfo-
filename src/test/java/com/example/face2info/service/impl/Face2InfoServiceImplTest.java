@@ -112,6 +112,21 @@ class Face2InfoServiceImplTest {
                         .setSource("Wikipedia")
                         .setThumbnailUrl("https://thumb.example.com/official.jpg")
                         .setSimilarityScore(96.4)
+        )).setArticleImageMatches(List.of(
+                new ImageMatch()
+                        .setPosition(1)
+                        .setTitle("Lei Jun official profile")
+                        .setLink("https://example.com/official")
+                        .setSource("Wikipedia")
+                        .setThumbnailUrl("https://thumb.example.com/official.jpg")
+                        .setSimilarityScore(96.4),
+                new ImageMatch()
+                        .setPosition(2)
+                        .setTitle("Lei Jun article copy")
+                        .setLink("https://example.com/article")
+                        .setSource("Example")
+                        .setThumbnailUrl("https://thumb.example.com/article.jpg")
+                        .setSimilarityScore(74.2)
         ));
         DetectionSession session = new DetectionSession()
                 .setDetectionId("det-1")
@@ -129,6 +144,8 @@ class Face2InfoServiceImplTest {
         assertThat(response.getImageMatches()).hasSize(1);
         assertThat(response.getImageMatches().get(0).getThumbnailUrl()).isEqualTo("https://thumb.example.com/official.jpg");
         assertThat(response.getImageMatches().get(0).getSimilarityScore()).isEqualTo(96.4);
+        assertThat(response.getArticleImageMatches()).hasSize(2);
+        assertThat(response.getArticleImageMatches().get(1).getLink()).isEqualTo("https://example.com/article");
         verify(fixture.faceDetectionService).detect(fixture.image);
         verify(fixture.faceRecognitionService).recognize(argThat(file ->
                 "face.jpg".equals(file.getOriginalFilename()) && file.getSize() == 3));

@@ -16,6 +16,10 @@ public class FaceInfoResponse {
     @Schema(description = "来自 Serper 搜图结果的图片匹配列表")
     private List<ImageMatch> imageMatches = new ArrayList<>();
 
+    @JsonProperty("article_image_matches")
+    @Schema(description = "供文章来源区完整展示的图片匹配列表，不受主图聚合折叠影响")
+    private List<ImageMatch> articleImageMatches = new ArrayList<>();
+
     @Schema(description = "聚合过程中产生的非阻塞告警信息")
     private List<String> warnings = new ArrayList<>();
 
@@ -43,6 +47,15 @@ public class FaceInfoResponse {
 
     public FaceInfoResponse setImageMatches(List<ImageMatch> imageMatches) {
         this.imageMatches = imageMatches == null ? new ArrayList<>() : imageMatches;
+        return this;
+    }
+
+    public List<ImageMatch> getArticleImageMatches() {
+        return articleImageMatches;
+    }
+
+    public FaceInfoResponse setArticleImageMatches(List<ImageMatch> articleImageMatches) {
+        this.articleImageMatches = articleImageMatches == null ? new ArrayList<>() : articleImageMatches;
         return this;
     }
 

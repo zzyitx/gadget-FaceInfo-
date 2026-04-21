@@ -142,14 +142,16 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             webEvidences.addAll(outcome.webEvidences());
         }
 
-        evidence.setImageMatches(extractImageMatches(
+        ImageMatchExtractionResult imageMatchResult = extractImageMatches(
                 originalImage,
                 imageUrl,
                 lensOutcome.root(),
                 yandexAboutOutcome.root(),
                 yandexSimilarOutcome.root(),
                 bingOutcome.root()
-        ));
+        );
+        evidence.setImageMatches(imageMatchResult.matches());
+        evidence.setArticleImageMatches(imageMatchResult.articleMatches());
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
         evidence.setSeedQueries(extractSeedQueries(lensOutcome.root(), evidence.getWebEvidences(), evidence.getImageMatches()));
         log.info("识别证据去重完成 before={} after={}", webEvidences.size(), evidence.getWebEvidences().size());
@@ -301,15 +303,15 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
      * 2) 并行打分；
      * 3) 按分数排序并截断到固定上限。
      */
-    private List<ImageMatch> extractImageMatches(MultipartFile originalImage,
-                                                 String uploadedImageUrl,
-                                                 JsonNode lensRoot,
-                                                 JsonNode yandexAboutRoot,
-                                                 JsonNode yandexSimilarRoot,
-                                                 JsonNode bingRoot) {
+    private ImageMatchExtractionResult extractImageMatches(MultipartFile originalImage,
+                                                           String uploadedImageUrl,
+                                                           JsonNode lensRoot,
+                                                           JsonNode yandexAboutRoot,
+                                                           JsonNode yandexSimilarRoot,
+                                                           JsonNode bingRoot) {
         List<ImageCandidate> candidates = collectImageCandidates(uploadedImageUrl, lensRoot, yandexAboutRoot, yandexSimilarRoot, bingRoot);
         if (candidates.isEmpty()) {
-            return List.of();
+            return ImageMatchExtractionResult.empty();
         }
 
         List<String> seedHints = extractSeedHints(lensRoot, candidates);
@@ -325,6 +327,8 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             matches.add(future.join());
         }
         matches.sort(Comparator.comparingDouble(ImageMatch::getSimilarityScore).reversed());
+        // 保留聚合前的完整排序结果，供文章来源区按原始候选逐条展示，避免主图折叠后丢失来源入口。
+        List<ImageMatch> articleMatches = copyImageMatches(matches);
         matches = collapseSameFaceMatches(matches);
         List<ImageMatch> top = new ArrayList<>();
         int limit = Math.min(MAX_IMAGE_MATCHES, matches.size());
@@ -333,7 +337,26 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             match.setPosition(i + 1);
             top.add(match);
         }
-        return top;
+        return new ImageMatchExtractionResult(top, articleMatches);
+    }
+
+    private List<ImageMatch> copyImageMatches(List<ImageMatch> matches) {
+        List<ImageMatch> copies = new ArrayList<>();
+        for (ImageMatch match : matches) {
+            if (match == null) {
+                continue;
+            }
+            copies.add(new ImageMatch()
+                    .setPosition(match.getPosition())
+                    .setTitle(match.getTitle())
+                    .setLink(match.getLink())
+                    .setSource(match.getSource())
+                    .setThumbnailUrl(match.getThumbnailUrl())
+                    .setSimilarityScore(match.getSimilarityScore())
+                    .setAggregatedPrimary(match.getAggregatedPrimary())
+                    .setAggregatedCount(match.getAggregatedCount()));
+        }
+        return copies;
     }
 
     /**
@@ -659,6 +682,13 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
         private static SearchOutcome empty() {
             return new SearchOutcome(null, List.of(), null);
+        }
+    }
+
+    private record ImageMatchExtractionResult(List<ImageMatch> matches, List<ImageMatch> articleMatches) {
+
+        private static ImageMatchExtractionResult empty() {
+            return new ImageMatchExtractionResult(List.of(), List.of());
         }
     }
 }

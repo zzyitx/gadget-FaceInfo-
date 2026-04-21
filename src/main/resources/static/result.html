@@ -221,29 +221,23 @@
       color: var(--muted);
     }
 
-    .source-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .source-badge {
+    .source-footnote {
       display: inline-flex;
       align-items: center;
-      max-width: 100%;
-      padding: 5px 10px;
+      justify-content: center;
+      min-width: 24px;
+      height: 24px;
+      padding: 0 7px;
       border-radius: 999px;
-      background: rgba(140, 63, 37, 0.08);
-      border: 1px solid rgba(140, 63, 37, 0.14);
+      background: rgba(140, 63, 37, 0.1);
       color: var(--primary);
       text-decoration: none;
       font-size: 12px;
-      line-height: 1.35;
+      line-height: 1;
       font-weight: 700;
     }
 
-    .source-badge:hover {
+    .source-footnote:hover {
       text-decoration: underline;
     }
 
@@ -385,7 +379,6 @@
       line-height: 1.5;
     }
 
-    .tags,
     .info-grid {
       display: flex;
       flex-wrap: wrap;
@@ -432,46 +425,56 @@
       background: rgba(242, 225, 210, 0.34);
     }
 
-    .article-source-group + .article-source-group {
-      margin-top: 18px;
-    }
-
-    .article-grid {
+    .article-line-list {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
 
-    .article-card {
-      padding: 12px 13px;
+    .article-line-item {
+      display: grid;
+      gap: 4px;
+      padding: 10px 12px;
       background: rgba(242, 225, 210, 0.28);
     }
 
-    .article-card p {
-      margin: 8px 0 0;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .article-card a,
-    .article-card strong {
-      display: block;
-      line-height: 1.55;
-    }
-
-    .article-order-row {
+    .article-line-top {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 8px;
-      margin-bottom: 10px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
     }
 
-    .article-source-title {
-      margin: 0 0 12px;
-      font-family: Georgia, serif;
-      font-size: 22px;
-      letter-spacing: -0.02em;
+    .article-line-link,
+    .article-line-title {
+      display: block;
+      min-width: 0;
+      line-height: 1.45;
+      word-break: break-word;
+      font-size: 14px;
+    }
+
+    .article-line-link {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .article-line-link:hover {
+      text-decoration: underline;
+    }
+
+    .article-line-title {
+      font-weight: 700;
+    }
+
+    .article-line-site {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .debug-details summary {
@@ -550,10 +553,17 @@
         grid-template-columns: 1fr;
       }
 
-      .match-meta,
-      .article-order-row {
+      .match-meta {
         align-items: flex-start;
         flex-direction: column;
+      }
+
+      .article-line-item {
+        align-items: flex-start;
+      }
+
+      .article-line-site {
+        white-space: normal;
       }
     }
   </style>
@@ -646,6 +656,7 @@
   const matchesBody = document.getElementById("matchesBody");
   const socialBody = document.getElementById("socialBody");
   const articleBody = document.getElementById("articleBody");
+  let articleReferenceIndex = new Map();
 
   matchRailCard.addEventListener("click", handleMatchClick);
   bootstrapResult();
@@ -692,7 +703,6 @@
     }
 
     const tags = Array.isArray(person && person.tags) ? person.tags.filter(Boolean) : [];
-    const info = person && person.basic_info ? person.basic_info : {};
     // evidence_urls 由后端聚合证据输出，前端用于补充百科入口展示。
     const evidenceUrls = Array.isArray(person && person.evidence_urls) ? person.evidence_urls : [];
     const wikipediaUrl = person && person.wikipedia ? person.wikipedia : "";
@@ -713,10 +723,9 @@
       person && person.official_website ? `<a href="${escapeHtml(person.official_website)}" target="_blank" rel="noreferrer">官方网站</a>` : ""
     ].filter(Boolean).join(" / ");
     if (wikiLinks) personMeta.push(["Wiki链接", wikiLinks, true]);
-    if (info.occupations) personMeta.push(["职业", info.occupations]);
+    if (tags.length) personMeta.push(["标签", tags.join(" / ")]);
 
     personDetails.innerHTML = [
-      tags.length ? `<div class="tags">${tags.slice(0, 8).map(tag => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}</div>` : "",
       personMeta.length ? `<div class="info-grid">${personMeta.map(([label, value, isHtml]) => `<div class="info-box"><span>${escapeHtml(label)}</span><strong>${isHtml ? value : escapeHtml(value)}</strong></div>`).join("")}</div>` : ""
     ].join("");
 
@@ -732,10 +741,14 @@
     ].join("");
 
     const matches = Array.isArray(data.image_matches) ? data.image_matches : [];
-    const sortedMatches = sortImageMatches(matches);
-    renderImageMatches(sortedMatches, data.status, data.error);
+    const articleMatches = Array.isArray(data.article_image_matches) ? data.article_image_matches : matches;
+    const allSortedMatches = sortImageMatches(articleMatches);
+    const displayMatches = sortImageMatches(matches);
+    const summarySourceArticles = collectParagraphSourceArticles(person);
+    articleReferenceIndex = buildArticleReferenceIndex(allSortedMatches, summarySourceArticles);
+    renderImageMatches(displayMatches, data.status, data.error);
     renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
-    renderArticleSources(sortedMatches);
+    renderArticleSources(allSortedMatches, summarySourceArticles);
   }
 
   function sortImageMatches(matches) {
@@ -871,24 +884,108 @@
     }, []);
   }
 
+  function collectParagraphSourceArticles(person) {
+    const sourceByKey = new Map();
+    getAllParagraphs(person).forEach(paragraph => {
+      normalizeSources(
+        paragraph && (paragraph.sources || paragraph.source_urls || paragraph.sourceUrls)
+      ).forEach(source => {
+        const key = source.url && source.url !== "#" ? source.url : `${source.title}|${source.source}`;
+        if (!sourceByKey.has(key)) {
+          sourceByKey.set(key, {
+            title: source.title || "来源文章",
+            source: source.source || "未知来源",
+            url: source.url || "#",
+            publishedAt: source.publishedAt || ""
+          });
+        }
+      });
+    });
+    return Array.from(sourceByKey.values());
+  }
+
+  function getAllParagraphs(person) {
+    if (!person || typeof person !== "object") return [];
+    const paragraphKeys = [
+      "summary_paragraphs",
+      "education_summary_paragraphs",
+      "family_background_summary_paragraphs",
+      "career_summary_paragraphs",
+      "china_related_statements_summary_paragraphs",
+      "political_tendency_summary_paragraphs",
+      "contact_information_summary_paragraphs",
+      "family_member_situation_summary_paragraphs",
+      "misconduct_summary_paragraphs"
+    ];
+    return paragraphKeys.flatMap(key => Array.isArray(person[key]) ? person[key] : []);
+  }
+
+  function buildArticleEntries(sortedMatches, paragraphSourceArticles) {
+    const articleByKey = new Map();
+    buildMatchArticles(sortedMatches).forEach(item => {
+      const key = item.url && item.url !== "#" ? item.url : `${item.title}|${item.source}`;
+      if (!articleByKey.has(key)) {
+        articleByKey.set(key, {
+          title: item.title,
+          source: item.source,
+          url: item.url,
+          similarity: item.similarity,
+          publishedAt: ""
+        });
+      }
+    });
+    (Array.isArray(paragraphSourceArticles) ? paragraphSourceArticles : []).forEach(item => {
+      const key = item.url && item.url !== "#" ? item.url : `${item.title}|${item.source}`;
+      if (!articleByKey.has(key)) {
+        articleByKey.set(key, {
+          title: item.title || "来源文章",
+          source: item.source || "未知来源",
+          url: item.url || "#",
+          similarity: "",
+          publishedAt: item.publishedAt || ""
+        });
+      }
+    });
+    return Array.from(articleByKey.values()).map((item, index) => ({
+      order: index + 1,
+      title: item.title,
+      source: item.source,
+      url: item.url,
+      similarity: item.similarity,
+      publishedAt: item.publishedAt
+    }));
+  }
+
   function renderMatchArticle(item) {
+    const siteText = [item.source, item.publishedAt].filter(Boolean).join(" / ");
     return `
-      <article class="item article-card match-article-item">
-        <div class="article-order-row">
+      <article class="item article-line-item match-article-item" id="article-ref-${item.order}">
+        <div class="article-line-top">
           <span class="article-order">${item.order}</span>
-          <span class="image-score">相似度 ${item.similarity}</span>
+          <span class="article-line-site">${escapeHtml(siteText || "未知来源")}</span>
         </div>
-        ${item.url !== "#" ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>` : `<strong>${escapeHtml(item.title)}</strong>`}
-        <p>${escapeHtml(item.source)}</p>
+        ${item.url !== "#"
+          ? `<a class="article-line-link" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>`
+          : `<strong class="article-line-title">${escapeHtml(item.title)}</strong>`}
       </article>
     `;
   }
 
-  function renderArticleSources(sortedMatches) {
-    const matchArticles = buildMatchArticles(sortedMatches);
+  function renderArticleSources(sortedMatches, paragraphSourceArticles) {
+    const matchArticles = buildArticleEntries(sortedMatches, paragraphSourceArticles);
     articleBody.innerHTML = matchArticles.length
-      ? `<div class="article-grid match-article-list">${matchArticles.map(renderMatchArticle).join("")}</div>`
+      ? `<div class="article-line-list match-article-list">${matchArticles.map(renderMatchArticle).join("")}</div>`
       : '<p class="empty">暂无图片匹配文章来源。</p>';
+  }
+
+  function buildArticleReferenceIndex(sortedMatches, paragraphSourceArticles) {
+    const indexMap = new Map();
+    buildArticleEntries(sortedMatches, paragraphSourceArticles).forEach(item => {
+      if (item.url && item.url !== "#" && !indexMap.has(item.url)) {
+        indexMap.set(item.url, item.order);
+      }
+    });
+    return indexMap;
   }
 
   function renderError(message) {
@@ -966,6 +1063,15 @@
         similarity_score: item.similarity_score || null,
         aggregated_primary: Boolean(item.aggregated_primary),
         aggregated_count: item.aggregated_count || 0
+      })) : [],
+      article_image_matches: Array.isArray(data && data.article_image_matches) ? data.article_image_matches.slice(0, 20).map(item => ({
+        position: item.position || null,
+        title: sanitizeDisplayText(item.title, null),
+        source: sanitizeDisplayText(item.source, null),
+        thumbnail_url: item.thumbnail_url ? shorten(item.thumbnail_url) : null,
+        similarity_score: item.similarity_score || null,
+        aggregated_primary: Boolean(item.aggregated_primary),
+        aggregated_count: item.aggregated_count || 0
       })) : []
     };
   }
@@ -988,7 +1094,7 @@
       return paragraphs
         .map(item => ({
           text: item && typeof item.text === "string" ? item.text.trim() : "",
-          sources: normalizeSources(item && item.sources)
+          sources: normalizeSources(item && (item.sources || item.source_urls || item.sourceUrls))
         }))
         .filter(item => item.text);
     }
@@ -1002,19 +1108,22 @@
       .map(item => ({
         title: sanitizeDisplayText(item && item.title, "来源文章"),
         url: sanitizeLink(item && item.url ? item.url : "#"),
-        source: sanitizeDisplayText(item && item.source, "")
+        source: sanitizeDisplayText(item && item.source, ""),
+        publishedAt: item && (item.published_at || item.publishedAt) ? String(item.published_at || item.publishedAt).trim() : ""
       }))
       .filter(item => item.title || item.url !== "#");
   }
 
-  function renderSourceBadges(sources) {
+  function renderSourceFootnotes(sources) {
     if (!Array.isArray(sources) || !sources.length) return "";
-    return `<span class="source-badges">${sources.map(item => {
-      const label = item.source ? `${item.title} · ${item.source}` : item.title;
-      return item.url !== "#"
-        ? `<a class="source-badge" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`
-        : `<span class="source-badge">${escapeHtml(label)}</span>`;
-    }).join("")}</span>`;
+    const refs = sources
+      .map(item => item && item.url && item.url !== "#" ? articleReferenceIndex.get(item.url) : null)
+      .filter(value => Number.isInteger(value));
+    const uniqueRefs = [...new Set(refs)];
+    if (!uniqueRefs.length) return "";
+    return uniqueRefs.map(ref =>
+      `<a class="source-footnote" href="#article-ref-${ref}">[${ref}]</a>`
+    ).join("");
   }
 
   function renderParagraphBlock(paragraphs, emptyText, paragraphClassName, textClassName = "profile-section-body") {
@@ -1024,7 +1133,7 @@
     return paragraphs.map(item => `
       <div class="${escapeHtml(paragraphClassName)}">
         <span class="${escapeHtml(textClassName)}">${escapeHtml(item.text)}</span>
-        ${renderSourceBadges(item.sources)}
+        ${renderSourceFootnotes(item.sources)}
       </div>
     `).join("");
   }

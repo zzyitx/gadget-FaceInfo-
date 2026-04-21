@@ -103,13 +103,25 @@ class StaticPageTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(".profile-section-body")))
                 .andExpect(content().string(containsString(".profile-section-paragraph")))
-                .andExpect(content().string(containsString(".source-badge")))
+                .andExpect(content().string(containsString(".source-footnote")))
                 .andExpect(content().string(containsString("renderProfileSection(")))
                 .andExpect(content().string(containsString("family_member_situation_summary")))
                 .andExpect(content().string(containsString("family_member_situation_summary_paragraphs")))
                 .andExpect(content().string(containsString("renderParagraphBlock(")))
                 .andExpect(content().string(containsString("normalizeParagraphs(")))
-                .andExpect(content().string(containsString("renderSourceBadges(")));
+                .andExpect(content().string(containsString("item.source_urls")))
+                .andExpect(content().string(containsString("item.sourceUrls")))
+                .andExpect(content().string(containsString("renderSourceFootnotes(")))
+                .andExpect(content().string(containsString("buildArticleReferenceIndex(")));
+    }
+
+    @Test
+    void shouldRenderTagsInsideInfoGridInsteadOfStandaloneTagAreaOnResultPage() throws Exception {
+        mockMvc.perform(get("/result.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("tags.join(\" / \")")))
+                .andExpect(content().string(not(containsString("info.occupations"))))
+                .andExpect(content().string(not(containsString("class=\"tags\""))));
     }
 
     @Test
@@ -120,6 +132,11 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("splitImageMatches")))
                 .andExpect(content().string(not(containsString("renderNews"))))
                 .andExpect(content().string(containsString("sortImageMatches")))
+                .andExpect(content().string(containsString("const articleMatches = Array.isArray(data.article_image_matches) ? data.article_image_matches : matches;")))
+                .andExpect(content().string(containsString("const allSortedMatches = sortImageMatches(articleMatches)")))
+                .andExpect(content().string(containsString("renderImageMatches(displayMatches")))
+                .andExpect(content().string(containsString("collectParagraphSourceArticles(person)")))
+                .andExpect(content().string(containsString("renderArticleSources(allSortedMatches, summarySourceArticles)")))
                 .andExpect(content().string(containsString("buildMatchArticles")))
                 .andExpect(content().string(containsString("thumbnail_url")))
                 .andExpect(content().string(containsString("similarity_score")))
@@ -134,8 +151,13 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("match-aggregate-count")))
                 .andExpect(content().string(containsString("match-article-list")))
                 .andExpect(content().string(not(containsString("independent-news-list"))))
-                .andExpect(content().string(containsString("article-source-title")))
-                .andExpect(content().string(containsString("article-grid")))
+                .andExpect(content().string(containsString("buildArticleEntries")))
+                .andExpect(content().string(containsString("article-line-list")))
+                .andExpect(content().string(containsString("article-line-item")))
+                .andExpect(content().string(containsString("article-line-top")))
+                .andExpect(content().string(containsString("article-line-site")))
+                .andExpect(content().string(containsString("article-line-link")))
+                .andExpect(content().string(not(containsString("article-grid"))))
                 .andExpect(content().string(not(containsString("newsList.map(renderIndependentNews)"))));
     }
 

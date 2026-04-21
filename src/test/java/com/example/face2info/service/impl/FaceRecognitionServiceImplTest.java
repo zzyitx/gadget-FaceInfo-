@@ -253,6 +253,13 @@ class FaceRecognitionServiceImplTest {
         assertThat(evidence.getImageMatches().get(0).getAggregatedCount()).isEqualTo(2);
         assertThat(evidence.getImageMatches().get(1).getAggregatedPrimary()).isFalse();
         assertThat(evidence.getImageMatches().get(1).getAggregatedCount()).isEqualTo(0);
+        assertThat(evidence.getArticleImageMatches()).hasSize(3);
+        assertThat(evidence.getArticleImageMatches()).extracting("thumbnailUrl")
+                .containsExactly(
+                        "https://thumb.example.com/1.jpg",
+                        "https://thumb.example.com/2.jpg",
+                        "https://thumb.example.com/3.jpg"
+                );
     }
 
     @Test
