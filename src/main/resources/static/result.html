@@ -237,6 +237,38 @@
       font-weight: 700;
     }
 
+    .citation-tooltip {
+      position: relative;
+    }
+
+    .citation-tooltip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      transform: translateX(-50%);
+      min-width: 220px;
+      max-width: min(320px, 72vw);
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(31, 23, 18, 0.94);
+      color: #fff7f0;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      box-shadow: 0 16px 28px rgba(31, 23, 18, 0.28);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.16s ease;
+      z-index: 20;
+    }
+
+    .citation-tooltip:hover::after,
+    .citation-tooltip:focus-visible::after {
+      opacity: 1;
+    }
+
     .source-footnote:hover {
       text-decoration: underline;
     }
@@ -656,7 +688,6 @@
   const matchesBody = document.getElementById("matchesBody");
   const socialBody = document.getElementById("socialBody");
   const articleBody = document.getElementById("articleBody");
-  let articleReferenceIndex = new Map();
 
   matchRailCard.addEventListener("click", handleMatchClick);
   bootstrapResult();
@@ -745,10 +776,9 @@
     const allSortedMatches = sortImageMatches(articleMatches);
     const displayMatches = sortImageMatches(matches);
     const summarySourceArticles = collectParagraphSourceArticles(person);
-    articleReferenceIndex = buildArticleReferenceIndex(allSortedMatches, summarySourceArticles);
     renderImageMatches(displayMatches, data.status, data.error);
     renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
-    renderArticleSources(allSortedMatches, summarySourceArticles);
+    renderArticleSources(summarySourceArticles, allSortedMatches);
   }
 
   function sortImageMatches(matches) {
@@ -893,6 +923,7 @@
         const key = source.url && source.url !== "#" ? source.url : `${source.title}|${source.source}`;
         if (!sourceByKey.has(key)) {
           sourceByKey.set(key, {
+            index: source.index,
             title: source.title || "来源文章",
             source: source.source || "未知来源",
             url: source.url || "#",
@@ -920,39 +951,27 @@
     return paragraphKeys.flatMap(key => Array.isArray(person[key]) ? person[key] : []);
   }
 
-  function buildArticleEntries(sortedMatches, paragraphSourceArticles) {
-    const articleByKey = new Map();
-    buildMatchArticles(sortedMatches).forEach(item => {
-      const key = item.url && item.url !== "#" ? item.url : `${item.title}|${item.source}`;
-      if (!articleByKey.has(key)) {
-        articleByKey.set(key, {
-          title: item.title,
-          source: item.source,
-          url: item.url,
-          similarity: item.similarity,
-          publishedAt: ""
-        });
-      }
-    });
-    (Array.isArray(paragraphSourceArticles) ? paragraphSourceArticles : []).forEach(item => {
-      const key = item.url && item.url !== "#" ? item.url : `${item.title}|${item.source}`;
-      if (!articleByKey.has(key)) {
-        articleByKey.set(key, {
-          title: item.title || "来源文章",
-          source: item.source || "未知来源",
-          url: item.url || "#",
-          similarity: "",
-          publishedAt: item.publishedAt || ""
-        });
-      }
-    });
-    return Array.from(articleByKey.values()).map((item, index) => ({
-      order: index + 1,
+  function buildCitationArticles(paragraphSourceArticles, sortedMatches) {
+    const citationEntries = Array.isArray(paragraphSourceArticles)
+      ? paragraphSourceArticles
+          .filter(item => Number.isInteger(item.index))
+          .sort((a, b) => a.index - b.index)
+      : [];
+    if (citationEntries.length) {
+      return citationEntries.map(item => ({
+        order: item.index,
+        title: item.title || "来源文章",
+        source: item.source || "未知来源",
+        url: item.url || "#",
+        publishedAt: item.publishedAt || ""
+      }));
+    }
+    return buildMatchArticles(sortedMatches).map(item => ({
+      order: item.order,
       title: item.title,
       source: item.source,
       url: item.url,
-      similarity: item.similarity,
-      publishedAt: item.publishedAt
+      publishedAt: ""
     }));
   }
 
@@ -971,21 +990,11 @@
     `;
   }
 
-  function renderArticleSources(sortedMatches, paragraphSourceArticles) {
-    const matchArticles = buildArticleEntries(sortedMatches, paragraphSourceArticles);
+  function renderArticleSources(paragraphSourceArticles, sortedMatches) {
+    const matchArticles = buildCitationArticles(paragraphSourceArticles, sortedMatches);
     articleBody.innerHTML = matchArticles.length
       ? `<div class="article-line-list match-article-list">${matchArticles.map(renderMatchArticle).join("")}</div>`
       : '<p class="empty">暂无图片匹配文章来源。</p>';
-  }
-
-  function buildArticleReferenceIndex(sortedMatches, paragraphSourceArticles) {
-    const indexMap = new Map();
-    buildArticleEntries(sortedMatches, paragraphSourceArticles).forEach(item => {
-      if (item.url && item.url !== "#" && !indexMap.has(item.url)) {
-        indexMap.set(item.url, item.order);
-      }
-    });
-    return indexMap;
   }
 
   function renderError(message) {
@@ -1106,6 +1115,7 @@
     if (!Array.isArray(sources)) return [];
     return sources
       .map(item => ({
+        index: Number.isInteger(item && item.index) ? item.index : null,
         title: sanitizeDisplayText(item && item.title, "来源文章"),
         url: sanitizeLink(item && item.url ? item.url : "#"),
         source: sanitizeDisplayText(item && item.source, ""),
@@ -1114,16 +1124,31 @@
       .filter(item => item.title || item.url !== "#");
   }
 
-  function renderSourceFootnotes(sources) {
-    if (!Array.isArray(sources) || !sources.length) return "";
-    const refs = sources
-      .map(item => item && item.url && item.url !== "#" ? articleReferenceIndex.get(item.url) : null)
-      .filter(value => Number.isInteger(value));
-    const uniqueRefs = [...new Set(refs)];
-    if (!uniqueRefs.length) return "";
-    return uniqueRefs.map(ref =>
-      `<a class="source-footnote" href="#article-ref-${ref}">[${ref}]</a>`
-    ).join("");
+  function renderParagraphTextWithInlineCitations(text, sources) {
+    const safeText = escapeHtml(text || "");
+    if (!safeText) return "";
+    const sourceIndexMap = new Map(
+      (Array.isArray(sources) ? sources : [])
+        .filter(item => Number.isInteger(item.index))
+        .map(item => [item.index, item])
+    );
+    return safeText.replace(/\[(\d+)]/g, (_, rawIndex) => {
+      const index = Number(rawIndex);
+      const source = sourceIndexMap.get(index);
+      if (!source) {
+        return `[${rawIndex}]`;
+      }
+      const tooltip = [
+        source.title || "来源文章",
+        source.source || "",
+        source.url && source.url !== "#" ? source.url : ""
+      ].filter(Boolean).join("\n");
+      const href = source.url && source.url !== "#" ? source.url : "#";
+      const attrs = href !== "#"
+        ? ` href="${escapeHtml(href)}" target="_blank" rel="noreferrer"`
+        : "";
+      return `<a class="source-footnote citation-tooltip"${attrs} data-tooltip="${escapeHtml(tooltip)}">[${index}]</a>`;
+    });
   }
 
   function renderParagraphBlock(paragraphs, emptyText, paragraphClassName, textClassName = "profile-section-body") {
@@ -1132,8 +1157,7 @@
     }
     return paragraphs.map(item => `
       <div class="${escapeHtml(paragraphClassName)}">
-        <span class="${escapeHtml(textClassName)}">${escapeHtml(item.text)}</span>
-        ${renderSourceFootnotes(item.sources)}
+        <span class="${escapeHtml(textClassName)}">${renderParagraphTextWithInlineCitations(item.text, item.sources)}</span>
       </div>
     `).join("");
   }

@@ -122,6 +122,33 @@ class DeepSeekSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldInstructDeepSeekToGenerateInlineCitationsWithoutSourceList() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("格式为 [n]");
+                    assertThat(body).contains("不要生成引用来源列表");
+                    assertThat(body).contains("sources");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Jay Chou\\",\\"summary\\":\\"主体摘要\\",\\"summaryParagraphs\\":[{\\"text\\":\\"主体段落[1]\\",\\"sources\\":[{\\"title\\":\\"文章 A\\",\\"url\\":\\"https://example.com/a\\",\\"source\\":\\"Example\\"}]}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getText()).isEqualTo("主体段落[1]");
+    }
+
+    @Test
     void shouldParseSectionSummaryFromDeepSeekXmlFunctionCalls() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();

@@ -316,12 +316,55 @@ class Face2InfoServiceImplTest {
         assertThat(response.getPerson().getBasicInfo().getOccupations()).containsExactly("Singer", "Producer");
         assertThat(response.getPerson().getBasicInfo().getBiographies()).containsExactly("Taiwanese Mandopop artist");
         assertThat(response.getPerson().getSummaryParagraphs()).hasSize(1);
-        assertThat(response.getPerson().getSummaryParagraphs().get(0).getText()).isEqualTo("第一段主体信息。");
+        assertThat(response.getPerson().getSummaryParagraphs().get(0).getText()).isEqualTo("第一段主体信息。[1]");
         assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources()).hasSize(1);
         assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources().get(0).getTitle()).isEqualTo("文章 A");
         assertThat(response.getPerson().getEducationSummaryParagraphs()).hasSize(1);
+        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getText()).isEqualTo("第一段教育经历。[2]");
         assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getSources().get(0).getUrl())
                 .isEqualTo("https://example.com/education");
+    }
+
+    @Test
+    void shouldAssignStableCitationIndexesAcrossParagraphsAndAppendInlineMarkers() {
+        ServiceFixture fixture = createFixture();
+        RecognitionEvidence evidence = new RecognitionEvidence().setArticleImageMatches(List.of(
+                new ImageMatch().setPosition(2).setTitle("文章 B").setLink("https://example.com/b").setSource("Example B"),
+                new ImageMatch().setPosition(1).setTitle("文章 A").setLink("https://example.com/a").setSource("Example A")
+        ));
+        when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
+        when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
+        when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate()
+                        .setName("Jay Chou")
+                        .setSummaryParagraphs(List.of(
+                                new ParagraphSummaryItem()
+                                        .setText("主体段落")
+                                        .setSources(List.of(
+                                                new ParagraphSource().setTitle("文章 A").setUrl("https://example.com/a").setSource("Example A"),
+                                                new ParagraphSource().setTitle("文章 B").setUrl("https://example.com/b").setSource("Example B")
+                                        ))
+                        ))
+                        .setEducationSummaryParagraphs(List.of(
+                                new ParagraphSummaryItem()
+                                        .setText("教育段落")
+                                        .setSources(List.of(
+                                                new ParagraphSource().setTitle("文章 B").setUrl("https://example.com/b").setSource("Example B")
+                                        ))
+                        ))));
+
+        FaceInfoResponse response = fixture.service.process(fixture.image);
+
+        assertThat(response.getPerson().getSummaryParagraphs()).hasSize(1);
+        assertThat(response.getPerson().getSummaryParagraphs().get(0).getText()).isEqualTo("主体段落[1][2]");
+        assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources())
+                .extracting(source -> source.getIndex())
+                .containsExactly(1, 2);
+        assertThat(response.getPerson().getEducationSummaryParagraphs()).hasSize(1);
+        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getText()).isEqualTo("教育段落[2]");
+        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getSources())
+                .extracting(source -> source.getIndex())
+                .containsExactly(2);
     }
 
     @Test

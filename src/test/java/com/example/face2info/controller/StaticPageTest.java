@@ -104,6 +104,7 @@ class StaticPageTest {
                 .andExpect(content().string(containsString(".profile-section-body")))
                 .andExpect(content().string(containsString(".profile-section-paragraph")))
                 .andExpect(content().string(containsString(".source-footnote")))
+                .andExpect(content().string(containsString(".citation-tooltip")))
                 .andExpect(content().string(containsString("renderProfileSection(")))
                 .andExpect(content().string(containsString("family_member_situation_summary")))
                 .andExpect(content().string(containsString("family_member_situation_summary_paragraphs")))
@@ -111,8 +112,9 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("normalizeParagraphs(")))
                 .andExpect(content().string(containsString("item.source_urls")))
                 .andExpect(content().string(containsString("item.sourceUrls")))
-                .andExpect(content().string(containsString("renderSourceFootnotes(")))
-                .andExpect(content().string(containsString("buildArticleReferenceIndex(")));
+                .andExpect(content().string(containsString("renderParagraphTextWithInlineCitations(")))
+                .andExpect(content().string(containsString("data-tooltip")))
+                .andExpect(content().string(not(containsString("buildArticleReferenceIndex("))));
     }
 
     @Test
@@ -136,8 +138,8 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("const allSortedMatches = sortImageMatches(articleMatches)")))
                 .andExpect(content().string(containsString("renderImageMatches(displayMatches")))
                 .andExpect(content().string(containsString("collectParagraphSourceArticles(person)")))
-                .andExpect(content().string(containsString("renderArticleSources(allSortedMatches, summarySourceArticles)")))
-                .andExpect(content().string(containsString("buildMatchArticles")))
+                .andExpect(content().string(containsString("renderArticleSources(summarySourceArticles, allSortedMatches)")))
+                .andExpect(content().string(containsString("buildCitationArticles")))
                 .andExpect(content().string(containsString("thumbnail_url")))
                 .andExpect(content().string(containsString("similarity_score")))
                 .andExpect(content().string(containsString("aggregated_count")))
@@ -151,7 +153,7 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("match-aggregate-count")))
                 .andExpect(content().string(containsString("match-article-list")))
                 .andExpect(content().string(not(containsString("independent-news-list"))))
-                .andExpect(content().string(containsString("buildArticleEntries")))
+                .andExpect(content().string(not(containsString("buildArticleReferenceIndex"))))
                 .andExpect(content().string(containsString("article-line-list")))
                 .andExpect(content().string(containsString("article-line-item")))
                 .andExpect(content().string(containsString("article-line-top")))

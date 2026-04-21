@@ -31,12 +31,16 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 public class Face2InfoServiceImpl implements Face2InfoService {
 
+    private static final Pattern INLINE_CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
     private static final String NO_FACE_ERROR = "未检测到人脸，请更换更清晰的人脸图片。";
     private static final String MISSING_CROP_ERROR = "所选人脸裁剪图缺失或为空。";
     private static final String BLANK_DETECTION_ID_ERROR = "detection_id 不能为空。";
@@ -241,6 +245,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
                 .setBasicInfo(toResponseBasicInfo(aggregationResult.getPerson().getBasicInfo()))
                 .setSocialAccounts(aggregationResult.getSocialAccounts());
+        assignCitationIndexes(person);
 
         // 只要有 errors/warnings 就返回 partial，向调用方明确“结果可用但不完整”。
         String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
@@ -394,5 +399,76 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                     .setPublishedAt(source.getPublishedAt()));
         }
         return response;
+    }
+
+    private void assignCitationIndexes(PersonInfo person) {
+        if (person == null) {
+            return;
+        }
+        Map<String, Integer> citationIndexByKey = new LinkedHashMap<>();
+        int nextIndex = 1;
+        for (List<ParagraphWithSources> paragraphs : allParagraphGroups(person)) {
+            for (ParagraphWithSources paragraph : paragraphs) {
+                if (paragraph == null || paragraph.getSources() == null || paragraph.getSources().isEmpty()) {
+                    continue;
+                }
+                List<Integer> orderedIndexes = new ArrayList<>();
+                for (ArticleSourceBadge source : paragraph.getSources()) {
+                    if (source == null) {
+                        continue;
+                    }
+                    String key = citationSourceKey(source);
+                    Integer index = citationIndexByKey.get(key);
+                    if (index == null) {
+                        index = nextIndex++;
+                        citationIndexByKey.put(key, index);
+                    }
+                    // 同一来源在全页范围内复用固定编号，避免前端 tooltip 和文章来源区出现编号漂移。
+                    source.setIndex(index);
+                    if (!orderedIndexes.contains(index)) {
+                        orderedIndexes.add(index);
+                    }
+                }
+                paragraph.setText(normalizeParagraphCitationText(paragraph.getText(), orderedIndexes));
+            }
+        }
+    }
+
+    private List<List<ParagraphWithSources>> allParagraphGroups(PersonInfo person) {
+        return List.of(
+                person.getSummaryParagraphs(),
+                person.getEducationSummaryParagraphs(),
+                person.getFamilyBackgroundSummaryParagraphs(),
+                person.getCareerSummaryParagraphs(),
+                person.getChinaRelatedStatementsSummaryParagraphs(),
+                person.getPoliticalTendencySummaryParagraphs(),
+                person.getContactInformationSummaryParagraphs(),
+                person.getFamilyMemberSituationSummaryParagraphs(),
+                person.getMisconductSummaryParagraphs()
+        );
+    }
+
+    private String citationSourceKey(ArticleSourceBadge source) {
+        String url = StringUtils.hasText(source.getUrl()) ? source.getUrl().trim() : "";
+        if (StringUtils.hasText(url)) {
+            return url;
+        }
+        return (StringUtils.hasText(source.getTitle()) ? source.getTitle().trim() : "")
+                + "|"
+                + (StringUtils.hasText(source.getSource()) ? source.getSource().trim() : "");
+    }
+
+    private String normalizeParagraphCitationText(String text, List<Integer> indexes) {
+        String normalized = StringUtils.hasText(text)
+                ? INLINE_CITATION_PATTERN.matcher(text).replaceAll("").trim()
+                : "";
+        if (indexes == null || indexes.isEmpty()) {
+            return normalized;
+        }
+        StringBuilder builder = new StringBuilder(normalized);
+        for (Integer index : indexes) {
+            builder.append("[").append(index).append("]");
+        }
+        return builder.toString();
     }
 }

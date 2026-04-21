@@ -6,6 +6,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "段落来源角标")
 public class ArticleSourceBadge {
 
+    @Schema(description = "脚注编号")
+    private Integer index;
+
     @Schema(description = "文章标题")
     private String title;
 
@@ -18,6 +21,15 @@ public class ArticleSourceBadge {
     @JsonProperty("published_at")
     @Schema(description = "文章发布时间")
     private String publishedAt;
+
+    public Integer getIndex() {
+        return index;
+    }
+
+    public ArticleSourceBadge setIndex(Integer index) {
+        this.index = index;
+        return this;
+    }
 
     public String getTitle() {
         return title;

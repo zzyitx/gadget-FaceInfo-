@@ -545,7 +545,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
                 JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
-                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls。sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl。
+                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls、sources。
+                text 中必须直接写内联引用，格式为 [n]，例如“人物简介[1][2]”。不要生成引用来源列表、参考文献列表或单独的“来源：”段落。
+                sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 篇级摘要如下：
@@ -580,7 +582,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
                 JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
-                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls。sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl。
+                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls、sources。
+                text 中必须直接写内联引用，格式为 [n]，例如“人物简介[1][2]”。不要生成引用来源列表、参考文献列表或单独的“来源：”段落。
+                sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
                 draftResolvedName: %s
@@ -1174,7 +1178,20 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         "type", "object",
                         "properties", Map.of(
                                 "text", Map.of("type", "string"),
-                                "sourceUrls", Map.of("type", "array", "items", Map.of("type", "string"))
+                                "sourceUrls", Map.of("type", "array", "items", Map.of("type", "string")),
+                                "sources", Map.of(
+                                        "type", "array",
+                                        "items", Map.of(
+                                                "type", "object",
+                                                "properties", Map.of(
+                                                        "title", Map.of("type", "string"),
+                                                        "url", Map.of("type", "string"),
+                                                        "source", Map.of("type", "string"),
+                                                        "publishedAt", Map.of("type", "string")
+                                                ),
+                                                "additionalProperties", false
+                                        )
+                                )
                         ),
                         "required", List.of("text", "sourceUrls"),
                         "additionalProperties", false
