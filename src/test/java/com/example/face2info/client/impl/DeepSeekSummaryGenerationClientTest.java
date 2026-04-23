@@ -2,6 +2,7 @@ package com.example.face2info.client.impl;
 
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.DeepSeekApiProperties;
+import com.example.face2info.entity.internal.ArticleCitation;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ParagraphSource;
@@ -131,6 +132,8 @@ class DeepSeekSummaryGenerationClientTest {
                     String body = ((MockClientHttpRequest) request).getBodyAsString();
                     assertThat(body).contains("格式为 [n]");
                     assertThat(body).contains("不要生成引用来源列表");
+                    assertThat(body).contains("文章编号表");
+                    assertThat(body).contains("sourceIds");
                     assertThat(body).contains("sources");
                 })
                 .andRespond(withSuccess("""
@@ -146,6 +149,30 @@ class DeepSeekSummaryGenerationClientTest {
 
         assertThat(profile.getSummaryParagraphs()).hasSize(1);
         assertThat(profile.getSummaryParagraphs().get(0).getText()).isEqualTo("主体段落[1]");
+    }
+
+    @Test
+    void shouldParseSourceIdsAndArticleSourcesFromDeepSeekFinalProfile() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Lei Jun\\",\\"summary\\":\\"主体摘要\\",\\"summaryParagraphs\\":[{\\"text\\":\\"主体信息[1]\\",\\"sourceIds\\":[1],\\"sourceUrls\\":[\\"https://example.com/a\\"]}],\\"articleSources\\":[{\\"id\\":1,\\"title\\":\\"文章 A\\",\\"url\\":\\"https://example.com/a\\",\\"source\\":\\"Example\\"}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Lei Jun", List.of(
+                new PageSummary().setSourceId(1).setSourceUrl("https://example.com/a").setTitle("A").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getSourceIds()).containsExactly(1);
+        assertThat(profile.getArticleSources()).hasSize(1);
+        ArticleCitation source = profile.getArticleSources().get(0);
+        assertThat(source.getId()).isEqualTo(1);
+        assertThat(source.getUrl()).isEqualTo("https://example.com/a");
     }
 
     @Test
@@ -481,6 +508,56 @@ class DeepSeekSummaryGenerationClientTest {
                 .hasMessageContaining("DeepSeek 主题分段摘要 调用失败")
                 .hasMessageContaining("INVALID_RESPONSE")
                 .hasMessageContaining("未返回 JSON");
+
+        server.verify();
+    }
+
+    @Test
+    void shouldRetrySectionedSummaryWhenDeepSeekReturnsDegeneratedRepeatedContent() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据根据"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "choices": [
+                            {
+                              "message": {
+                                "content": "{\\"sections\\":[{\\"section\\":\\"争议与纠纷\\",\\"summary\\":\\"公开资料未见其家庭相关争议纠纷。\\",\\"sourceUrls\\":[\\"https://example.com/a\\"]}]}"
+                              }
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key", 2, 1L), new ObjectMapper());
+
+        SectionedSummary summary = client.summarizeSectionedSectionFromPageSummaries(
+                "黄仁勋",
+                "family_member_situation",
+                List.of(new PageSummary()
+                        .setSourceUrl("https://example.com/a")
+                        .setTitle("A")
+                        .setSummary("根据公开报道整理出的家庭与亲属信息摘要"))
+        );
+
+        assertThat(summary.getSections()).hasSize(1);
+        assertThat(summary.getSections().get(0).getSection()).isEqualTo("争议与纠纷");
+        assertThat(summary.getSections().get(0).getSummary()).isEqualTo("公开资料未见其家庭相关争议纠纷。");
 
         server.verify();
     }

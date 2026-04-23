@@ -83,6 +83,9 @@ public class PersonAggregate {
     @Schema(description = "支撑当前结论的证据链接")
     private List<String> evidenceUrls = new ArrayList<>();
 
+    @Schema(description = "人物结果对应的统一文章来源表")
+    private List<ArticleCitation> articleSources = new ArrayList<>();
+
     @Schema(description = "人物基础信息")
     private PersonBasicInfo basicInfo = new PersonBasicInfo();
 
@@ -308,6 +311,15 @@ public class PersonAggregate {
 
     public PersonAggregate setEvidenceUrls(List<String> evidenceUrls) {
         this.evidenceUrls = evidenceUrls;
+        return this;
+    }
+
+    public List<ArticleCitation> getArticleSources() {
+        return articleSources;
+    }
+
+    public PersonAggregate setArticleSources(List<ArticleCitation> articleSources) {
+        this.articleSources = articleSources == null ? new ArrayList<>() : new ArrayList<>(articleSources);
         return this;
     }
 

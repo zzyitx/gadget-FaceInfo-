@@ -8,6 +8,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "抓取后的页面正文内容")
 public class PageContent {
 
+    @Schema(description = "全局文章编号")
+    private Integer sourceId;
+
     @Schema(description = "页面链接地址")
     private String url;
 
@@ -19,6 +22,15 @@ public class PageContent {
 
     @Schema(description = "抓取内容使用的来源引擎")
     private String sourceEngine;
+
+    public Integer getSourceId() {
+        return sourceId;
+    }
+
+    public PageContent setSourceId(Integer sourceId) {
+        this.sourceId = sourceId;
+        return this;
+    }
 
     public String getUrl() {
         return url;

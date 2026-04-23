@@ -2,6 +2,7 @@ package com.example.face2info.client.impl;
 
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.DeepSeekApiProperties;
+import com.example.face2info.entity.internal.ArticleCitation;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ParagraphSource;
@@ -67,6 +68,9 @@ public class DeepSeekSummaryGenerationClient {
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
     private static final Pattern MEANINGFUL_TEXT_PATTERN = Pattern.compile("[\\p{IsHan}A-Za-z0-9]");
+    private static final int MAX_REPEATED_UNIT_LENGTH = 8;
+    private static final int MIN_REPEATED_UNIT_OCCURRENCES = 6;
+    private static final double MIN_REPEATED_UNIT_COVERAGE = 0.85d;
 
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
@@ -198,11 +202,14 @@ public class DeepSeekSummaryGenerationClient {
                                 "parameters", Map.of(
                                         "type", "object",
                                         "properties", Map.of(
+                                                "sourceId", Map.of("type", "integer"),
                                                 "summary", Map.of("type", "string"),
+                                                "summaryParagraphs", paragraphArraySchema(),
                                                 "keyFacts", Map.of("type", "array", "items", Map.of("type", "string")),
                                                 "tags", Map.of("type", "array", "items", Map.of("type", "string")),
                                                 "sourceUrl", Map.of("type", "string"),
-                                                "title", Map.of("type", "string")
+                                                "title", Map.of("type", "string"),
+                                                "articleSources", articleCitationArraySchema()
                                         ),
                                         "required", List.of("summary"),
                                         "additionalProperties", false
@@ -309,7 +316,10 @@ public class DeepSeekSummaryGenerationClient {
                                 "description", "提交人物某个主题的单段摘要",
                                 "parameters", Map.of(
                                         "type", "object",
-                                        "properties", Map.of("summary", Map.of("type", "string")),
+                                        "properties", Map.of(
+                                                "summary", Map.of("type", "string"),
+                                                "sourceIds", Map.of("type", "array", "items", Map.of("type", "integer"))
+                                        ),
                                         "required", List.of("summary"),
                                         "additionalProperties", false
                                 )
@@ -431,6 +441,7 @@ public class DeepSeekSummaryGenerationClient {
                         Map.entry("misconductSummaryParagraphs", paragraphArraySchema()),
                         Map.entry("keyFacts", Map.of("type", "array", "items", Map.of("type", "string"))),
                         Map.entry("tags", Map.of("type", "array", "items", Map.of("type", "string"))),
+                        Map.entry("articleSources", articleCitationArraySchema()),
                         Map.entry("wikipedia", Map.of("type", "string")),
                         Map.entry("officialWebsite", Map.of("type", "string")),
                         Map.entry("basicInfo", Map.ofEntries(
@@ -458,14 +469,19 @@ public class DeepSeekSummaryGenerationClient {
                 1. 只能通过函数 submit_page_summary 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使信息不足，也必须按既定字段返回 JSON；keyFacts/tags 返回空数组，summary 必须给出最保守的正文摘要。
-                JSON 字段固定为 summary、keyFacts、tags、sourceUrl、title。
+                4. 编号代表文章编号，不代表段落编号。当前文章编号为 [%s]，每个句子后都必须追加当前文章编号。
+                5. 只允许引用当前文章编号，不允许生成其他编号。
+                JSON 字段固定为 sourceId、summary、summaryParagraphs、keyFacts、tags、sourceUrl、title、articleSources。
                 fallbackName: %s
+                articleId: %s
                 title: %s
                 url: %s
                 正文如下：
                 %s
                 """.formatted(
+                page == null || page.getSourceId() == null ? "1" : page.getSourceId(),
                 fallbackName,
+                page == null ? null : page.getSourceId(),
                 page == null ? null : page.getTitle(),
                 page == null ? null : page.getUrl(),
                 pageBody
@@ -510,16 +526,20 @@ public class DeepSeekSummaryGenerationClient {
                 1. 只能通过函数 submit_person_profile 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                4. 编号代表文章编号，不代表段落编号；每个句子后都必须给出来源编号，格式为 [1] 或 [1][3]。
+                5. 禁止引用文章编号表中不存在的编号。
+                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、articleSources、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
-                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls、sources。
+                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceIds、sourceUrls、sources。
                 text 中必须直接写内联引用，格式为 [n]，例如“人物简介[1][2]”。不要生成引用来源列表、参考文献列表或单独的“来源：”段落。
-                sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
+                sourceIds 只能填写文章编号表中已出现的 id；sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
+                文章编号表：
+                %s
                 篇级摘要如下：
                 %s
-                """.formatted(fallbackName, pageSummaryContent);
+                """.formatted(fallbackName, buildArticleCitationContext(pageSummaries), pageSummaryContent);
     }
 
     private String buildJudgementPrompt(String fallbackName,
@@ -547,13 +567,17 @@ public class DeepSeekSummaryGenerationClient {
                 1. 只能通过函数 submit_profile_judgement 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
-                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、wikipedia、officialWebsite、basicInfo、evidenceUrls。
+                4. 编号代表文章编号，不代表段落编号；每个句子后都必须给出来源编号，格式为 [1] 或 [1][3]。
+                5. 禁止引用文章编号表中不存在的编号。
+                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、articleSources、wikipedia、officialWebsite、basicInfo、evidenceUrls。
                 summary 只写人物主体信息与关键细节，必须详细、清晰，不要简短结论，也不要重复 educationSummary、familyBackgroundSummary、careerSummary、chinaRelatedStatementsSummary、politicalTendencySummary、contactInformationSummary、familyMemberSituationSummary、misconductSummary 的内容。
-                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceUrls、sources。
+                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceIds、sourceUrls、sources。
                 text 中必须直接写内联引用，格式为 [n]，例如“人物简介[1][2]”。不要生成引用来源列表、参考文献列表或单独的“来源：”段落。
-                sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
+                sourceIds 只能填写文章编号表中已出现的 id；sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
                 basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies。
                 fallbackName: %s
+                文章编号表：
+                %s
                 draftResolvedName: %s
                 draftDescription: %s
                 draftSummary: %s
@@ -564,6 +588,7 @@ public class DeepSeekSummaryGenerationClient {
                 %s
                 """.formatted(
                 fallbackName,
+                buildArticleCitationContext(pageSummaries),
                 draftProfile == null ? null : draftProfile.getResolvedName(),
                 draftProfile == null ? null : draftProfile.getDescription(),
                 draftProfile == null ? null : draftProfile.getSummary(),
@@ -633,13 +658,17 @@ public class DeepSeekSummaryGenerationClient {
                 1. 只能通过函数 submit_section_summary 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
                 2. 返回内容语言必须为中文。
                 3. 即使信息不足，也必须返回 JSON；summary 可为空字符串，但不能返回自然语言拒答。
-                JSON 字段固定为 summary。
+                4. 编号代表文章编号，不代表段落编号；summary 中每个句子后都必须追加 [n] 或 [n][m]。
+                5. sourceIds 只能填写文章编号表中已出现的 id。
+                JSON 字段固定为 summary、sourceIds。
                 主题只允许是 education、family、career、china_related_statements、political_view、contact_information、family_member_situation、misconduct 之一。
                 resolvedName: %s
                 sectionType: %s
+                文章编号表：
+                %s
                 篇级摘要如下：
                 %s
-                """.formatted(resolvedName, sectionType, pageSummaryContent);
+                """.formatted(resolvedName, sectionType, buildArticleCitationContext(pageSummaries), pageSummaryContent);
     }
 
     private PageSummary parsePageSummary(PageContent page, JsonNode body) {
@@ -654,11 +683,14 @@ public class DeepSeekSummaryGenerationClient {
                         page == null ? null : page.getUrl(),
                         previewContent(plainTextSummary));
                 return new PageSummary()
+                        .setSourceId(page == null ? null : page.getSourceId())
                         .setSourceUrl(page == null ? null : page.getUrl())
                         .setTitle(page == null ? null : page.getTitle())
                         .setSummary(plainTextSummary)
+                        .setSummaryParagraphs(List.of())
                         .setKeyFacts(List.of())
-                        .setTags(List.of());
+                        .setTags(List.of())
+                        .setArticleSources(List.of());
             }
             throw ex;
         } catch (JsonProcessingException ex) {
@@ -672,11 +704,14 @@ public class DeepSeekSummaryGenerationClient {
             throw new ApiCallException("EMPTY_RESPONSE: DeepSeek 页面摘要为空");
         }
         return new PageSummary()
+                .setSourceId(json.path("sourceId").isInt() ? json.path("sourceId").asInt() : (page == null ? null : page.getSourceId()))
                 .setSourceUrl(firstNonBlank(trimToNull(json.path("sourceUrl").asText(null)), page == null ? null : page.getUrl()))
                 .setTitle(firstNonBlank(trimToNull(json.path("title").asText(null)), page == null ? null : page.getTitle()))
                 .setSummary(summary.trim())
+                .setSummaryParagraphs(readParagraphSummaryItems(json.path("summaryParagraphs")))
                 .setKeyFacts(readStringList(json.path("keyFacts")))
-                .setTags(readStringList(json.path("tags")));
+                .setTags(readStringList(json.path("tags")))
+                .setArticleSources(readArticleCitations(json.path("articleSources")));
     }
 
     private ResolvedPersonProfile parseProfileFromPageSummaries(String fallbackName,
@@ -775,6 +810,7 @@ public class DeepSeekSummaryGenerationClient {
                 .setMisconductSummaryParagraphs(readParagraphSummaryItems(json.path("misconductSummaryParagraphs")))
                 .setKeyFacts(readStringList(json.path("keyFacts")))
                 .setTags(readStringList(json.path("tags")))
+                .setArticleSources(readArticleCitations(json.path("articleSources")))
                 .setWikipedia(trimToNull(json.path("wikipedia").asText(null)))
                 .setOfficialWebsite(trimToNull(json.path("officialWebsite").asText(null)))
                 .setBasicInfo(readBasicInfo(json.path("basicInfo")))
@@ -946,6 +982,7 @@ public class DeepSeekSummaryGenerationClient {
             case "misconductSummaryParagraphs" -> profile.setMisconductSummaryParagraphs(readParagraphSummaryItems(valueNode));
             case "keyFacts" -> profile.setKeyFacts(readStringList(valueNode));
             case "tags" -> profile.setTags(readStringList(valueNode));
+            case "articleSources" -> profile.setArticleSources(readArticleCitations(valueNode));
             case "wikipedia" -> profile.setWikipedia(trimToNull(valueNode.asText(null)));
             case "officialWebsite" -> profile.setOfficialWebsite(trimToNull(valueNode.asText(null)));
             case "basicInfo" -> profile.setBasicInfo(readBasicInfo(valueNode));
@@ -1015,6 +1052,7 @@ public class DeepSeekSummaryGenerationClient {
             items.add(new SectionSummaryItem()
                     .setSection(trimToNull(item.path("section").asText(null)))
                     .setSummary(trimToNull(item.path("summary").asText(null)))
+                    .setSourceIds(readIntegerList(item.path("sourceIds")))
                     .setSourceUrls(readStringList(item.path("sourceUrls"))));
         }
         return List.copyOf(items);
@@ -1028,6 +1066,7 @@ public class DeepSeekSummaryGenerationClient {
         for (JsonNode item : arrayNode) {
             items.add(new ParagraphSummaryItem()
                     .setText(trimToNull(item.path("text").asText(null)))
+                    .setSourceIds(readIntegerList(item.path("sourceIds")))
                     .setSourceUrls(readStringList(item.path("sourceUrls")))
                     // 关键逻辑：兼容模型直接返回完整 sources 对象，避免前端参考脚标因只解析 sourceUrls 而丢失。
                     .setSources(readParagraphSources(item.path("sources"))));
@@ -1060,6 +1099,7 @@ public class DeepSeekSummaryGenerationClient {
                         "type", "object",
                         "properties", Map.of(
                                 "text", Map.of("type", "string"),
+                                "sourceIds", Map.of("type", "array", "items", Map.of("type", "integer")),
                                 "sourceUrls", Map.of("type", "array", "items", Map.of("type", "string")),
                                 "sources", Map.of(
                                         "type", "array",
@@ -1075,10 +1115,70 @@ public class DeepSeekSummaryGenerationClient {
                                         )
                                 )
                         ),
-                        "required", List.of("text", "sourceUrls"),
+                        "required", List.of("text", "sourceIds"),
                         "additionalProperties", false
                 )
         );
+    }
+
+    private Map<String, Object> articleCitationArraySchema() {
+        return Map.of(
+                "type", "array",
+                "items", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                                "id", Map.of("type", "integer"),
+                                "title", Map.of("type", "string"),
+                                "url", Map.of("type", "string"),
+                                "source", Map.of("type", "string"),
+                                "publishedAt", Map.of("type", "string")
+                        ),
+                        "required", List.of("id", "url"),
+                        "additionalProperties", false
+                )
+        );
+    }
+
+    private List<Integer> readIntegerList(JsonNode arrayNode) {
+        Set<Integer> values = new LinkedHashSet<>();
+        if (arrayNode != null && arrayNode.isArray()) {
+            for (JsonNode item : arrayNode) {
+                if (item != null && item.isInt()) {
+                    values.add(item.asInt());
+                }
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private List<ArticleCitation> readArticleCitations(JsonNode arrayNode) {
+        if (arrayNode == null || !arrayNode.isArray()) {
+            return List.of();
+        }
+        List<ArticleCitation> items = new java.util.ArrayList<>();
+        for (JsonNode item : arrayNode) {
+            items.add(new ArticleCitation()
+                    .setId(item.path("id").isInt() ? item.path("id").asInt() : null)
+                    .setTitle(trimToNull(item.path("title").asText(null)))
+                    .setUrl(trimToNull(item.path("url").asText(null)))
+                    .setSource(trimToNull(item.path("source").asText(null)))
+                    .setPublishedAt(firstNonBlank(
+                            trimToNull(item.path("publishedAt").asText(null)),
+                            trimToNull(item.path("published_at").asText(null))
+                    )));
+        }
+        return List.copyOf(items);
+    }
+
+    private String buildArticleCitationContext(List<PageSummary> pageSummaries) {
+        if (pageSummaries == null || pageSummaries.isEmpty()) {
+            return "无";
+        }
+        return pageSummaries.stream()
+                .map(summary -> "文章[" + firstNonBlank(summary.getSourceId() == null ? null : String.valueOf(summary.getSourceId()), "?")
+                        + "] title=" + firstNonBlank(summary.getTitle(), "")
+                        + " url=" + firstNonBlank(summary.getSourceUrl(), ""))
+                .collect(Collectors.joining("\n"));
     }
 
     private PersonBasicInfo readBasicInfo(JsonNode basicInfoNode) {
@@ -1124,9 +1224,48 @@ public class DeepSeekSummaryGenerationClient {
     private JsonNode readStructuredJson(String content, String scene) throws JsonProcessingException {
         String candidate = extractJsonCandidate(content);
         if (!StringUtils.hasText(candidate)) {
+            if (isDegeneratedRepeatedContent(content)) {
+                throw new ApiCallException("DEGRADED_RESPONSE: " + scene + "返回疑似退化文本，content=" + previewContent(content));
+            }
             throw new ApiCallException("INVALID_RESPONSE: " + scene + "未返回 JSON，content=" + previewContent(content));
         }
         return objectMapper.readTree(candidate);
+    }
+
+    private boolean isDegeneratedRepeatedContent(String content) {
+        String normalized = trimToNull(content);
+        if (!StringUtils.hasText(normalized)) {
+            return false;
+        }
+        String compact = normalized.replaceAll("\\s+", "");
+        if (compact.length() < MAX_REPEATED_UNIT_LENGTH * MIN_REPEATED_UNIT_OCCURRENCES) {
+            return false;
+        }
+        if (compact.indexOf('\uFFFD') >= 0) {
+            return true;
+        }
+        for (int unitLength = 1; unitLength <= Math.min(MAX_REPEATED_UNIT_LENGTH, compact.length() / MIN_REPEATED_UNIT_OCCURRENCES); unitLength++) {
+            String unit = compact.substring(0, unitLength);
+            if (!StringUtils.hasText(unit)) {
+                continue;
+            }
+            int matchedLength = countLeadingRepeatedLength(compact, unit);
+            int occurrences = matchedLength / unitLength;
+            if (occurrences >= MIN_REPEATED_UNIT_OCCURRENCES
+                    && matchedLength >= (int) Math.floor(compact.length() * MIN_REPEATED_UNIT_COVERAGE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int countLeadingRepeatedLength(String content, String unit) {
+        int offset = 0;
+        while (offset + unit.length() <= content.length()
+                && content.regionMatches(offset, unit, 0, unit.length())) {
+            offset += unit.length();
+        }
+        return offset;
     }
 
     private String extractJsonCandidate(String content) {

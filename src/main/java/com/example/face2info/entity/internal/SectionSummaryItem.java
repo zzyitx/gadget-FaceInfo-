@@ -7,6 +7,7 @@ public class SectionSummaryItem {
 
     private String section;
     private String summary;
+    private java.util.List<Integer> sourceIds = new java.util.ArrayList<>();
     private java.util.List<String> sourceUrls = new java.util.ArrayList<>();
     private java.util.List<ParagraphSource> sources = new java.util.ArrayList<>();
 
@@ -25,6 +26,15 @@ public class SectionSummaryItem {
 
     public SectionSummaryItem setSummary(String summary) {
         this.summary = summary;
+        return this;
+    }
+
+    public java.util.List<Integer> getSourceIds() {
+        return sourceIds;
+    }
+
+    public SectionSummaryItem setSourceIds(java.util.List<Integer> sourceIds) {
+        this.sourceIds = sourceIds == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(sourceIds);
         return this;
     }
 

@@ -11,6 +11,9 @@ import java.util.List;
 @Schema(description = "单篇正文摘要结果")
 public class PageSummary {
 
+    @Schema(description = "全局文章编号")
+    private Integer sourceId;
+
     @Schema(description = "正文来源链接")
     private String sourceUrl;
 
@@ -25,6 +28,21 @@ public class PageSummary {
 
     @Schema(description = "正文中提取出的标签")
     private List<String> tags = new ArrayList<>();
+
+    @Schema(description = "单篇正文摘要段落")
+    private List<ParagraphSummaryItem> summaryParagraphs = new ArrayList<>();
+
+    @Schema(description = "单篇正文对应的全局文章来源表")
+    private List<ArticleCitation> articleSources = new ArrayList<>();
+
+    public Integer getSourceId() {
+        return sourceId;
+    }
+
+    public PageSummary setSourceId(Integer sourceId) {
+        this.sourceId = sourceId;
+        return this;
+    }
 
     public String getSourceUrl() {
         return sourceUrl;
@@ -68,6 +86,24 @@ public class PageSummary {
 
     public PageSummary setTags(List<String> tags) {
         this.tags = tags;
+        return this;
+    }
+
+    public List<ParagraphSummaryItem> getSummaryParagraphs() {
+        return summaryParagraphs;
+    }
+
+    public PageSummary setSummaryParagraphs(List<ParagraphSummaryItem> summaryParagraphs) {
+        this.summaryParagraphs = summaryParagraphs == null ? new ArrayList<>() : new ArrayList<>(summaryParagraphs);
+        return this;
+    }
+
+    public List<ArticleCitation> getArticleSources() {
+        return articleSources;
+    }
+
+    public PageSummary setArticleSources(List<ArticleCitation> articleSources) {
+        this.articleSources = articleSources == null ? new ArrayList<>() : new ArrayList<>(articleSources);
         return this;
     }
 }

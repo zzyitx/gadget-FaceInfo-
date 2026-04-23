@@ -77,6 +77,9 @@ public class ResolvedPersonProfile {
     @Schema(description = "支撑当前画像的证据链接")
     private List<String> evidenceUrls = new ArrayList<>();
 
+    @Schema(description = "人物结果对应的统一文章来源表")
+    private List<ArticleCitation> articleSources = new ArrayList<>();
+
     @Schema(description = "百科链接")
     private String wikipedia;
 
@@ -290,6 +293,15 @@ public class ResolvedPersonProfile {
 
     public ResolvedPersonProfile setEvidenceUrls(List<String> evidenceUrls) {
         this.evidenceUrls = evidenceUrls;
+        return this;
+    }
+
+    public List<ArticleCitation> getArticleSources() {
+        return articleSources;
+    }
+
+    public ResolvedPersonProfile setArticleSources(List<ArticleCitation> articleSources) {
+        this.articleSources = articleSources == null ? new ArrayList<>() : new ArrayList<>(articleSources);
         return this;
     }
 

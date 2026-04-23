@@ -11,6 +11,9 @@ public class ParagraphSummaryItem {
     @Schema(description = "段落文本")
     private String text;
 
+    @Schema(description = "段落引用的全局文章编号")
+    private List<Integer> sourceIds = new ArrayList<>();
+
     @Schema(description = "段落引用的来源 URL 列表")
     private List<String> sourceUrls = new ArrayList<>();
 
@@ -23,6 +26,15 @@ public class ParagraphSummaryItem {
 
     public ParagraphSummaryItem setText(String text) {
         this.text = text;
+        return this;
+    }
+
+    public List<Integer> getSourceIds() {
+        return sourceIds;
+    }
+
+    public ParagraphSummaryItem setSourceIds(List<Integer> sourceIds) {
+        this.sourceIds = sourceIds == null ? new ArrayList<>() : new ArrayList<>(sourceIds);
         return this;
     }
 
