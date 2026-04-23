@@ -8,6 +8,7 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.service.DerivedTopicQueryService;
 import com.example.face2info.service.DigitalFootprintQueryBuilder;
 import com.example.face2info.service.MultilingualQueryPlanningService;
+import com.example.face2info.service.PrimarySearchQueryBuilder;
 import com.example.face2info.service.SearchLanguageProfileService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,6 +75,11 @@ class InformationAggregationServiceImplContextTest {
         @Bean
         DigitalFootprintQueryBuilder digitalFootprintQueryBuilder() {
             return mock(DigitalFootprintQueryBuilder.class);
+        }
+
+        @Bean
+        PrimarySearchQueryBuilder primarySearchQueryBuilder() {
+            return mock(PrimarySearchQueryBuilder.class);
         }
 
         @Bean

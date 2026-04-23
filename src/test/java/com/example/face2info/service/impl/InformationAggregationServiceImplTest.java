@@ -28,6 +28,7 @@ import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.service.DerivedTopicQueryService;
 import com.example.face2info.service.DigitalFootprintQueryBuilder;
+import com.example.face2info.service.PrimarySearchQueryBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.only;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -251,6 +253,70 @@ class InformationAggregationServiceImplTest {
 
         verify(googleSearchClient, atLeastOnce()).googleSearch("黄仁勋");
         verify(googleSearchClient, atLeastOnce()).googleSearch("Jensen Huang");
+    }
+
+    @Test
+    void shouldUsePrimarySearchQueryBuilderForSecondaryProfileSearch() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        PrimarySearchQueryBuilder primarySearchQueryBuilder = mock(PrimarySearchQueryBuilder.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(jinaReaderClient.readPages(List.of("https://example.com/seed"))).thenReturn(List.of(
+                new PageContent().setUrl("https://example.com/seed").setTitle("Seed").setContent("seed body")
+        ));
+        when(summaryGenerationClient.summarizePage(anyString(), any(PageContent.class)))
+                .thenReturn(new PageSummary().setSourceUrl("https://example.com/seed").setTitle("Seed").setSummary("seed summary"));
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(anyString(), anyList()))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("尼古拉斯·伯恩斯")
+                        .setDescription("美国驻华大使，资深外交官。")
+                        .setSummary("美国驻华大使，资深外交官。"));
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setPrimaryNationality("US")
+                        .setRecommendedLanguages(List.of("zh", "en"))
+                        .setLocalizedNames(Map.of("zh", "尼古拉斯·伯恩斯", "en", "Nicholas Burns"))
+                        .setConfidence(0.95));
+        when(primarySearchQueryBuilder.buildSecondaryProfileQueries(anyString(), any(), any()))
+                .thenReturn(List.of(
+                        "尼古拉斯·伯恩斯 驻华大使",
+                        "尼古拉斯·伯恩斯 驻华大使 涉华言论",
+                        "Nicholas Burns Ambassador China policy"
+                ));
+        when(googleSearchClient.googleSearch("尼古拉斯·伯恩斯 驻华大使"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("尼古拉斯·伯恩斯 驻华大使 涉华言论"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Nicholas Burns Ambassador China policy"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                null,
+                executor,
+                createApiProperties(null),
+                mock(DerivedTopicQueryService.class),
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient),
+                new MultilingualQueryPlanningServiceImpl((query, targetLanguageCode) -> null),
+                mock(DigitalFootprintQueryBuilder.class),
+                primarySearchQueryBuilder
+        );
+
+        service.aggregate(new RecognitionEvidence()
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/seed")))
+                .setSeedQueries(List.of("伯恩斯")));
+
+        verify(primarySearchQueryBuilder).buildSecondaryProfileQueries(anyString(), any(), any());
+        verify(googleSearchClient).googleSearch("尼古拉斯·伯恩斯 驻华大使");
+        verify(googleSearchClient).googleSearch("尼古拉斯·伯恩斯 驻华大使 涉华言论");
+        verify(googleSearchClient).googleSearch("Nicholas Burns Ambassador China policy");
     }
 
     @Test
@@ -1923,7 +1989,8 @@ class InformationAggregationServiceImplTest {
                 },
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient),
                 new MultilingualQueryPlanningServiceImpl((query, targetLanguageCode) -> null),
-                queryBuilder
+                queryBuilder,
+                mock(PrimarySearchQueryBuilder.class)
         );
     }
 

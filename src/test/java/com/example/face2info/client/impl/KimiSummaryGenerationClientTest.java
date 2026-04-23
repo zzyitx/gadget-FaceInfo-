@@ -93,6 +93,47 @@ class KimiSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldGeneratePrimarySearchQueriesWithSevenSlotPromptConstraints() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("7 条");
+                    assertThat(body).contains("强实体消歧");
+                    assertThat(body).contains("至少要有 5 条");
+                    assertThat(body).contains("<target_entity>");
+                    assertThat(body).contains("<background_info>");
+                    assertThat(body).contains("<investigation_topic>");
+                    assertThat(body).contains("title: 涉华言论");
+                    assertThat(body).contains("sub_topics: (驻华期间政策表态, 对华策略分析, 近期关于新兴威胁的论述)");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"尼古拉斯·伯恩斯 驻华大使\\n尼古拉斯·伯恩斯 驻华大使 涉华言论\\n尼古拉斯·伯恩斯 驻华大使 政策表态\\n尼古拉斯·伯恩斯 驻华大使 对华策略\\nNicholas Burns Ambassador China policy\\n尼古拉斯·伯恩斯 驻华大使 演讲 PDF\\n尼古拉斯·伯恩斯 驻华大使 争议 采访"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        KimiSummaryGenerationClient client =
+                new KimiSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        String queries = client.generatePrimarySearchQueries(
+                "伯恩斯",
+                new SearchLanguageProfile()
+                        .setResolvedName("尼古拉斯·伯恩斯")
+                        .setLanguageCodes(List.of("zh", "en"))
+                        .setLocalizedNames(java.util.Map.of("zh", "尼古拉斯·伯恩斯", "en", "Nicholas Burns")),
+                new ResolvedPersonProfile()
+                        .setResolvedName("尼古拉斯·伯恩斯")
+                        .setDescription("美国驻华大使，资深外交官。")
+                        .setSummary("美国驻华大使，资深外交官。"),
+                "china_related_statements"
+        );
+
+        assertThat(queries).contains("尼古拉斯·伯恩斯 驻华大使 涉华言论");
+        assertThat(queries).contains("Nicholas Burns Ambassador China policy");
+    }
+
+    @Test
     void shouldParseTopicExpansionDecision() {
         TopicExpansionDecision decision = new TopicExpansionDecision()
                 .setShouldExpand(true)

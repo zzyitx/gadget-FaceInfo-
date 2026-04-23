@@ -66,5 +66,13 @@ public interface SummaryGenerationClient {
     String generateDigitalFootprintQueries(String resolvedName,
                                            SearchLanguageProfile languageProfile,
                                            @Nullable ResolvedPersonProfile profile);
+
+    /**
+     * 生成用于人物主路径检索的精准 Google query 列表。
+     */
+    String generatePrimarySearchQueries(String resolvedName,
+                                        SearchLanguageProfile languageProfile,
+                                        @Nullable ResolvedPersonProfile profile,
+                                        String sectionType);
 }
 

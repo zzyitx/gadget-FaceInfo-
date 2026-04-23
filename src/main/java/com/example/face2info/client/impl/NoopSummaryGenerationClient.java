@@ -111,5 +111,13 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
                                                   @Nullable ResolvedPersonProfile profile) {
         return "";
     }
+
+    @Override
+    public String generatePrimarySearchQueries(String resolvedName,
+                                               SearchLanguageProfile languageProfile,
+                                               @Nullable ResolvedPersonProfile profile,
+                                               String sectionType) {
+        return "";
+    }
 }
 
