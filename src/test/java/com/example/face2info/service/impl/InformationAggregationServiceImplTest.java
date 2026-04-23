@@ -9,12 +9,14 @@ import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
+import com.example.face2info.entity.internal.DigitalFootprintQuery;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageProfile;
 import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
@@ -22,7 +24,10 @@ import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
 import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.entity.internal.WebEvidence;
+import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.service.DerivedTopicQueryService;
+import com.example.face2info.service.DigitalFootprintQueryBuilder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -1671,7 +1676,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldReturnPlaceholderSocialAccountWithoutStandaloneNewsLookup() {
+    void shouldReturnEmptySocialAccountsWhenNoDigitalFootprintResultsAvailable() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
@@ -1688,8 +1693,107 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jay Chou"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getSocialAccounts()).hasSize(1);
-        assertThat(result.getSocialAccounts().get(0).getUsername()).isEqualTo("功能正在开发中");
+        assertThat(result.getSocialAccounts()).isEmpty();
+    }
+
+    @Test
+    void shouldUseDigitalFootprintQueriesForContactInformationSection() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setPrimaryNationality("US")
+                        .setRecommendedLanguages(List.of("zh", "en"))
+                        .setLocalizedNames(Map.of("zh", "周杰伦", "en", "Jay Chou"))
+                        .setConfidence(0.8));
+        when(queryBuilder.build(eq("Jay Chou"), any())).thenReturn(List.of(
+                new DigitalFootprintQuery().setQueryText("Jay Chou email contact").setQueryType("email_contact").setPriority(1),
+                new DigitalFootprintQuery().setQueryText("site:linkedin.com/in/ Jay Chou").setQueryType("social_profile").setPriority(2)
+        ));
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("周杰伦 公开通讯"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou contact information"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(googleSearchClient.googleSearch("Jay Chou email contact"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Contact","link":"https://example.com/contact","snippet":"contact snippet"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("site:linkedin.com/in/ Jay Chou"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("{\"organic\":[]}")));
+        when(jinaReaderClient.readPages(List.of("https://example.com/contact")))
+                .thenReturn(List.of(new PageContent().setUrl("https://example.com/contact").setTitle("Contact").setContent("contact body")));
+        when(summaryGenerationClient.summarizePage(anyString(), any(PageContent.class)))
+                .thenReturn(new PageSummary().setSourceUrl("https://example.com/contact").setTitle("Contact").setSummary("contact summary"));
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries(eq("Jay Chou"), eq("contact_information"), anyList()))
+                .thenReturn("contact summary");
+
+        InformationAggregationServiceImpl service = serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                createApiProperties(null)
+        );
+
+        String summary = service.summarizeSection("Jay Chou", "contact_information", "unused fallback");
+
+        assertThat(summary).isEqualTo("contact summary");
+        verify(googleSearchClient).googleSearch("Jay Chou email contact");
+    }
+
+    @Test
+    void shouldCollectSocialAccountsFromDigitalFootprintSearchResults() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+
+        List<PageContent> pages = List.of(new PageContent().setUrl("https://example.com/a").setTitle("A").setContent("Jensen Huang is a tech executive"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        mockSummaryPipeline(summaryGenerationClient, "Jensen Huang", pages, new ResolvedPersonProfile()
+                .setResolvedName("Jensen Huang")
+                .setSummary("Jensen Huang is a tech executive."));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setPrimaryNationality("US")
+                        .setRecommendedLanguages(List.of("zh", "en"))
+                        .setLocalizedNames(Map.of("zh", "黄仁勋", "en", "Jensen Huang"))
+                        .setConfidence(0.9));
+        when(queryBuilder.build(eq("Jensen Huang"), any())).thenReturn(List.of(
+                new DigitalFootprintQuery().setQueryText("site:linkedin.com/in/ Jensen Huang").setPlatform("linkedin").setPriority(1),
+                new DigitalFootprintQuery().setQueryText("site:twitter.com Jensen Huang").setPlatform("twitter").setPriority(2)
+        ));
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch("site:linkedin.com/in/ Jensen Huang"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Jensen Huang | LinkedIn","link":"https://www.linkedin.com/in/jensen-huang","snippet":"LinkedIn profile"}]}
+                        """)));
+        when(googleSearchClient.googleSearch("site:twitter.com Jensen Huang"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Jensen Huang (@nvidia)","link":"https://twitter.com/nvidia","snippet":"X profile"}]}
+                        """)));
+
+        AggregationResult result = serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                createApiProperties(null)
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jensen Huang"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getSocialAccounts())
+                .extracting(SocialAccount::getPlatform)
+                .contains("linkedin", "twitter");
+        assertThat(result.getSocialAccounts())
+                .noneMatch(account -> "pending".equals(account.getPlatform()));
     }
 
     @Test
@@ -1723,7 +1827,7 @@ class InformationAggregationServiceImplTest {
         long elapsed = Duration.between(start, Instant.now()).toMillis();
 
         assertThat(elapsed).isLessThan(1000);
-        assertThat(result.getSocialAccounts()).hasSize(1);
+        assertThat(result.getSocialAccounts()).isEmpty();
         assertThat(result.getErrors()).isEmpty();
     }
 
@@ -1794,6 +1898,33 @@ class InformationAggregationServiceImplTest {
         properties.getApi().getQueryRewrite().setExpandMaxQueryCount(4);
         properties.getApi().getQueryRewrite().setExpandMaxTermLength(16);
         return properties;
+    }
+
+    private InformationAggregationServiceImpl serviceWithBuilder(GoogleSearchClient googleSearchClient,
+                                                                 JinaReaderClient jinaReaderClient,
+                                                                 SummaryGenerationClient summaryGenerationClient,
+                                                                 DigitalFootprintQueryBuilder queryBuilder,
+                                                                 ApiProperties properties) {
+        return new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                null,
+                executor,
+                properties,
+                new DerivedTopicQueryService() {
+                    @Override
+                    public com.example.face2info.entity.internal.TopicQueryDecision resolveQuery(
+                            com.example.face2info.entity.internal.DerivedTopicRequest request) {
+                        return new com.example.face2info.entity.internal.TopicQueryDecision()
+                                .setFinalQuery(request == null ? null : request.getRawQuery());
+                    }
+                },
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient),
+                new MultilingualQueryPlanningServiceImpl((query, targetLanguageCode) -> null),
+                queryBuilder
+        );
     }
 
     private ThreadPoolTaskExecutor executor() {

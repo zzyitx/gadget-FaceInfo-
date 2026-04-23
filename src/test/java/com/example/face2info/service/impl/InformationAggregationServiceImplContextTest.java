@@ -6,6 +6,7 @@ import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.service.DerivedTopicQueryService;
+import com.example.face2info.service.DigitalFootprintQueryBuilder;
 import com.example.face2info.service.MultilingualQueryPlanningService;
 import com.example.face2info.service.SearchLanguageProfileService;
 import org.junit.jupiter.api.Test;
@@ -68,6 +69,11 @@ class InformationAggregationServiceImplContextTest {
         @Bean
         MultilingualQueryPlanningService multilingualQueryPlanningService() {
             return new MultilingualQueryPlanningServiceImpl();
+        }
+
+        @Bean
+        DigitalFootprintQueryBuilder digitalFootprintQueryBuilder() {
+            return mock(DigitalFootprintQueryBuilder.class);
         }
 
         @Bean

@@ -9,6 +9,7 @@ import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
+import com.example.face2info.entity.internal.DigitalFootprintQuery;
 import com.example.face2info.entity.internal.DerivedTopicRequest;
 import com.example.face2info.entity.internal.DerivedTopicType;
 import com.example.face2info.entity.internal.PageContent;
@@ -30,6 +31,7 @@ import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.service.DerivedTopicQueryService;
+import com.example.face2info.service.DigitalFootprintQueryBuilder;
 import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.service.MultilingualQueryPlanningService;
 import com.example.face2info.service.SearchLanguageProfileService;
@@ -132,6 +134,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             "ixigua.com"
     );
     private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
+    private static final int CONTACT_INFORMATION_QUERY_LIMIT = 10;
+    private static final int SOCIAL_ACCOUNT_QUERY_LIMIT = 12;
 
     @SuppressWarnings("unused")
     private final GoogleSearchClient googleSearchClient;
@@ -145,6 +149,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final DerivedTopicQueryService derivedTopicQueryService;
     private final SearchLanguageProfileService searchLanguageProfileService;
     private final MultilingualQueryPlanningService multilingualQueryPlanningService;
+    private final DigitalFootprintQueryBuilder digitalFootprintQueryBuilder;
 
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -156,7 +161,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              ApiProperties properties,
                                              DerivedTopicQueryService derivedTopicQueryService,
                                              SearchLanguageProfileService searchLanguageProfileService,
-                                             MultilingualQueryPlanningService multilingualQueryPlanningService) {
+                                             MultilingualQueryPlanningService multilingualQueryPlanningService,
+                                             DigitalFootprintQueryBuilder digitalFootprintQueryBuilder) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.jinaReaderClient = jinaReaderClient;
@@ -167,6 +173,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.derivedTopicQueryService = derivedTopicQueryService;
         this.searchLanguageProfileService = searchLanguageProfileService;
         this.multilingualQueryPlanningService = multilingualQueryPlanningService;
+        this.digitalFootprintQueryBuilder = digitalFootprintQueryBuilder;
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -177,7 +184,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       ThreadPoolTaskExecutor executor) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService(),
-                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -189,7 +197,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       ApiProperties properties) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService(),
-                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -200,7 +209,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       ApiProperties properties) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 null, executor, properties, new PassThroughDerivedTopicQueryService(),
-                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
+                new DigitalFootprintQueryBuilderImpl(null, summaryGenerationClient));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -210,7 +220,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       ThreadPoolTaskExecutor executor) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 null, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService(),
-                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
+                new DigitalFootprintQueryBuilderImpl(null, summaryGenerationClient));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -223,7 +234,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       DerivedTopicQueryService derivedTopicQueryService) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
-                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()));
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -236,7 +248,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       MultilingualQueryPlanningService multilingualQueryPlanningService) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService(),
-                new SearchLanguageProfileServiceImpl(summaryGenerationClient), multilingualQueryPlanningService);
+                new SearchLanguageProfileServiceImpl(summaryGenerationClient), multilingualQueryPlanningService,
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
     }
 
     @Override
@@ -837,12 +850,29 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 sectionType,
                 extractQueryTerms(resolvedName, baseQueries)
         );
+        Set<String> seenUrls = new LinkedHashSet<>();
         List<PageSummary> firstRound = collectPageSummariesForTasks(
                 resolvedName,
                 sectionType,
                 firstRoundTasks,
-                new LinkedHashSet<>()
+                seenUrls
         );
+        if (CONTACT_INFORMATION_SECTION.equals(sectionType)) {
+            firstRound = mergePageSummaries(
+                    firstRound,
+                    collectPageSummariesForQueries(
+                            resolvedName,
+                            sectionType,
+                            digitalFootprintQueryBuilder.build(resolvedName, languageProfile).stream()
+                                    .filter(this::isContactInformationQuery)
+                                    .sorted(Comparator.comparing(query -> query.getPriority() == null ? Integer.MAX_VALUE : query.getPriority()))
+                                    .limit(CONTACT_INFORMATION_QUERY_LIMIT)
+                                    .map(DigitalFootprintQuery::getQueryText)
+                                    .toList(),
+                            seenUrls
+                    )
+            );
+        }
         List<TopicExpansionQuery> expansionQueries = sanitizeExpansionQueries(
                 expandTopicQueriesWithFallback(resolvedName, sectionType, firstRound)
         );
@@ -891,6 +921,31 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         List<PageSummary> collected = new ArrayList<>();
         for (String query : queries) {
             collected.addAll(collectPageSummariesForSingleQuery(resolvedName, sectionType, query));
+        }
+        return collected;
+    }
+
+    private List<PageSummary> collectPageSummariesForQueries(String resolvedName,
+                                                             String sectionType,
+                                                             List<String> queries,
+                                                             Set<String> seenUrls) {
+        if (queries == null || queries.isEmpty()) {
+            return List.of();
+        }
+        List<PageSummary> collected = new ArrayList<>();
+        for (String query : queries) {
+            try {
+                String finalQuery = resolveSectionQuery(resolvedName, sectionType, query);
+                collected.addAll(collectPageSummariesFromSearchResponse(
+                        resolvedName,
+                        sectionType,
+                        googleSearchClient.googleSearch(finalQuery),
+                        seenUrls
+                ));
+            } catch (RuntimeException ex) {
+                log.warn("section query failed resolvedName={} sectionType={} query={} error={}",
+                        resolvedName, sectionType, query, ex.getMessage(), ex);
+            }
         }
         return collected;
     }
@@ -1319,7 +1374,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     .setId(sourceId)
                     .setTitle(summary.getTitle())
                     .setUrl(summary.getSourceUrl())
-                    .setSource(extractHostLabel(summary.getSourceUrl())));
+                    .setSource(firstNonBlankText(summary.getSourcePlatform(), extractHostLabel(summary.getSourceUrl())))
+                    .setPublishedAt(summary.getPublishedAt()));
         }
         return List.copyOf(deduplicated.values());
     }
@@ -2086,11 +2142,122 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private List<SocialAccount> collectSocialAccounts(String name) {
-        log.info("社交账号聚合跳过 resolvedName={} 原因=功能开发中", name);
-        return List.of(new SocialAccount()
-                .setPlatform(SOCIAL_PLACEHOLDER_PLATFORM)
-                .setUrl(SOCIAL_PLACEHOLDER_URL)
-                .setUsername(SOCIAL_PLACEHOLDER_USERNAME));
+        if (!StringUtils.hasText(name)) {
+            return List.of();
+        }
+        SearchLanguageProfile languageProfile = searchLanguageProfileService.resolveProfile(
+                name,
+                new ResolvedPersonProfile().setResolvedName(name)
+        );
+        List<SocialAccount> accounts = digitalFootprintQueryBuilder.build(name, languageProfile).stream()
+                .filter(this::isSocialProfileQuery)
+                .sorted(Comparator.comparing(query -> query.getPriority() == null ? Integer.MAX_VALUE : query.getPriority()))
+                .limit(SOCIAL_ACCOUNT_QUERY_LIMIT)
+                .flatMap(query -> searchSocialAccounts(query).stream())
+                .toList();
+        return accounts.isEmpty() ? List.of() : deduplicateSocialAccounts(accounts);
+    }
+
+    private List<SocialAccount> searchSocialAccounts(DigitalFootprintQuery query) {
+        try {
+            SerpApiResponse response = googleSearchClient.googleSearch(query.getQueryText());
+            if (response == null || response.getRoot() == null) {
+                return List.of();
+            }
+            List<WebEvidence> evidences = extractSearchOrganicWebEvidence(response.getRoot());
+            List<SocialAccount> accounts = new ArrayList<>();
+            for (WebEvidence evidence : evidences) {
+                SocialAccount account = toSocialAccount(evidence, query.getPlatform());
+                if (account != null && StringUtils.hasText(account.getUrl())) {
+                    accounts.add(account);
+                }
+            }
+            return accounts;
+        } catch (RuntimeException ex) {
+            log.warn("social account query failed query={} error={}", query == null ? null : query.getQueryText(), ex.getMessage(), ex);
+            return List.of();
+        }
+    }
+
+    private SocialAccount toSocialAccount(WebEvidence evidence, String fallbackPlatform) {
+        if (evidence == null || !StringUtils.hasText(evidence.getUrl())) {
+            return null;
+        }
+        String url = normalizeDedupUrl(evidence.getUrl());
+        String platform = detectSocialPlatform(url, fallbackPlatform);
+        if (!StringUtils.hasText(platform)) {
+            return null;
+        }
+        return new SocialAccount()
+                .setPlatform(platform)
+                .setUrl(url)
+                .setUsername(extractSocialUsername(url, evidence.getTitle()));
+    }
+
+    private boolean isContactInformationQuery(DigitalFootprintQuery query) {
+        if (query == null || !StringUtils.hasText(query.getQueryText())) {
+            return false;
+        }
+        String type = query.getQueryType();
+        return "email_contact".equals(type) || "official_site".equals(type) || isSocialProfileQuery(query);
+    }
+
+    private boolean isSocialProfileQuery(DigitalFootprintQuery query) {
+        if (query == null) {
+            return false;
+        }
+        if ("social_profile".equals(query.getQueryType())) {
+            return true;
+        }
+        return StringUtils.hasText(query.getPlatform())
+                && !"email".equalsIgnoreCase(query.getPlatform())
+                && !"website".equalsIgnoreCase(query.getPlatform())
+                && !"blog".equalsIgnoreCase(query.getPlatform());
+    }
+
+    private String detectSocialPlatform(String url, String fallbackPlatform) {
+        if (!StringUtils.hasText(url)) {
+            return fallbackPlatform;
+        }
+        String normalized = url.toLowerCase();
+        if (normalized.contains("linkedin.com")) {
+            return "linkedin";
+        }
+        if (normalized.contains("twitter.com")) {
+            return "twitter";
+        }
+        if (normalized.contains("x.com")) {
+            return "x";
+        }
+        if (normalized.contains("github.com")) {
+            return "github";
+        }
+        if (normalized.contains("instagram.com")) {
+            return "instagram";
+        }
+        if (normalized.contains("youtube.com") || normalized.contains("youtu.be")) {
+            return "youtube";
+        }
+        return fallbackPlatform;
+    }
+
+    private String extractSocialUsername(String url, String title) {
+        if (StringUtils.hasText(url)) {
+            try {
+                URI uri = URI.create(url);
+                String path = uri.getPath();
+                if (StringUtils.hasText(path)) {
+                    String normalized = path.replaceAll("^/+", "").replaceAll("/+$", "");
+                    if (StringUtils.hasText(normalized)) {
+                        int slashIndex = normalized.indexOf('/');
+                        return slashIndex >= 0 ? normalized.substring(0, slashIndex) : normalized;
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+                // ignore malformed url and fallback to title
+            }
+        }
+        return cleanText(title);
     }
 
     private String cleanText(String value) {
