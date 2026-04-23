@@ -8,6 +8,7 @@ import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.ArticleCitation;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ParagraphSource;
@@ -107,6 +108,66 @@ class InformationAggregationServiceImplTest {
         verify(summaryGenerationClient).summarizePage("unknown", pageA);
         verify(summaryGenerationClient).summarizePage("unknown", pageB);
         verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", List.of(summaryA, summaryB));
+    }
+
+    @Test
+    void shouldBackfillParagraphSourcesAndGlobalArticleSourcesFromSourceIds() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent pageA = new PageContent().setUrl("https://example.com/a").setTitle("Article A").setContent("Page A");
+        PageContent pageB = new PageContent().setUrl("https://example.com/b").setTitle("Article B").setContent("Page B");
+        PageSummary summaryA = new PageSummary()
+                .setSourceId(1)
+                .setSourceUrl("https://example.com/a")
+                .setTitle("Article A")
+                .setSummary("Summary A");
+        PageSummary summaryB = new PageSummary()
+                .setSourceId(2)
+                .setSourceUrl("https://example.com/b")
+                .setTitle("Article B")
+                .setSummary("Summary B");
+        ResolvedPersonProfile finalProfile = new ResolvedPersonProfile()
+                .setResolvedName("Jay Chou")
+                .setSummary("Final Summary[2]")
+                .setSummaryParagraphs(List.of(
+                        new com.example.face2info.entity.internal.ParagraphSummaryItem()
+                                .setText("Final Summary[2]")
+                                .setSourceIds(List.of(2))
+                ))
+                .setArticleSources(List.of(
+                        new ArticleCitation().setId(1).setTitle("Article A").setUrl("https://example.com/a"),
+                        new ArticleCitation().setId(2).setTitle("Article B").setUrl("https://example.com/b")
+                ));
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a", "https://example.com/b")))
+                .thenReturn(List.of(pageA, pageB));
+        when(summaryGenerationClient.summarizePage("unknown", pageA)).thenReturn(summaryA);
+        when(summaryGenerationClient.summarizePage("unknown", pageB)).thenReturn(summaryB);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", List.of(summaryA, summaryB)))
+                .thenReturn(finalProfile);
+        when(summaryGenerationClient.applyComprehensiveJudgement("Jay Chou", List.of(summaryA, summaryB), finalProfile))
+                .thenReturn(finalProfile);
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class),
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor
+        );
+
+        ResolvedPersonProfile profile = service.resolveProfileFromEvidence(List.of(
+                new WebEvidence().setUrl("https://example.com/a"),
+                new WebEvidence().setUrl("https://example.com/b")
+        ), "unknown");
+
+        assertThat(profile.getArticleSources()).extracting(ArticleCitation::getId).containsExactly(1, 2);
+        assertThat(profile.getSummaryParagraphs()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getSourceIds()).containsExactly(2);
+        assertThat(profile.getSummaryParagraphs().get(0).getSources()).hasSize(1);
+        assertThat(profile.getSummaryParagraphs().get(0).getSources().get(0).getUrl()).isEqualTo("https://example.com/b");
+        assertThat(profile.getSummaryParagraphs().get(0).getSources().get(0).getTitle()).isEqualTo("Article B");
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.ArticleCitation;
 import com.example.face2info.entity.internal.DerivedTopicRequest;
 import com.example.face2info.entity.internal.DerivedTopicType;
 import com.example.face2info.entity.internal.PageContent;
@@ -52,6 +53,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -128,6 +131,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             "youku.com",
             "ixigua.com"
     );
+    private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
 
     @SuppressWarnings("unused")
     private final GoogleSearchClient googleSearchClient;
@@ -440,6 +444,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setWikipedia(cleanText(profile.getWikipedia()))
                 .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
                 .setTags(profile.getTags() == null ? List.of() : profile.getTags())
+                .setArticleSources(profile.getArticleSources())
                 .setBasicInfo(profile.getBasicInfo())
                 .setEvidenceUrls(profile.getEvidenceUrls());
     }
@@ -479,6 +484,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setMisconductSummaryParagraphs(profile.getMisconductSummaryParagraphs())
                 .setKeyFacts(profile.getKeyFacts())
                 .setTags(profile.getTags())
+                .setArticleSources(profile.getArticleSources())
                 .setEvidenceUrls(profile.getEvidenceUrls())
                 .setWikipedia(profile.getWikipedia())
                 .setOfficialWebsite(profile.getOfficialWebsite())
@@ -557,6 +563,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return List.of();
         }
 
+        assignSourceIdsToPages(pages);
         List<PageSummary> pageSummaries = new ArrayList<>();
         for (PageContent page : pages) {
             if (page == null || !StringUtils.hasText(page.getContent())) {
@@ -578,12 +585,16 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 if (!StringUtils.hasText(pageSummary.getTitle())) {
                     pageSummary.setTitle(page.getTitle());
                 }
+                if (pageSummary.getSourceId() == null) {
+                    pageSummary.setSourceId(page.getSourceId());
+                }
                 pageSummaries.add(pageSummary);
             } catch (RuntimeException ex) {
                 log.warn("页面摘要失败 fallbackName={} url={} category={} error={}",
                         fallbackName, page.getUrl(), classifySummaryFailure(ex), ex.getMessage(), ex);
             }
         }
+        attachArticleCitations(pageSummaries);
         return pageSummaries;
     }
 
@@ -1238,6 +1249,91 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         target.putIfAbsent(key, summary);
     }
 
+    private void assignSourceIdsToPages(List<PageContent> pages) {
+        if (pages == null || pages.isEmpty()) {
+            return;
+        }
+        Map<String, Integer> idsByKey = new LinkedHashMap<>();
+        int nextId = 1;
+        for (PageContent page : pages) {
+            if (page == null) {
+                continue;
+            }
+            String key = articleKey(page.getUrl(), page.getTitle());
+            if (!StringUtils.hasText(key)) {
+                continue;
+            }
+            Integer sourceId = idsByKey.get(key);
+            if (sourceId == null) {
+                sourceId = nextId++;
+                idsByKey.put(key, sourceId);
+            }
+            page.setSourceId(sourceId);
+        }
+    }
+
+    private void attachArticleCitations(List<PageSummary> pageSummaries) {
+        if (pageSummaries == null || pageSummaries.isEmpty()) {
+            return;
+        }
+        List<ArticleCitation> articleSources = buildArticleCitations(pageSummaries);
+        Map<String, Integer> idsByKey = articleSources.stream()
+                .filter(item -> item.getId() != null)
+                .collect(Collectors.toMap(
+                        item -> articleKey(item.getUrl(), item.getTitle()),
+                        ArticleCitation::getId,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        for (PageSummary pageSummary : pageSummaries) {
+            if (pageSummary == null) {
+                continue;
+            }
+            if (pageSummary.getSourceId() == null) {
+                pageSummary.setSourceId(idsByKey.get(articleKey(pageSummary.getSourceUrl(), pageSummary.getTitle())));
+            }
+            pageSummary.setArticleSources(articleSources);
+        }
+    }
+
+    private List<ArticleCitation> buildArticleCitations(List<PageSummary> pageSummaries) {
+        if (pageSummaries == null || pageSummaries.isEmpty()) {
+            return List.of();
+        }
+        Map<String, ArticleCitation> deduplicated = new LinkedHashMap<>();
+        int nextId = 1;
+        for (PageSummary summary : pageSummaries) {
+            if (summary == null) {
+                continue;
+            }
+            String key = articleKey(summary.getSourceUrl(), summary.getTitle());
+            if (!StringUtils.hasText(key) || deduplicated.containsKey(key)) {
+                continue;
+            }
+            Integer sourceId = summary.getSourceId();
+            if (sourceId == null) {
+                sourceId = nextId;
+            }
+            nextId = Math.max(nextId, sourceId + 1);
+            deduplicated.put(key, new ArticleCitation()
+                    .setId(sourceId)
+                    .setTitle(summary.getTitle())
+                    .setUrl(summary.getSourceUrl())
+                    .setSource(extractHostLabel(summary.getSourceUrl())));
+        }
+        return List.copyOf(deduplicated.values());
+    }
+
+    private String articleKey(String url, String title) {
+        if (StringUtils.hasText(url)) {
+            return url.trim();
+        }
+        if (StringUtils.hasText(title)) {
+            return title.trim();
+        }
+        return null;
+    }
+
     private boolean isDerivedSectionedTopic(String sectionType) {
         return DERIVED_SECTION_TITLE_MAPS.containsKey(sectionType);
     }
@@ -1402,30 +1498,83 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
             paragraphs.add(new ParagraphSummaryItem()
                     .setText(item.getSummary().trim())
+                    .setSourceIds(item.getSourceIds())
                     .setSourceUrls(item.getSourceUrls())
-                    .setSources(resolveParagraphSources(item.getSources(), item.getSourceUrls())));
+                    .setSources(resolveParagraphSources(item.getSources(), item.getSourceUrls(), item.getSourceIds(), Map.of(), Map.of())));
         }
         return paragraphs;
     }
 
     private List<ParagraphSource> resolveParagraphSources(List<ParagraphSource> directSources, List<String> sourceUrls) {
-        if (directSources != null && !directSources.isEmpty()) {
-            return directSources;
-        }
-        if (sourceUrls == null || sourceUrls.isEmpty()) {
-            return List.of();
-        }
-        List<ParagraphSource> sources = new ArrayList<>();
-        for (String sourceUrl : sourceUrls) {
-            if (!StringUtils.hasText(sourceUrl)) {
-                continue;
+        return resolveParagraphSources(directSources, sourceUrls, List.of(), Map.of(), Map.of());
+    }
+
+    private List<ParagraphSource> resolveParagraphSources(List<ParagraphSource> directSources,
+                                                          List<String> sourceUrls,
+                                                          List<Integer> sourceIds,
+                                                          Map<String, PageSummary> summariesByUrl,
+                                                          Map<Integer, ArticleCitation> citationsById) {
+        Map<String, ParagraphSource> deduplicated = new LinkedHashMap<>();
+        if (sourceIds != null) {
+            for (Integer sourceId : sourceIds) {
+                if (sourceId == null) {
+                    continue;
+                }
+                ArticleCitation citation = citationsById == null ? null : citationsById.get(sourceId);
+                if (citation == null) {
+                    continue;
+                }
+                ParagraphSource source = new ParagraphSource()
+                        .setTitle(citation.getTitle())
+                        .setUrl(citation.getUrl())
+                        .setSource(citation.getSource())
+                        .setPublishedAt(citation.getPublishedAt());
+                deduplicated.putIfAbsent(paragraphSourceKey(source), source);
             }
-            sources.add(new ParagraphSource()
-                    .setTitle(sourceUrl)
-                    .setUrl(sourceUrl)
-                    .setSource(extractHostLabel(sourceUrl)));
         }
-        return sources;
+        if (directSources != null) {
+            for (ParagraphSource directSource : directSources) {
+                if (directSource == null) {
+                    continue;
+                }
+                ParagraphSource source = new ParagraphSource()
+                        .setTitle(directSource.getTitle())
+                        .setUrl(directSource.getUrl())
+                        .setSource(directSource.getSource())
+                        .setPublishedAt(directSource.getPublishedAt());
+                if (StringUtils.hasText(source.getUrl()) && summariesByUrl != null) {
+                    PageSummary summary = summariesByUrl.get(source.getUrl());
+                    if (summary != null) {
+                        source.setTitle(firstNonBlankText(source.getTitle(), summary.getTitle(), source.getUrl()));
+                        source.setSource(firstNonBlankText(source.getSource(), extractHostLabel(source.getUrl())));
+                    }
+                }
+                if (!StringUtils.hasText(source.getSource())) {
+                    source.setSource(extractHostLabel(source.getUrl()));
+                }
+                if (!StringUtils.hasText(source.getTitle())) {
+                    source.setTitle(StringUtils.hasText(source.getUrl()) ? source.getUrl() : "来源文章");
+                }
+                deduplicated.putIfAbsent(paragraphSourceKey(source), source);
+            }
+        }
+        if (directSources != null && !directSources.isEmpty()) {
+            // 已通过 directSources 进入 deduplicated，继续合并 sourceUrls 以补齐漏掉的 URL。
+        }
+        if (sourceUrls != null) {
+            for (String sourceUrl : sourceUrls) {
+                if (!StringUtils.hasText(sourceUrl)) {
+                    continue;
+                }
+                PageSummary summary = summariesByUrl == null ? null : summariesByUrl.get(sourceUrl);
+                ParagraphSource source = new ParagraphSource()
+                        .setTitle(summary != null ? firstNonBlankText(summary.getTitle(), sourceUrl) : sourceUrl)
+                        .setUrl(sourceUrl)
+                        .setSource(extractHostLabel(sourceUrl));
+                deduplicated.putIfAbsent(paragraphSourceKey(source), source);
+            }
+        }
+        return new ArrayList<>(deduplicated.values());
     }
 
     private String extractHostLabel(String url) {
@@ -1576,6 +1725,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setOfficialWebsite(firstNonBlankText(secondaryProfile.getOfficialWebsite(), baseProfile.getOfficialWebsite()))
                 .setTags(pickList(secondaryProfile.getTags(), baseProfile.getTags()))
                 .setKeyFacts(pickList(secondaryProfile.getKeyFacts(), baseProfile.getKeyFacts()))
+                .setArticleSources(pickArticleSources(secondaryProfile.getArticleSources(), baseProfile.getArticleSources()))
                 .setBasicInfo(mergeBasicInfo(baseProfile.getBasicInfo(), secondaryProfile.getBasicInfo()))
                 .setEvidenceUrls(mergeEvidenceUrls(baseProfile.getEvidenceUrls(), secondaryProfile.getEvidenceUrls()));
     }
@@ -1624,10 +1774,21 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return fallback == null ? List.of() : fallback;
     }
 
+    private List<ArticleCitation> pickArticleSources(List<ArticleCitation> preferred, List<ArticleCitation> fallback) {
+        Map<String, ArticleCitation> merged = new LinkedHashMap<>();
+        mergeArticleSourcesInto(merged, fallback);
+        mergeArticleSourcesInto(merged, preferred);
+        if (!merged.isEmpty()) {
+            return new ArrayList<>(merged.values());
+        }
+        return List.of();
+    }
+
     private void enrichProfileParagraphSources(ResolvedPersonProfile profile, List<PageSummary> pageSummaries) {
         if (profile == null) {
             return;
         }
+        List<ArticleCitation> articleSources = pickArticleSources(profile.getArticleSources(), buildArticleCitations(pageSummaries));
         Map<String, PageSummary> summariesByUrl = new LinkedHashMap<>();
         if (pageSummaries != null) {
             for (PageSummary pageSummary : pageSummaries) {
@@ -1636,48 +1797,155 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 }
             }
         }
-        profile.setSummaryParagraphs(enrichParagraphs(profile.getSummaryParagraphs(), summariesByUrl));
-        profile.setEducationSummaryParagraphs(enrichParagraphs(profile.getEducationSummaryParagraphs(), summariesByUrl));
-        profile.setFamilyBackgroundSummaryParagraphs(enrichParagraphs(profile.getFamilyBackgroundSummaryParagraphs(), summariesByUrl));
-        profile.setCareerSummaryParagraphs(enrichParagraphs(profile.getCareerSummaryParagraphs(), summariesByUrl));
-        profile.setChinaRelatedStatementsSummaryParagraphs(enrichParagraphs(profile.getChinaRelatedStatementsSummaryParagraphs(), summariesByUrl));
-        profile.setPoliticalTendencySummaryParagraphs(enrichParagraphs(profile.getPoliticalTendencySummaryParagraphs(), summariesByUrl));
-        profile.setContactInformationSummaryParagraphs(enrichParagraphs(profile.getContactInformationSummaryParagraphs(), summariesByUrl));
-        profile.setFamilyMemberSituationSummaryParagraphs(enrichParagraphs(profile.getFamilyMemberSituationSummaryParagraphs(), summariesByUrl));
-        profile.setMisconductSummaryParagraphs(enrichParagraphs(profile.getMisconductSummaryParagraphs(), summariesByUrl));
+        profile.setArticleSources(articleSources);
+        profile.setSummaryParagraphs(enrichParagraphs(profile.getSummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setEducationSummaryParagraphs(enrichParagraphs(profile.getEducationSummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setFamilyBackgroundSummaryParagraphs(enrichParagraphs(profile.getFamilyBackgroundSummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setCareerSummaryParagraphs(enrichParagraphs(profile.getCareerSummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setChinaRelatedStatementsSummaryParagraphs(enrichParagraphs(profile.getChinaRelatedStatementsSummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setPoliticalTendencySummaryParagraphs(enrichParagraphs(profile.getPoliticalTendencySummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setContactInformationSummaryParagraphs(enrichParagraphs(profile.getContactInformationSummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setFamilyMemberSituationSummaryParagraphs(enrichParagraphs(profile.getFamilyMemberSituationSummaryParagraphs(), summariesByUrl, articleSources));
+        profile.setMisconductSummaryParagraphs(enrichParagraphs(profile.getMisconductSummaryParagraphs(), summariesByUrl, articleSources));
     }
 
-    private List<ParagraphSummaryItem> enrichParagraphs(List<ParagraphSummaryItem> paragraphs, Map<String, PageSummary> summariesByUrl) {
+    private List<ParagraphSummaryItem> enrichParagraphs(List<ParagraphSummaryItem> paragraphs,
+                                                        Map<String, PageSummary> summariesByUrl,
+                                                        List<ArticleCitation> articleSources) {
         if (paragraphs == null || paragraphs.isEmpty()) {
             return List.of();
+        }
+        Map<Integer, ArticleCitation> citationsById = new LinkedHashMap<>();
+        Map<String, ArticleCitation> citationsByUrl = new LinkedHashMap<>();
+        if (articleSources != null) {
+            for (ArticleCitation articleSource : articleSources) {
+                if (articleSource == null) {
+                    continue;
+                }
+                if (articleSource.getId() != null) {
+                    citationsById.putIfAbsent(articleSource.getId(), articleSource);
+                }
+                if (StringUtils.hasText(articleSource.getUrl())) {
+                    citationsByUrl.putIfAbsent(articleSource.getUrl(), articleSource);
+                }
+            }
         }
         List<ParagraphSummaryItem> enriched = new ArrayList<>();
         for (ParagraphSummaryItem paragraph : paragraphs) {
             if (paragraph == null) {
                 continue;
             }
-            List<ParagraphSource> directSources = paragraph.getSources();
-            if (directSources == null || directSources.isEmpty()) {
-                directSources = new ArrayList<>();
-                if (paragraph.getSourceUrls() != null) {
-                    for (String sourceUrl : paragraph.getSourceUrls()) {
-                        if (!StringUtils.hasText(sourceUrl)) {
-                            continue;
-                        }
-                        PageSummary pageSummary = summariesByUrl == null ? null : summariesByUrl.get(sourceUrl);
-                        directSources.add(new ParagraphSource()
-                                .setTitle(pageSummary != null && StringUtils.hasText(pageSummary.getTitle()) ? pageSummary.getTitle() : sourceUrl)
-                                .setUrl(sourceUrl)
-                                .setSource(extractHostLabel(sourceUrl)));
-                    }
-                }
+            List<Integer> sourceIds = normalizeParagraphSourceIds(paragraph, citationsByUrl);
+            if (sourceIds.isEmpty()) {
+                sourceIds = extractCitationIds(paragraph.getText());
             }
+            List<ParagraphSource> directSources = resolveParagraphSources(
+                    paragraph.getSources(),
+                    paragraph.getSourceUrls(),
+                    sourceIds,
+                    summariesByUrl,
+                    citationsById
+            );
             enriched.add(new ParagraphSummaryItem()
                     .setText(paragraph.getText())
+                    .setSourceIds(sourceIds)
                     .setSourceUrls(paragraph.getSourceUrls())
                     .setSources(directSources));
         }
         return enriched;
+    }
+
+    private void mergeArticleSourcesInto(Map<String, ArticleCitation> target, List<ArticleCitation> articleSources) {
+        if (target == null || articleSources == null) {
+            return;
+        }
+        for (ArticleCitation articleSource : articleSources) {
+            if (articleSource == null) {
+                continue;
+            }
+            String key = articleCitationKey(articleSource);
+            if (!StringUtils.hasText(key)) {
+                continue;
+            }
+            ArticleCitation existing = target.get(key);
+            if (existing == null) {
+                target.put(key, new ArticleCitation()
+                        .setId(articleSource.getId())
+                        .setTitle(articleSource.getTitle())
+                        .setUrl(articleSource.getUrl())
+                        .setSource(articleSource.getSource())
+                        .setPublishedAt(articleSource.getPublishedAt()));
+                continue;
+            }
+            existing.setId(existing.getId() != null ? existing.getId() : articleSource.getId());
+            existing.setTitle(firstNonBlankText(existing.getTitle(), articleSource.getTitle()));
+            existing.setUrl(firstNonBlankText(existing.getUrl(), articleSource.getUrl()));
+            existing.setSource(firstNonBlankText(existing.getSource(), articleSource.getSource()));
+            existing.setPublishedAt(firstNonBlankText(existing.getPublishedAt(), articleSource.getPublishedAt()));
+        }
+    }
+
+    private List<Integer> normalizeParagraphSourceIds(ParagraphSummaryItem paragraph,
+                                                      Map<String, ArticleCitation> citationsByUrl) {
+        LinkedHashSet<Integer> orderedIds = new LinkedHashSet<>();
+        if (paragraph == null) {
+            return List.of();
+        }
+        if (paragraph.getSourceIds() != null) {
+            paragraph.getSourceIds().stream()
+                    .filter(id -> id != null && id > 0)
+                    .forEach(orderedIds::add);
+        }
+        if (paragraph.getSourceUrls() != null && citationsByUrl != null) {
+            for (String sourceUrl : paragraph.getSourceUrls()) {
+                if (!StringUtils.hasText(sourceUrl)) {
+                    continue;
+                }
+                ArticleCitation citation = citationsByUrl.get(sourceUrl);
+                if (citation != null && citation.getId() != null && citation.getId() > 0) {
+                    orderedIds.add(citation.getId());
+                }
+            }
+        }
+        return new ArrayList<>(orderedIds);
+    }
+
+    private List<Integer> extractCitationIds(String text) {
+        if (!StringUtils.hasText(text)) {
+            return List.of();
+        }
+        LinkedHashSet<Integer> orderedIds = new LinkedHashSet<>();
+        Matcher matcher = CITATION_PATTERN.matcher(text);
+        while (matcher.find()) {
+            try {
+                int id = Integer.parseInt(matcher.group(1));
+                if (id > 0) {
+                    orderedIds.add(id);
+                }
+            } catch (NumberFormatException ignored) {
+                // 忽略异常编号，保留其余可解析来源。
+            }
+        }
+        return new ArrayList<>(orderedIds);
+    }
+
+    private String paragraphSourceKey(ParagraphSource source) {
+        if (source == null) {
+            return null;
+        }
+        if (StringUtils.hasText(source.getUrl())) {
+            return source.getUrl().trim();
+        }
+        return (StringUtils.hasText(source.getTitle()) ? source.getTitle().trim() : "")
+                + "|"
+                + (StringUtils.hasText(source.getSource()) ? source.getSource().trim() : "");
+    }
+
+    private String articleCitationKey(ArticleCitation articleCitation) {
+        if (articleCitation == null) {
+            return null;
+        }
+        return articleKey(articleCitation.getUrl(), articleCitation.getTitle());
     }
 
     private String firstNonBlankText(String... values) {

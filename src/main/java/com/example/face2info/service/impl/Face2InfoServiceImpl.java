@@ -1,6 +1,7 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.ArticleCitation;
 import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.ParagraphSource;
@@ -240,6 +241,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setMisconductSummary(aggregationResult.getPerson().getMisconductSummary())
                 .setMisconductSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getMisconductSummaryParagraphs()))
                 .setTags(aggregationResult.getPerson().getTags())
+                .setArticleSources(toResponseArticleSources(aggregationResult.getPerson().getArticleSources()))
                 .setEvidenceUrls(aggregationResult.getPerson().getEvidenceUrls())
                 .setWikipedia(aggregationResult.getPerson().getWikipedia())
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
@@ -401,12 +403,52 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return response;
     }
 
+    private List<ArticleSourceBadge> toResponseArticleSources(List<ArticleCitation> articleSources) {
+        List<ArticleSourceBadge> response = new ArrayList<>();
+        if (articleSources == null) {
+            return response;
+        }
+        for (ArticleCitation articleSource : articleSources) {
+            if (articleSource == null) {
+                continue;
+            }
+            response.add(new ArticleSourceBadge()
+                    .setIndex(articleSource.getId())
+                    .setTitle(articleSource.getTitle())
+                    .setUrl(articleSource.getUrl())
+                    .setSource(articleSource.getSource())
+                    .setPublishedAt(articleSource.getPublishedAt()));
+        }
+        return response;
+    }
+
     private void assignCitationIndexes(PersonInfo person) {
         if (person == null) {
             return;
         }
+        List<ArticleSourceBadge> canonicalSources = new ArrayList<>();
+        Map<String, ArticleSourceBadge> canonicalByKey = new LinkedHashMap<>();
+        for (ArticleSourceBadge source : person.getArticleSources()) {
+            addCanonicalSource(canonicalSources, canonicalByKey, source);
+        }
+        for (List<ParagraphWithSources> paragraphs : allParagraphGroups(person)) {
+            for (ParagraphWithSources paragraph : paragraphs) {
+                if (paragraph == null || paragraph.getSources() == null || paragraph.getSources().isEmpty()) {
+                    continue;
+                }
+                for (ArticleSourceBadge source : paragraph.getSources()) {
+                    addCanonicalSource(canonicalSources, canonicalByKey, source);
+                }
+            }
+        }
         Map<String, Integer> citationIndexByKey = new LinkedHashMap<>();
         int nextIndex = 1;
+        for (ArticleSourceBadge source : canonicalSources) {
+            String key = citationSourceKey(source);
+            citationIndexByKey.put(key, nextIndex);
+            source.setIndex(nextIndex++);
+        }
+        person.setArticleSources(canonicalSources);
         for (List<ParagraphWithSources> paragraphs : allParagraphGroups(person)) {
             for (ParagraphWithSources paragraph : paragraphs) {
                 if (paragraph == null || paragraph.getSources() == null || paragraph.getSources().isEmpty()) {
@@ -420,8 +462,13 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                     String key = citationSourceKey(source);
                     Integer index = citationIndexByKey.get(key);
                     if (index == null) {
-                        index = nextIndex++;
-                        citationIndexByKey.put(key, index);
+                        ArticleSourceBadge canonical = addCanonicalSource(canonicalSources, canonicalByKey, source);
+                        index = canonical.getIndex();
+                        if (index == null) {
+                            index = nextIndex++;
+                            canonical.setIndex(index);
+                            citationIndexByKey.put(key, index);
+                        }
                     }
                     // 同一来源在全页范围内复用固定编号，避免前端 tooltip 和文章来源区出现编号漂移。
                     source.setIndex(index);
@@ -432,6 +479,42 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 paragraph.setText(normalizeParagraphCitationText(paragraph.getText(), orderedIndexes));
             }
         }
+    }
+
+    private ArticleSourceBadge addCanonicalSource(List<ArticleSourceBadge> canonicalSources,
+                                                  Map<String, ArticleSourceBadge> canonicalByKey,
+                                                  ArticleSourceBadge source) {
+        if (source == null) {
+            return null;
+        }
+        String key = citationSourceKey(source);
+        if (!StringUtils.hasText(key)) {
+            return null;
+        }
+        ArticleSourceBadge existing = canonicalByKey.get(key);
+        if (existing != null) {
+            if (!StringUtils.hasText(existing.getTitle())) {
+                existing.setTitle(source.getTitle());
+            }
+            if (!StringUtils.hasText(existing.getUrl())) {
+                existing.setUrl(source.getUrl());
+            }
+            if (!StringUtils.hasText(existing.getSource())) {
+                existing.setSource(source.getSource());
+            }
+            if (!StringUtils.hasText(existing.getPublishedAt())) {
+                existing.setPublishedAt(source.getPublishedAt());
+            }
+            return existing;
+        }
+        ArticleSourceBadge canonical = new ArticleSourceBadge()
+                .setTitle(source.getTitle())
+                .setUrl(source.getUrl())
+                .setSource(source.getSource())
+                .setPublishedAt(source.getPublishedAt());
+        canonicalSources.add(canonical);
+        canonicalByKey.put(key, canonical);
+        return canonical;
     }
 
     private List<List<ParagraphWithSources>> allParagraphGroups(PersonInfo person) {

@@ -775,7 +775,7 @@
     const articleMatches = Array.isArray(data.article_image_matches) ? data.article_image_matches : matches;
     const allSortedMatches = sortImageMatches(articleMatches);
     const displayMatches = sortImageMatches(matches);
-    const summarySourceArticles = collectParagraphSourceArticles(person);
+    const summarySourceArticles = collectArticleSources(person);
     renderImageMatches(displayMatches, data.status, data.error);
     renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
     renderArticleSources(summarySourceArticles, allSortedMatches);
@@ -935,6 +935,28 @@
     return Array.from(sourceByKey.values());
   }
 
+  function collectArticleSources(person) {
+    const directSources = Array.isArray(person && (person.article_sources || person.articleSources))
+      ? normalizeSources(person.article_sources || person.articleSources)
+      : [];
+    if (directSources.length) {
+      return directSources
+        .map(source => ({
+          index: source.index,
+          title: source.title || "来源文章",
+          source: source.source || "未知来源",
+          url: source.url || "#",
+          publishedAt: source.publishedAt || ""
+        }))
+        .sort((a, b) => {
+          const left = Number.isInteger(a.index) ? a.index : Number.MAX_SAFE_INTEGER;
+          const right = Number.isInteger(b.index) ? b.index : Number.MAX_SAFE_INTEGER;
+          return left - right;
+        });
+    }
+    return collectParagraphSourceArticles(person);
+  }
+
   function getAllParagraphs(person) {
     if (!person || typeof person !== "object") return [];
     const paragraphKeys = [
@@ -1060,6 +1082,13 @@
         family_member_situation_summary: data.person.family_member_situation_summary || null,
         misconduct_summary: data.person.misconduct_summary || null,
         tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],
+        article_sources: Array.isArray(data.person.article_sources) ? data.person.article_sources.slice(0, 20).map(item => ({
+          index: Number.isInteger(item && item.index) ? item.index : null,
+          title: sanitizeDisplayText(item && item.title, null),
+          url: sanitizeLink(item && item.url ? item.url : "#"),
+          source: sanitizeDisplayText(item && item.source, null),
+          published_at: item && (item.published_at || item.publishedAt) ? String(item.published_at || item.publishedAt).trim() : null
+        })) : [],
         evidence_urls: Array.isArray(data.person.evidence_urls) ? data.person.evidence_urls.slice(0, 12) : [],
         wikipedia: data.person.wikipedia || null,
         official_website: data.person.official_website || null

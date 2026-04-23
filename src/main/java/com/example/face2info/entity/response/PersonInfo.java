@@ -101,6 +101,10 @@ public class PersonInfo {
     @Schema(description = "从正文或资料中提炼的人物标签")
     private List<String> tags = new ArrayList<>();
 
+    @JsonProperty("article_sources")
+    @Schema(description = "全局文章来源列表")
+    private List<ArticleSourceBadge> articleSources = new ArrayList<>();
+
     @JsonProperty("evidence_urls")
     @Schema(description = "支撑当前人物画像的证据链接")
     private List<String> evidenceUrls = new ArrayList<>();
@@ -322,6 +326,15 @@ public class PersonInfo {
 
     public PersonInfo setTags(List<String> tags) {
         this.tags = tags;
+        return this;
+    }
+
+    public List<ArticleSourceBadge> getArticleSources() {
+        return articleSources;
+    }
+
+    public PersonInfo setArticleSources(List<ArticleSourceBadge> articleSources) {
+        this.articleSources = articleSources;
         return this;
     }
 
