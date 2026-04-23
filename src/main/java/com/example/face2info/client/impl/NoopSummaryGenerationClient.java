@@ -5,9 +5,11 @@ import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
+import com.example.face2info.entity.internal.SearchLanguageProfile;
 import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
+import org.springframework.lang.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -101,6 +103,13 @@ public class NoopSummaryGenerationClient implements SummaryGenerationClient {
     public SearchLanguageInferenceResult inferSearchLanguageProfile(String resolvedName,
                                                                     ResolvedPersonProfile profile) {
         throw new UnsupportedOperationException("noop summary provider does not support search language inference");
+    }
+
+    @Override
+    public String generateDigitalFootprintQueries(String resolvedName,
+                                                  SearchLanguageProfile languageProfile,
+                                                  @Nullable ResolvedPersonProfile profile) {
+        return "";
     }
 }
 

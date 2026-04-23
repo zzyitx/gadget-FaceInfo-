@@ -20,6 +20,15 @@ public class PageSummary {
     @Schema(description = "正文标题")
     private String title;
 
+    @Schema(description = "正文作者")
+    private String author;
+
+    @Schema(description = "正文发布时间")
+    private String publishedAt;
+
+    @Schema(description = "来源平台")
+    private String sourcePlatform;
+
     @Schema(description = "正文摘要")
     private String summary;
 
@@ -59,6 +68,33 @@ public class PageSummary {
 
     public PageSummary setTitle(String title) {
         this.title = title;
+        return this;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public PageSummary setAuthor(String author) {
+        this.author = author;
+        return this;
+    }
+
+    public String getPublishedAt() {
+        return publishedAt;
+    }
+
+    public PageSummary setPublishedAt(String publishedAt) {
+        this.publishedAt = publishedAt;
+        return this;
+    }
+
+    public String getSourcePlatform() {
+        return sourcePlatform;
+    }
+
+    public PageSummary setSourcePlatform(String sourcePlatform) {
+        this.sourcePlatform = sourcePlatform;
         return this;
     }
 
