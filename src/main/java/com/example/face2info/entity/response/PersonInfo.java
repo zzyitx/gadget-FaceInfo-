@@ -105,6 +105,14 @@ public class PersonInfo {
     @Schema(description = "全局文章来源列表")
     private List<ArticleSourceBadge> articleSources = new ArrayList<>();
 
+    @JsonProperty("total_articles_read")
+    @Schema(description = "聚合链路实际读取并生成篇级摘要的文章总数")
+    private Integer totalArticlesRead;
+
+    @JsonProperty("final_articles_used")
+    @Schema(description = "最终人物画像实际引用使用的文章数")
+    private Integer finalArticlesUsed;
+
     @JsonProperty("evidence_urls")
     @Schema(description = "支撑当前人物画像的证据链接")
     private List<String> evidenceUrls = new ArrayList<>();
@@ -335,6 +343,24 @@ public class PersonInfo {
 
     public PersonInfo setArticleSources(List<ArticleSourceBadge> articleSources) {
         this.articleSources = articleSources;
+        return this;
+    }
+
+    public Integer getTotalArticlesRead() {
+        return totalArticlesRead;
+    }
+
+    public PersonInfo setTotalArticlesRead(Integer totalArticlesRead) {
+        this.totalArticlesRead = totalArticlesRead;
+        return this;
+    }
+
+    public Integer getFinalArticlesUsed() {
+        return finalArticlesUsed;
+    }
+
+    public PersonInfo setFinalArticlesUsed(Integer finalArticlesUsed) {
+        this.finalArticlesUsed = finalArticlesUsed;
         return this;
     }
 

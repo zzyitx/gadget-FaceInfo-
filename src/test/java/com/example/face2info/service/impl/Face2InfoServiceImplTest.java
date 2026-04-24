@@ -22,6 +22,7 @@ import com.example.face2info.util.ImageUtils;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -146,6 +147,7 @@ class Face2InfoServiceImplTest {
         assertThat(response.getImageMatches().get(0).getSimilarityScore()).isEqualTo(96.4);
         assertThat(response.getArticleImageMatches()).hasSize(2);
         assertThat(response.getArticleImageMatches().get(1).getLink()).isEqualTo("https://example.com/article");
+        assertHasFlowTiming(response);
         verify(fixture.faceDetectionService).detect(fixture.image);
         verify(fixture.faceRecognitionService).recognize(argThat(file ->
                 "face.jpg".equals(file.getOriginalFilename()) && file.getSize() == 3));
@@ -260,13 +262,17 @@ class Face2InfoServiceImplTest {
                 .setPerson(new PersonAggregate()
                         .setName("Jay Chou")
                         .setSummary("Jay Chou is a major Mandopop artist.")
-                        .setTags(List.of("Singer", "Producer")))
+                        .setTags(List.of("Singer", "Producer"))
+                        .setTotalArticlesRead(7)
+                        .setFinalArticlesUsed(3))
                 .setWarnings(List.of("Summary provider unavailable")));
 
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
         assertThat(response.getPerson().getSummary()).isEqualTo("Jay Chou is a major Mandopop artist.");
         assertThat(response.getPerson().getTags()).containsExactly("Singer", "Producer");
+        assertThat(response.getPerson().getTotalArticlesRead()).isEqualTo(7);
+        assertThat(response.getPerson().getFinalArticlesUsed()).isEqualTo(3);
         assertThat(response.getWarnings()).containsExactly("Summary provider unavailable");
     }
 
@@ -417,13 +423,21 @@ class Face2InfoServiceImplTest {
     @Test
     void shouldReturnCachedFinalResponseBeforeRecognitionAndAggregation() {
         ServiceFixture fixture = createFixture();
-        FaceInfoResponse cached = new FaceInfoResponse().setStatus("success");
+        FaceInfoResponse cached = new FaceInfoResponse()
+                .setStatus("success")
+                .setStartedAt("2000-01-01T00:00:00Z")
+                .setFinishedAt("2000-01-01T00:00:01Z")
+                .setDurationMs(1000L);
         when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
         when(fixture.imageResultCacheService.getFaceInfoResponse(any())).thenReturn(cached);
 
         FaceInfoResponse response = fixture.service.process(fixture.image);
 
         assertThat(response).isSameAs(cached);
+        assertHasFlowTiming(response);
+        assertThat(response.getStartedAt()).isNotEqualTo("2000-01-01T00:00:00Z");
+        assertThat(response.getFinishedAt()).isNotEqualTo("2000-01-01T00:00:01Z");
+        assertThat(response.getDurationMs()).isNotEqualTo(1000L);
         verify(fixture.faceRecognitionService, never()).recognize(any());
         verify(fixture.informationAggregationService, never()).aggregate(any());
     }
@@ -507,6 +521,14 @@ class Face2InfoServiceImplTest {
 
         assertThat(response.getImageMatches()).isEmpty();
         assertThat(response.getWarnings()).isEmpty();
+    }
+
+    private void assertHasFlowTiming(FaceInfoResponse response) {
+        assertThat(response.getStartedAt()).isNotBlank();
+        assertThat(response.getFinishedAt()).isNotBlank();
+        assertThat(response.getDurationMs()).isNotNull().isGreaterThanOrEqualTo(0L);
+        assertThat(Instant.parse(response.getFinishedAt()))
+                .isAfterOrEqualTo(Instant.parse(response.getStartedAt()));
     }
 
     private ServiceFixture createFixture() {

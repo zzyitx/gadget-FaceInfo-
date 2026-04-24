@@ -86,6 +86,12 @@ public class PersonAggregate {
     @Schema(description = "人物结果对应的统一文章来源表")
     private List<ArticleCitation> articleSources = new ArrayList<>();
 
+    @Schema(description = "聚合链路实际读取并生成篇级摘要的文章总数")
+    private Integer totalArticlesRead;
+
+    @Schema(description = "最终人物画像实际引用使用的文章数")
+    private Integer finalArticlesUsed;
+
     @Schema(description = "人物基础信息")
     private PersonBasicInfo basicInfo = new PersonBasicInfo();
 
@@ -320,6 +326,24 @@ public class PersonAggregate {
 
     public PersonAggregate setArticleSources(List<ArticleCitation> articleSources) {
         this.articleSources = articleSources == null ? new ArrayList<>() : new ArrayList<>(articleSources);
+        return this;
+    }
+
+    public Integer getTotalArticlesRead() {
+        return totalArticlesRead;
+    }
+
+    public PersonAggregate setTotalArticlesRead(Integer totalArticlesRead) {
+        this.totalArticlesRead = totalArticlesRead;
+        return this;
+    }
+
+    public Integer getFinalArticlesUsed() {
+        return finalArticlesUsed;
+    }
+
+    public PersonAggregate setFinalArticlesUsed(Integer finalArticlesUsed) {
+        this.finalArticlesUsed = finalArticlesUsed;
         return this;
     }
 

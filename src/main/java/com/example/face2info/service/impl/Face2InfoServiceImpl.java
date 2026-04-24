@@ -31,10 +31,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -111,21 +114,23 @@ public class Face2InfoServiceImpl implements Face2InfoService {
     @Override
     public FaceInfoResponse process(MultipartFile image) {
         // 主入口：先做人脸检测，再按单脸/多脸分流后续流程。
-        return process(image, null);
+        return executeTimedFlow("总流程", image == null ? null : image.getOriginalFilename(), () -> process(image, null));
     }
 
     @Override
     public FaceInfoResponse processSelectedFace(String detectionId, String faceId) {
-        if (!StringUtils.hasText(detectionId)) {
-            return buildFailedResponse(BLANK_DETECTION_ID_ERROR);
-        }
-        if (!StringUtils.hasText(faceId)) {
-            return buildFailedResponse(BLANK_FACE_ID_ERROR);
-        }
+        return executeTimedFlow("选脸后续流程", faceId, () -> {
+            if (!StringUtils.hasText(detectionId)) {
+                return buildFailedResponse(BLANK_DETECTION_ID_ERROR);
+            }
+            if (!StringUtils.hasText(faceId)) {
+                return buildFailedResponse(BLANK_FACE_ID_ERROR);
+            }
 
-        // 二次请求只依赖 detection session，不要求前端重复上传原图。
-        SelectedFaceCrop crop = faceDetectionService.getSelectedFaceCrop(detectionId, faceId);
-        return processSelectedCrop(crop);
+            // 二次请求只依赖 detection session，不要求前端重复上传原图。
+            SelectedFaceCrop crop = faceDetectionService.getSelectedFaceCrop(detectionId, faceId);
+            return processSelectedCrop(crop);
+        });
     }
 
     private FaceInfoResponse process(MultipartFile image, String imageUrl) {
@@ -242,6 +247,8 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setMisconductSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getMisconductSummaryParagraphs()))
                 .setTags(aggregationResult.getPerson().getTags())
                 .setArticleSources(toResponseArticleSources(aggregationResult.getPerson().getArticleSources()))
+                .setTotalArticlesRead(aggregationResult.getPerson().getTotalArticlesRead())
+                .setFinalArticlesUsed(aggregationResult.getPerson().getFinalArticlesUsed())
                 .setEvidenceUrls(aggregationResult.getPerson().getEvidenceUrls())
                 .setWikipedia(aggregationResult.getPerson().getWikipedia())
                 .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
@@ -264,6 +271,49 @@ public class Face2InfoServiceImpl implements Face2InfoService {
 
     private boolean hasCropContent(SelectedFaceCrop crop) {
         return crop != null && crop.getBytes() != null && crop.getBytes().length > 0;
+    }
+
+    private FaceInfoResponse executeTimedFlow(String flowName, String requestTag, Supplier<FaceInfoResponse> supplier) {
+        Instant startedAt = Instant.now();
+        long startNanoTime = System.nanoTime();
+        log.info("{}开始 requestTag={} startedAt={}", flowName, requestTag, startedAt);
+        try {
+            FaceInfoResponse response = supplier.get();
+            return finalizeTimedResponse(flowName, requestTag, startedAt, startNanoTime, response);
+        } catch (RuntimeException ex) {
+            long durationMs = Duration.ofNanos(System.nanoTime() - startNanoTime).toMillis();
+            Instant finishedAt = Instant.now();
+            log.error("{}异常结束 requestTag={} startedAt={} finishedAt={} durationMs={} error={}",
+                    flowName,
+                    requestTag,
+                    startedAt,
+                    finishedAt,
+                    durationMs,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    private FaceInfoResponse finalizeTimedResponse(String flowName,
+                                                   String requestTag,
+                                                   Instant startedAt,
+                                                   long startNanoTime,
+                                                   FaceInfoResponse response) {
+        Instant finishedAt = Instant.now();
+        long durationMs = Duration.ofNanos(System.nanoTime() - startNanoTime).toMillis();
+        FaceInfoResponse timedResponse = response == null ? new FaceInfoResponse().setStatus("failed") : response;
+        timedResponse.setStartedAt(startedAt.toString())
+                .setFinishedAt(finishedAt.toString())
+                .setDurationMs(durationMs);
+        log.info("{}结束 requestTag={} status={} startedAt={} finishedAt={} durationMs={}",
+                flowName,
+                requestTag,
+                timedResponse.getStatus(),
+                timedResponse.getStartedAt(),
+                timedResponse.getFinishedAt(),
+                timedResponse.getDurationMs());
+        return timedResponse;
     }
 
     private MultipartFile toMultipartFile(SelectedFaceCrop crop) {

@@ -32,6 +32,18 @@ public class FaceInfoResponse {
     @Schema(description = "请求失败时返回的错误说明，成功时通常为空", example = "外部服务暂时不可用")
     private String error;
 
+    @JsonProperty("started_at")
+    @Schema(description = "流程开始时间，使用 ISO-8601 UTC 时间戳", example = "2026-04-24T01:23:45Z")
+    private String startedAt;
+
+    @JsonProperty("finished_at")
+    @Schema(description = "流程结束时间，使用 ISO-8601 UTC 时间戳", example = "2026-04-24T01:23:48Z")
+    private String finishedAt;
+
+    @JsonProperty("duration_ms")
+    @Schema(description = "本次流程总耗时，单位毫秒", example = "3120")
+    private Long durationMs;
+
     public PersonInfo getPerson() {
         return person;
     }
@@ -92,6 +104,33 @@ public class FaceInfoResponse {
 
     public FaceInfoResponse setError(String error) {
         this.error = error;
+        return this;
+    }
+
+    public String getStartedAt() {
+        return startedAt;
+    }
+
+    public FaceInfoResponse setStartedAt(String startedAt) {
+        this.startedAt = startedAt;
+        return this;
+    }
+
+    public String getFinishedAt() {
+        return finishedAt;
+    }
+
+    public FaceInfoResponse setFinishedAt(String finishedAt) {
+        this.finishedAt = finishedAt;
+        return this;
+    }
+
+    public Long getDurationMs() {
+        return durationMs;
+    }
+
+    public FaceInfoResponse setDurationMs(Long durationMs) {
+        this.durationMs = durationMs;
         return this;
     }
 }

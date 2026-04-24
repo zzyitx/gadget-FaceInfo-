@@ -80,6 +80,12 @@ public class ResolvedPersonProfile {
     @Schema(description = "人物结果对应的统一文章来源表")
     private List<ArticleCitation> articleSources = new ArrayList<>();
 
+    @Schema(description = "聚合链路实际读取并生成篇级摘要的文章总数")
+    private Integer totalArticlesRead;
+
+    @Schema(description = "最终人物画像实际引用使用的文章数")
+    private Integer finalArticlesUsed;
+
     @Schema(description = "百科链接")
     private String wikipedia;
 
@@ -302,6 +308,24 @@ public class ResolvedPersonProfile {
 
     public ResolvedPersonProfile setArticleSources(List<ArticleCitation> articleSources) {
         this.articleSources = articleSources == null ? new ArrayList<>() : new ArrayList<>(articleSources);
+        return this;
+    }
+
+    public Integer getTotalArticlesRead() {
+        return totalArticlesRead;
+    }
+
+    public ResolvedPersonProfile setTotalArticlesRead(Integer totalArticlesRead) {
+        this.totalArticlesRead = totalArticlesRead;
+        return this;
+    }
+
+    public Integer getFinalArticlesUsed() {
+        return finalArticlesUsed;
+    }
+
+    public ResolvedPersonProfile setFinalArticlesUsed(Integer finalArticlesUsed) {
+        this.finalArticlesUsed = finalArticlesUsed;
         return this;
     }
 
