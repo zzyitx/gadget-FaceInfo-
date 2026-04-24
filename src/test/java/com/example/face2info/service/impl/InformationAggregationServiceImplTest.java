@@ -12,6 +12,7 @@ import com.example.face2info.entity.internal.ArticleCitation;
 import com.example.face2info.entity.internal.DigitalFootprintQuery;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
@@ -28,7 +29,9 @@ import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.service.DerivedTopicQueryService;
 import com.example.face2info.service.DigitalFootprintQueryBuilder;
+import com.example.face2info.service.MultilingualQueryPlanningService;
 import com.example.face2info.service.PrimarySearchQueryBuilder;
+import com.example.face2info.service.SearchLanguageProfileService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -45,8 +48,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.atMostOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -170,11 +175,93 @@ class InformationAggregationServiceImplTest {
         ), "unknown");
 
         assertThat(profile.getArticleSources()).extracting(ArticleCitation::getId).containsExactly(1, 2);
+        assertThat(profile.getTotalArticlesRead()).isEqualTo(2);
+        assertThat(profile.getFinalArticlesUsed()).isEqualTo(1);
         assertThat(profile.getSummaryParagraphs()).hasSize(1);
         assertThat(profile.getSummaryParagraphs().get(0).getSourceIds()).containsExactly(2);
         assertThat(profile.getSummaryParagraphs().get(0).getSources()).hasSize(1);
         assertThat(profile.getSummaryParagraphs().get(0).getSources().get(0).getUrl()).isEqualTo("https://example.com/b");
         assertThat(profile.getSummaryParagraphs().get(0).getSources().get(0).getTitle()).isEqualTo("Article B");
+    }
+
+    @Test
+    void shouldAppendUncitedArticleMatchesIntoBackendArticleSources() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent pageA = new PageContent().setUrl("https://example.com/a").setTitle("Article A").setContent("Page A");
+        PageContent pageB = new PageContent().setUrl("https://example.com/b").setTitle("Article B").setContent("Page B");
+        PageSummary summaryA = new PageSummary()
+                .setSourceId(1)
+                .setSourceUrl("https://example.com/a")
+                .setTitle("Article A")
+                .setSourcePlatform("Example")
+                .setSummary("Summary A");
+        PageSummary summaryB = new PageSummary()
+                .setSourceId(2)
+                .setSourceUrl("https://example.com/b")
+                .setTitle("Article B")
+                .setSourcePlatform("Example")
+                .setSummary("Summary B");
+        ResolvedPersonProfile finalProfile = new ResolvedPersonProfile()
+                .setResolvedName("Jay Chou")
+                .setSummary("Final Summary[1][2]")
+                .setSummaryParagraphs(List.of(
+                        new ParagraphSummaryItem()
+                                .setText("Final Summary[1][2]")
+                                .setSourceIds(List.of(1, 2))
+                ))
+                .setArticleSources(List.of(
+                        new ArticleCitation().setId(1).setTitle("Article A").setUrl("https://example.com/a").setSource("Example"),
+                        new ArticleCitation().setId(2).setTitle("Article B").setUrl("https://example.com/b").setSource("Example")
+                ));
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a", "https://example.com/b")))
+                .thenReturn(List.of(pageA, pageB));
+        when(summaryGenerationClient.summarizePage("Jay Chou", pageA)).thenReturn(summaryA);
+        when(summaryGenerationClient.summarizePage("Jay Chou", pageB)).thenReturn(summaryB);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jay Chou", List.of(summaryA, summaryB)))
+                .thenReturn(finalProfile);
+        when(summaryGenerationClient.applyComprehensiveJudgement("Jay Chou", List.of(summaryA, summaryB), finalProfile))
+                .thenReturn(finalProfile);
+        when(googleSearchClient.googleSearch(anyString())).thenReturn(null);
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor
+        );
+
+        AggregationResult result = service.aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jay Chou"))
+                .setWebEvidences(List.of(
+                        new WebEvidence().setUrl("https://example.com/a"),
+                        new WebEvidence().setUrl("https://example.com/b")
+                ))
+                .setArticleImageMatches(List.of(
+                        new com.example.face2info.entity.response.ImageMatch()
+                                .setPosition(1)
+                                .setTitle("Article B")
+                                .setLink("https://example.com/b")
+                                .setSource("Example"),
+                        new com.example.face2info.entity.response.ImageMatch()
+                                .setPosition(2)
+                                .setTitle("Article C")
+                                .setLink("https://example.com/c")
+                                .setSource("Example News")
+                )));
+
+        assertThat(result.getPerson().getArticleSources())
+                .extracting(ArticleCitation::getId, ArticleCitation::getUrl)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, "https://example.com/a"),
+                        org.assertj.core.groups.Tuple.tuple(2, "https://example.com/b"),
+                        org.assertj.core.groups.Tuple.tuple(3, "https://example.com/c")
+                );
+        assertThat(result.getPerson().getFinalArticlesUsed()).isEqualTo(2);
     }
 
     @Test
@@ -317,6 +404,93 @@ class InformationAggregationServiceImplTest {
         verify(googleSearchClient).googleSearch("尼古拉斯·伯恩斯 驻华大使");
         verify(googleSearchClient).googleSearch("尼古拉斯·伯恩斯 驻华大使 涉华言论");
         verify(googleSearchClient).googleSearch("Nicholas Burns Ambassador China policy");
+    }
+
+    @Test
+    void shouldKeepInitialResolvedNameWhenSecondaryEvidenceSuggestsDifferentPerson() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        MultilingualQueryPlanningService multilingualQueryPlanningService = mock(MultilingualQueryPlanningService.class);
+        PrimarySearchQueryBuilder primarySearchQueryBuilder = mock(PrimarySearchQueryBuilder.class);
+        DigitalFootprintQueryBuilder digitalFootprintQueryBuilder = mock(DigitalFootprintQueryBuilder.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        PageContent seedPage = new PageContent()
+                .setUrl("https://example.com/seed")
+                .setTitle("Jensen Huang profile")
+                .setContent("Jensen Huang is NVIDIA founder.");
+        PageSummary seedSummary = new PageSummary()
+                .setSourceUrl("https://example.com/seed")
+                .setTitle("Jensen Huang profile")
+                .setSummary("Jensen Huang profile summary");
+        ResolvedPersonProfile baseProfile = new ResolvedPersonProfile()
+                .setResolvedName("Jensen Huang")
+                .setSummary("NVIDIA founder profile");
+
+        PageContent secondaryPage = new PageContent()
+                .setUrl("https://example.com/ces")
+                .setTitle("CES coverage")
+                .setContent("Article mentions NVIDIA, Intel and other people.");
+        PageSummary secondarySummary = new PageSummary()
+                .setSourceUrl("https://example.com/ces")
+                .setTitle("CES coverage")
+                .setSummary("CES article summary");
+        ResolvedPersonProfile secondaryProfile = new ResolvedPersonProfile()
+                .setResolvedName("王军")
+                .setSummary("Supplemental event context");
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/seed"))).thenReturn(List.of(seedPage));
+        when(summaryGenerationClient.summarizePage("Jensen Huang", seedPage)).thenReturn(seedSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jensen Huang", List.of(seedSummary)))
+                .thenReturn(baseProfile);
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+
+        SearchLanguageProfileService searchLanguageProfileService = (resolvedName, profile) -> new SearchLanguageProfile()
+                .setResolvedName(resolvedName)
+                .setLanguageCodes(List.of("zh", "en"))
+                .setLocalizedNames(Map.of("en", "Jensen Huang"));
+        when(multilingualQueryPlanningService.planSecondaryProfileQueries(any()))
+                .thenReturn(List.of(new com.example.face2info.entity.internal.SearchQueryTask()
+                        .setLanguageCode("en")
+                        .setQueryText("Jensen Huang")
+                        .setQueryKind("secondary_profile")));
+        when(primarySearchQueryBuilder.buildSecondaryProfileQueries(anyString(), any(), any()))
+                .thenReturn(List.of());
+        when(googleSearchClient.googleSearch("Jensen Huang"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"CES coverage","link":"https://example.com/ces","snippet":"event snippet"}]}
+                        """)));
+        when(jinaReaderClient.readPages(List.of("https://example.com/ces"))).thenReturn(List.of(secondaryPage));
+        when(summaryGenerationClient.summarizePage("Jensen Huang", secondaryPage)).thenReturn(secondarySummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Jensen Huang", List.of(secondarySummary)))
+                .thenReturn(secondaryProfile);
+        when(multilingualQueryPlanningService.planSectionQueries(any(), anyString(), anyList())).thenReturn(List.of());
+        when(multilingualQueryPlanningService.planExpansionQueries(any(), anyString(), anyList())).thenReturn(List.of());
+        when(primarySearchQueryBuilder.buildSectionQueries(anyString(), any(), any(), anyString())).thenReturn(List.of());
+        when(digitalFootprintQueryBuilder.build(anyString(), any())).thenReturn(List.of());
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                null,
+                executor,
+                createApiProperties(null),
+                mock(DerivedTopicQueryService.class),
+                searchLanguageProfileService,
+                multilingualQueryPlanningService,
+                digitalFootprintQueryBuilder,
+                primarySearchQueryBuilder
+        );
+
+        AggregationResult result = service.aggregate(new RecognitionEvidence()
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/seed")))
+                .setSeedQueries(List.of("Jensen Huang")));
+
+        assertThat(result.getPerson().getName()).isEqualTo("Jensen Huang");
     }
 
     @Test
@@ -1098,6 +1272,172 @@ class InformationAggregationServiceImplTest {
         ), "unknown");
 
         verify(jinaReaderClient).readPages(expectedUrls);
+    }
+
+    @Test
+    void shouldLimitSectionTopicJinaReadsToTwentyAcrossSearchQueries() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        MultilingualQueryPlanningService multilingualQueryPlanningService = mock(MultilingualQueryPlanningService.class);
+        PrimarySearchQueryBuilder primarySearchQueryBuilder = mock(PrimarySearchQueryBuilder.class);
+
+        ApiProperties properties = createApiProperties(50);
+        ObjectMapper mapper = new ObjectMapper();
+        List<String> firstUrls = numberedUrls("https://example.com/china-a-", 15);
+        List<String> secondUrls = numberedUrls("https://example.com/china-b-", 15);
+        List<String> secondExpectedUrls = secondUrls.subList(0, 5);
+
+        when(multilingualQueryPlanningService.planSectionQueries(any(), eq("china_related_statements"), anyList()))
+                .thenReturn(List.of(
+                        new com.example.face2info.entity.internal.SearchQueryTask()
+                                .setLanguageCode("zh")
+                                .setQueryText("黄仁勋 涉华言论")
+                                .setQueryKind("section_base")
+                                .setSourceReason("round_zh")
+                                .setPriority(1),
+                        new com.example.face2info.entity.internal.SearchQueryTask()
+                                .setLanguageCode("zh")
+                                .setQueryText("黄仁勋 中国评价")
+                                .setQueryKind("section_base")
+                                .setSourceReason("round_zh")
+                                .setPriority(2)
+                ));
+        when(multilingualQueryPlanningService.planExpansionQueries(any(), anyString(), anyList())).thenReturn(List.of());
+        when(primarySearchQueryBuilder.buildSectionQueries(anyString(), any(), any(), anyString())).thenReturn(List.of());
+        when(googleSearchClient.googleSearch("黄仁勋 涉华言论"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree(searchResponseJson(firstUrls))));
+        when(googleSearchClient.googleSearch("黄仁勋 中国评价"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree(searchResponseJson(secondUrls))));
+        when(jinaReaderClient.readPages(anyList())).thenAnswer(invocation -> pagesFor(invocation.getArgument(0)));
+        when(summaryGenerationClient.summarizePage(eq("黄仁勋"), any(PageContent.class)))
+                .thenAnswer(invocation -> {
+                    PageContent page = invocation.getArgument(1);
+                    return new PageSummary()
+                            .setSourceUrl(page.getUrl())
+                            .setTitle(page.getTitle())
+                            .setSummary(page.getContent());
+                });
+        when(summaryGenerationClient.expandTopicQueriesFromPageSummaries(anyString(), anyString(), anyList()))
+                .thenReturn(new TopicExpansionDecision().setShouldExpand(false).setExpansionQueries(List.of()));
+        when(summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(
+                eq("黄仁勋"),
+                eq("china_related_statements"),
+                argThat(summaries -> summaries != null && summaries.size() == 20)))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem().setSection("涉华言论").setSummary("读取 20 篇后生成摘要。")
+                )));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                null,
+                executor,
+                properties,
+                mock(DerivedTopicQueryService.class),
+                (resolvedName, profile) -> new SearchLanguageProfile()
+                        .setResolvedName(resolvedName)
+                        .setLanguageCodes(List.of("zh"))
+                        .setLocalizedNames(Map.of("zh", resolvedName)),
+                multilingualQueryPlanningService,
+                mock(DigitalFootprintQueryBuilder.class),
+                primarySearchQueryBuilder
+        );
+
+        String summary = service.summarizeSection("黄仁勋", "china_related_statements", "黄仁勋 涉华言论");
+
+        assertThat(summary).contains("读取 20 篇后生成摘要");
+        verify(jinaReaderClient).readPages(firstUrls);
+        verify(jinaReaderClient).readPages(secondExpectedUrls);
+        verify(jinaReaderClient, atMostOnce()).readPages(argThat(urls -> urls != null && urls.size() > 5 && urls.containsAll(secondExpectedUrls)));
+    }
+
+    @Test
+    void shouldGiveEachSectionTopicIndependentTwentyPageJinaBudget() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        MultilingualQueryPlanningService multilingualQueryPlanningService = mock(MultilingualQueryPlanningService.class);
+        PrimarySearchQueryBuilder primarySearchQueryBuilder = mock(PrimarySearchQueryBuilder.class);
+
+        ApiProperties properties = createApiProperties(50);
+        ObjectMapper mapper = new ObjectMapper();
+        List<String> chinaUrls = numberedUrls("https://example.com/china-", 25);
+        List<String> familyUrls = numberedUrls("https://example.com/family-", 25);
+        List<String> expectedChinaUrls = chinaUrls.subList(0, 20);
+        List<String> expectedFamilyUrls = familyUrls.subList(0, 20);
+
+        when(multilingualQueryPlanningService.planSectionQueries(any(), eq("china_related_statements"), anyList()))
+                .thenReturn(List.of(new com.example.face2info.entity.internal.SearchQueryTask()
+                        .setLanguageCode("zh")
+                        .setQueryText("黄仁勋 涉华言论")
+                        .setQueryKind("section_base")
+                        .setSourceReason("round_zh")
+                        .setPriority(1)));
+        when(multilingualQueryPlanningService.planSectionQueries(any(), eq("family"), anyList()))
+                .thenReturn(List.of(new com.example.face2info.entity.internal.SearchQueryTask()
+                        .setLanguageCode("zh")
+                        .setQueryText("黄仁勋 家庭背景")
+                        .setQueryKind("section_base")
+                        .setSourceReason("round_zh")
+                        .setPriority(1)));
+        when(multilingualQueryPlanningService.planExpansionQueries(any(), anyString(), anyList())).thenReturn(List.of());
+        when(primarySearchQueryBuilder.buildSectionQueries(anyString(), any(), any(), anyString())).thenReturn(List.of());
+        when(googleSearchClient.googleSearch("黄仁勋 涉华言论"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree(searchResponseJson(chinaUrls))));
+        when(googleSearchClient.googleSearch("黄仁勋 家庭背景"))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree(searchResponseJson(familyUrls))));
+        when(jinaReaderClient.readPages(anyList())).thenAnswer(invocation -> pagesFor(invocation.getArgument(0)));
+        when(summaryGenerationClient.summarizePage(eq("黄仁勋"), any(PageContent.class)))
+                .thenAnswer(invocation -> {
+                    PageContent page = invocation.getArgument(1);
+                    return new PageSummary()
+                            .setSourceUrl(page.getUrl())
+                            .setTitle(page.getTitle())
+                            .setSummary(page.getContent());
+                });
+        when(summaryGenerationClient.expandTopicQueriesFromPageSummaries(anyString(), anyString(), anyList()))
+                .thenReturn(new TopicExpansionDecision().setShouldExpand(false).setExpansionQueries(List.of()));
+        when(summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(
+                eq("黄仁勋"),
+                eq("china_related_statements"),
+                argThat(summaries -> summaries != null && summaries.size() == 20)))
+                .thenReturn(new SectionedSummary().setSections(List.of(
+                        new SectionSummaryItem().setSection("涉华言论").setSummary("涉华主题读取 20 篇。")
+                )));
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries(
+                eq("黄仁勋"),
+                eq("family"),
+                argThat(summaries -> summaries != null && summaries.size() == 20)))
+                .thenReturn("家庭主题读取 20 篇。");
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                null,
+                executor,
+                properties,
+                mock(DerivedTopicQueryService.class),
+                (resolvedName, profile) -> new SearchLanguageProfile()
+                        .setResolvedName(resolvedName)
+                        .setLanguageCodes(List.of("zh"))
+                        .setLocalizedNames(Map.of("zh", resolvedName)),
+                multilingualQueryPlanningService,
+                mock(DigitalFootprintQueryBuilder.class),
+                primarySearchQueryBuilder
+        );
+
+        String chinaSummary = service.summarizeSection("黄仁勋", "china_related_statements", "黄仁勋 涉华言论");
+        String familySummary = service.summarizeSection("黄仁勋", "family", "黄仁勋 家庭背景");
+
+        assertThat(chinaSummary).contains("涉华主题读取 20 篇");
+        assertThat(familySummary).isEqualTo("家庭主题读取 20 篇。");
+        verify(jinaReaderClient).readPages(expectedChinaUrls);
+        verify(jinaReaderClient).readPages(expectedFamilyUrls);
     }
 
     @Test
@@ -1964,6 +2304,40 @@ class InformationAggregationServiceImplTest {
         properties.getApi().getQueryRewrite().setExpandMaxQueryCount(4);
         properties.getApi().getQueryRewrite().setExpandMaxTermLength(16);
         return properties;
+    }
+
+    private List<String> numberedUrls(String prefix, int count) {
+        List<String> urls = new ArrayList<>();
+        for (int index = 1; index <= count; index++) {
+            urls.add(prefix + index);
+        }
+        return urls;
+    }
+
+    private String searchResponseJson(List<String> urls) {
+        StringBuilder builder = new StringBuilder("{\"organic\":[");
+        for (int index = 0; index < urls.size(); index++) {
+            if (index > 0) {
+                builder.append(',');
+            }
+            builder.append("{\"title\":\"Article ")
+                    .append(index + 1)
+                    .append("\",\"link\":\"")
+                    .append(urls.get(index))
+                    .append("\",\"snippet\":\"snippet ")
+                    .append(index + 1)
+                    .append("\"}");
+        }
+        return builder.append("]}").toString();
+    }
+
+    private List<PageContent> pagesFor(List<String> urls) {
+        return urls.stream()
+                .map(url -> new PageContent()
+                        .setUrl(url)
+                        .setTitle("Article " + url)
+                        .setContent("content " + url))
+                .toList();
     }
 
     private InformationAggregationServiceImpl serviceWithBuilder(GoogleSearchClient googleSearchClient,

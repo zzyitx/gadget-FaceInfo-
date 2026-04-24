@@ -28,6 +28,7 @@ import com.example.face2info.entity.internal.TopicExpansionDecision;
 import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.entity.internal.TopicQueryDecision;
 import com.example.face2info.entity.internal.WebEvidence;
+import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.service.DerivedTopicQueryService;
@@ -53,6 +54,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -138,6 +140,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
     private static final int CONTACT_INFORMATION_QUERY_LIMIT = 10;
     private static final int SOCIAL_ACCOUNT_QUERY_LIMIT = 12;
+    private static final int SECTION_TOPIC_MAX_PAGE_READS = 20;
 
     @SuppressWarnings("unused")
     private final GoogleSearchClient googleSearchClient;
@@ -297,6 +300,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         );
         profile = enrichedProfile.profile();
         profile = enrichProfileSectionsByResolvedName(profile, resolvedName, languageProfile);
+        appendArticleMatchSources(profile, evidence.getArticleImageMatches());
         resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
@@ -469,6 +473,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setOfficialWebsite(cleanText(profile.getOfficialWebsite()))
                 .setTags(profile.getTags() == null ? List.of() : profile.getTags())
                 .setArticleSources(profile.getArticleSources())
+                .setTotalArticlesRead(profile.getTotalArticlesRead())
+                .setFinalArticlesUsed(profile.getFinalArticlesUsed())
                 .setBasicInfo(profile.getBasicInfo())
                 .setEvidenceUrls(profile.getEvidenceUrls());
     }
@@ -873,11 +879,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 extractQueryTerms(languageProfile, resolvedName, baseQueries)
         );
         Set<String> seenUrls = new LinkedHashSet<>();
+        SectionTopicReadBudget readBudget = new SectionTopicReadBudget(SECTION_TOPIC_MAX_PAGE_READS);
         List<PageSummary> firstRound = collectPageSummariesForTasks(
                 resolvedName,
                 sectionType,
                 firstRoundTasks,
-                seenUrls
+                seenUrls,
+                readBudget
         );
         if (CONTACT_INFORMATION_SECTION.equals(sectionType)) {
             firstRound = mergePageSummaries(
@@ -891,7 +899,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                     .limit(CONTACT_INFORMATION_QUERY_LIMIT)
                                     .map(DigitalFootprintQuery::getQueryText)
                                     .toList(),
-                            seenUrls
+                            seenUrls,
+                            readBudget
                     )
             );
         }
@@ -912,7 +921,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                 .map(PageSummary::getSourceUrl)
                                 .filter(StringUtils::hasText)
                                 .map(this::normalizeDedupUrl)
-                                .collect(Collectors.toCollection(LinkedHashSet::new))
+                                .collect(Collectors.toCollection(LinkedHashSet::new)),
+                        readBudget
                 )
         );
         return new SectionSearchBundle(mergedPageSummaries, expansionQueries);
@@ -950,19 +960,24 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private List<PageSummary> collectPageSummariesForQueries(String resolvedName,
                                                              String sectionType,
                                                              List<String> queries,
-                                                             Set<String> seenUrls) {
+                                                             Set<String> seenUrls,
+                                                             SectionTopicReadBudget readBudget) {
         if (queries == null || queries.isEmpty()) {
             return List.of();
         }
         List<PageSummary> collected = new ArrayList<>();
         for (String query : queries) {
+            if (readBudget != null && readBudget.isExhausted()) {
+                break;
+            }
             try {
                 String finalQuery = resolveSectionQuery(resolvedName, sectionType, query);
                 collected.addAll(collectPageSummariesFromSearchResponse(
                         resolvedName,
                         sectionType,
                         googleSearchClient.googleSearch(finalQuery),
-                        seenUrls
+                        seenUrls,
+                        readBudget
                 ));
             } catch (RuntimeException ex) {
                 log.warn("section query failed resolvedName={} sectionType={} query={} error={}",
@@ -975,13 +990,17 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private List<PageSummary> collectPageSummariesForTasks(String resolvedName,
                                                            String sectionType,
                                                            List<SearchQueryTask> tasks,
-                                                           Set<String> seenUrls) {
+                                                           Set<String> seenUrls,
+                                                           SectionTopicReadBudget readBudget) {
         if (tasks == null || tasks.isEmpty()) {
             return List.of();
         }
         List<PageSummary> collected = new ArrayList<>();
         for (SerpApiResponse response : executeSearchTasks(tasks, resolvedName, sectionType)) {
-            collected.addAll(collectPageSummariesFromSearchResponse(resolvedName, sectionType, response, seenUrls));
+            if (readBudget != null && readBudget.isExhausted()) {
+                break;
+            }
+            collected.addAll(collectPageSummariesFromSearchResponse(resolvedName, sectionType, response, seenUrls, readBudget));
         }
         return collected;
     }
@@ -1215,9 +1234,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private List<PageSummary> collectPageSummariesFromSearchResponse(String resolvedName,
                                                                      String sectionType,
                                                                      SerpApiResponse searchResponse,
-                                                                     Set<String> seenUrls) {
+                                                                     Set<String> seenUrls,
+                                                                     SectionTopicReadBudget readBudget) {
         try {
             if (searchResponse == null || searchResponse.getRoot() == null) {
+                return List.of();
+            }
+            if (readBudget != null && readBudget.isExhausted()) {
                 return List.of();
             }
             List<WebEvidence> evidences = extractSearchOrganicWebEvidence(searchResponse.getRoot());
@@ -1231,9 +1254,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             if (filtered.isEmpty()) {
                 return List.of();
             }
-            List<String> urls = selectTopUrls(filtered);
+            int maxPageReads = readBudget == null ? Math.max(1, properties.getApi().getJina().getMaxPageReads()) : readBudget.remaining();
+            List<String> urls = selectTopUrls(filtered, maxPageReads);
             if (urls.isEmpty()) {
                 return List.of();
+            }
+            if (readBudget != null) {
+                readBudget.consume(urls.size());
             }
             List<PageContent> pages = List.of();
             try {
@@ -1873,7 +1900,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
 
         return new ResolvedPersonProfile()
-                .setResolvedName(firstNonBlankText(secondaryProfile.getResolvedName(), baseProfile.getResolvedName()))
+                .setResolvedName(firstNonBlankText(baseProfile.getResolvedName(), secondaryProfile.getResolvedName()))
                 .setDescription(firstNonBlankText(secondaryProfile.getDescription(), baseProfile.getDescription()))
                 .setSummary(firstNonBlankText(secondaryProfile.getSummary(), baseProfile.getSummary()))
                 .setSummaryParagraphs(pickParagraphs(secondaryProfile.getSummaryParagraphs(), baseProfile.getSummaryParagraphs()))
@@ -1908,6 +1935,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 .setTags(pickList(secondaryProfile.getTags(), baseProfile.getTags()))
                 .setKeyFacts(pickList(secondaryProfile.getKeyFacts(), baseProfile.getKeyFacts()))
                 .setArticleSources(pickArticleSources(secondaryProfile.getArticleSources(), baseProfile.getArticleSources()))
+                .setTotalArticlesRead(firstNonNull(secondaryProfile.getTotalArticlesRead(), baseProfile.getTotalArticlesRead()))
+                .setFinalArticlesUsed(firstNonNull(secondaryProfile.getFinalArticlesUsed(), baseProfile.getFinalArticlesUsed()))
                 .setBasicInfo(mergeBasicInfo(baseProfile.getBasicInfo(), secondaryProfile.getBasicInfo()))
                 .setEvidenceUrls(mergeEvidenceUrls(baseProfile.getEvidenceUrls(), secondaryProfile.getEvidenceUrls()));
     }
@@ -1980,6 +2009,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
         }
         profile.setArticleSources(articleSources);
+        profile.setTotalArticlesRead(pageSummaries == null ? 0 : pageSummaries.size());
+        profile.setFinalArticlesUsed(countReferencedArticles(profile));
         profile.setSummaryParagraphs(enrichParagraphs(profile.getSummaryParagraphs(), summariesByUrl, articleSources));
         profile.setEducationSummaryParagraphs(enrichParagraphs(profile.getEducationSummaryParagraphs(), summariesByUrl, articleSources));
         profile.setFamilyBackgroundSummaryParagraphs(enrichParagraphs(profile.getFamilyBackgroundSummaryParagraphs(), summariesByUrl, articleSources));
@@ -2035,6 +2066,89 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     .setSources(directSources));
         }
         return enriched;
+    }
+
+    private void appendArticleMatchSources(ResolvedPersonProfile profile, List<ImageMatch> articleImageMatches) {
+        if (profile == null || articleImageMatches == null || articleImageMatches.isEmpty()) {
+            return;
+        }
+        Map<String, ArticleCitation> merged = new LinkedHashMap<>();
+        mergeArticleSourcesInto(merged, profile.getArticleSources());
+        int nextId = nextArticleSourceId(merged.values());
+        for (ImageMatch articleImageMatch : articleImageMatches) {
+            if (articleImageMatch == null) {
+                continue;
+            }
+            String key = articleKey(articleImageMatch.getLink(), articleImageMatch.getTitle());
+            if (!StringUtils.hasText(key) || merged.containsKey(key)) {
+                continue;
+            }
+            merged.put(key, new ArticleCitation()
+                    .setId(nextId++)
+                    .setTitle(firstNonBlankText(articleImageMatch.getTitle(), articleImageMatch.getLink(), "来源文章"))
+                    .setUrl(articleImageMatch.getLink())
+                    .setSource(firstNonBlankText(articleImageMatch.getSource(), extractHostLabel(articleImageMatch.getLink()))));
+        }
+        profile.setArticleSources(new ArrayList<>(merged.values()));
+        if (profile.getFinalArticlesUsed() == null) {
+            profile.setFinalArticlesUsed(countReferencedArticles(profile));
+        }
+    }
+
+    private int nextArticleSourceId(Iterable<ArticleCitation> articleSources) {
+        int nextId = 1;
+        if (articleSources == null) {
+            return nextId;
+        }
+        for (ArticleCitation articleSource : articleSources) {
+            if (articleSource == null || articleSource.getId() == null) {
+                continue;
+            }
+            nextId = Math.max(nextId, articleSource.getId() + 1);
+        }
+        return nextId;
+    }
+
+    private int countReferencedArticles(ResolvedPersonProfile profile) {
+        if (profile == null) {
+            return 0;
+        }
+        Set<Integer> referencedIds = new LinkedHashSet<>();
+        for (List<ParagraphSummaryItem> paragraphs : allProfileParagraphGroups(profile)) {
+            if (paragraphs == null) {
+                continue;
+            }
+            for (ParagraphSummaryItem paragraph : paragraphs) {
+                if (paragraph == null) {
+                    continue;
+                }
+                if (paragraph.getSourceIds() != null) {
+                    paragraph.getSourceIds().stream()
+                            .filter(Objects::nonNull)
+                            .filter(id -> id > 0)
+                            .forEach(referencedIds::add);
+                }
+                extractCitationIds(paragraph.getText()).stream()
+                        .filter(Objects::nonNull)
+                        .filter(id -> id > 0)
+                        .forEach(referencedIds::add);
+            }
+        }
+        return referencedIds.size();
+    }
+
+    private List<List<ParagraphSummaryItem>> allProfileParagraphGroups(ResolvedPersonProfile profile) {
+        return List.of(
+                profile.getSummaryParagraphs(),
+                profile.getEducationSummaryParagraphs(),
+                profile.getFamilyBackgroundSummaryParagraphs(),
+                profile.getCareerSummaryParagraphs(),
+                profile.getChinaRelatedStatementsSummaryParagraphs(),
+                profile.getPoliticalTendencySummaryParagraphs(),
+                profile.getContactInformationSummaryParagraphs(),
+                profile.getFamilyMemberSituationSummaryParagraphs(),
+                profile.getMisconductSummaryParagraphs()
+        );
     }
 
     private void mergeArticleSourcesInto(Map<String, ArticleCitation> target, List<ArticleCitation> articleSources) {
@@ -2130,6 +2244,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return articleKey(articleCitation.getUrl(), articleCitation.getTitle());
     }
 
+    private <T> T firstNonNull(T preferred, T fallback) {
+        return preferred != null ? preferred : fallback;
+    }
+
     private String firstNonBlankText(String... values) {
         if (values == null) {
             return null;
@@ -2173,21 +2291,46 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private List<String> selectTopUrls(List<WebEvidence> evidences) {
+        return selectTopUrls(evidences, properties.getApi().getJina().getMaxPageReads());
+    }
+
+    private List<String> selectTopUrls(List<WebEvidence> evidences, int maxPageReads) {
         if (evidences == null || evidences.isEmpty()) {
             return List.of();
         }
-        int maxPageReads = Math.max(1, properties.getApi().getJina().getMaxPageReads());
+        int maxReads = Math.max(1, maxPageReads);
         Set<String> urls = new LinkedHashSet<>();
         evidences.stream()
                 .filter(item -> StringUtils.hasText(item.getUrl()))
                 // 在读正文之前先过滤明显非文章类链接，避免浪费 Jina 和 LLM 配额。
                 .filter(item -> !shouldSkipSummaryUrl(item.getUrl()))
                 .forEach(item -> {
-                    if (urls.size() < maxPageReads) {
+                    if (urls.size() < maxReads) {
                         urls.add(item.getUrl());
                     }
                 });
         return new ArrayList<>(urls);
+    }
+
+    private static final class SectionTopicReadBudget {
+
+        private int remaining;
+
+        private SectionTopicReadBudget(int maxReads) {
+            this.remaining = Math.max(0, maxReads);
+        }
+
+        private int remaining() {
+            return remaining;
+        }
+
+        private boolean isExhausted() {
+            return remaining <= 0;
+        }
+
+        private void consume(int count) {
+            remaining = Math.max(0, remaining - Math.max(0, count));
+        }
     }
 
     private List<PageContent> buildFallbackPages(List<WebEvidence> evidences, List<String> selectedUrls) {
@@ -2527,13 +2670,26 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             warnings.add(JUDGEMENT_WARNING);
             return profile;
         }
-        if (!StringUtils.hasText(judged.getResolvedName()) && StringUtils.hasText(profile.getResolvedName())) {
+        if (StringUtils.hasText(profile.getResolvedName())
+                && (!StringUtils.hasText(judged.getResolvedName()) || isStableResolvedName(profile.getResolvedName()))) {
             judged.setResolvedName(profile.getResolvedName());
         }
         if ((judged.getEvidenceUrls() == null || judged.getEvidenceUrls().isEmpty()) && profile.getEvidenceUrls() != null) {
             judged.setEvidenceUrls(profile.getEvidenceUrls());
         }
         return judged;
+    }
+
+    private boolean isStableResolvedName(String resolvedName) {
+        if (!StringUtils.hasText(resolvedName)) {
+            return false;
+        }
+        String normalized = resolvedName.trim().toLowerCase(Locale.ROOT);
+        return !normalized.contains("uncertain")
+                && !normalized.contains("unknown")
+                && !normalized.contains("不确定")
+                && !normalized.contains("未知")
+                && !normalized.contains("无法确定");
     }
 
     private ResolvedPersonProfile applyComprehensiveJudgementWithSingleProvider(String fallbackName,

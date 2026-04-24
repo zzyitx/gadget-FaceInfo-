@@ -142,6 +142,7 @@ class StaticPageTest {
                 .andExpect(content().string(containsString("article_sources: Array.isArray(data.person.article_sources)")))
                 .andExpect(content().string(containsString("renderArticleSources(summarySourceArticles, allSortedMatches)")))
                 .andExpect(content().string(containsString("buildCitationArticles")))
+                .andExpect(content().string(not(containsString("mergeArticleSources("))))
                 .andExpect(content().string(containsString("thumbnail_url")))
                 .andExpect(content().string(containsString("similarity_score")))
                 .andExpect(content().string(containsString("aggregated_count")))
