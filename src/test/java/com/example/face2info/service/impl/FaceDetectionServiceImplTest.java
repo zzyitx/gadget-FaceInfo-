@@ -22,6 +22,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -128,6 +129,29 @@ class FaceDetectionServiceImplTest {
 
         assertThatThrownBy(() -> service.getSelectedFaceCrop(stored.getDetectionId(), stored.getFaces().get(0).getFaceId()))
                 .isInstanceOf(FaceDetectionException.class);
+    }
+
+    @Test
+    void shouldSkipExternalDetectionClientsWhenComprefaceDisabled() throws IOException {
+        CompreFaceDetectionClient compreFaceClient = mock(CompreFaceDetectionClient.class);
+        MockMultipartFile image = createImage("group.jpg");
+        PreparedImageResult preparedImageResult = new PreparedImageResult()
+                .setOriginalImage(image)
+                .setWorkingImage(image)
+                .setUploadedImageUrl("https://tempfile.org/original/preview");
+
+        ApiProperties properties = createProperties();
+        properties.getApi().getCompreface().setEnabled(false);
+        FaceDetectionServiceImpl service = new FaceDetectionServiceImpl(compreFaceClient, properties);
+        DetectionSession stored = service.detect(preparedImageResult);
+
+        assertThat(stored.getDetectionId()).isNotBlank();
+        assertThat(stored.getUploadedImageUrl()).isEqualTo("https://tempfile.org/original/preview");
+        assertThat(stored.getExpiresAt()).isNotNull();
+        assertThat(stored.getFaces()).hasSize(1);
+        assertThat(stored.getFaces().get(0).getConfidence()).isEqualTo(1.0D);
+        assertThat(stored.getFaces().get(0).getSelectedFaceCrop().getBytes()).isEqualTo(image.getBytes());
+        verify(compreFaceClient, never()).detect(image);
     }
 
     private ApiProperties createProperties() {

@@ -1,6 +1,7 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.client.CompreFaceVerificationClient;
+import com.example.face2info.config.ApiProperties;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ImageSimilarityServiceImplTest {
@@ -54,6 +57,19 @@ class ImageSimilarityServiceImplTest {
         double score = service.score(createImage(), candidateUrl, 12.0D);
 
         assertThat(score).isEqualTo(12.0D);
+    }
+
+    @Test
+    void shouldReturnFallbackWithoutDownloadingCandidateWhenComprefaceDisabled() throws Exception {
+        CompreFaceVerificationClient verificationClient = mock(CompreFaceVerificationClient.class);
+        ApiProperties properties = new ApiProperties();
+        properties.getApi().getCompreface().setEnabled(false);
+        ImageSimilarityServiceImpl service = new ImageSimilarityServiceImpl(verificationClient, properties);
+
+        double score = service.score(createImage(), "http://127.0.0.1:1/candidate.png", 12.0D);
+
+        assertThat(score).isEqualTo(12.0D);
+        verify(verificationClient, never()).verify(any(), any(), anyString());
     }
 
     private MockMultipartFile createImage() throws IOException {

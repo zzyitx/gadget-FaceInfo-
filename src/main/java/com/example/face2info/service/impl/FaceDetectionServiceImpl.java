@@ -69,7 +69,7 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
         if (preparedImageResult == null || preparedImageResult.getWorkingImage() == null) {
             throw new FaceDetectionException("检测输入不能为空");
         }
-        DetectionSession session = buildSession(preparedImageResult.getWorkingImage());
+        DetectionSession session = detectWithConfiguredClient(preparedImageResult.getWorkingImage());
         session.setUploadedImageUrl(preparedImageResult.getUploadedImageUrl());
         session.setEnhancementApplied(preparedImageResult.isEnhancementApplied());
         session.setEnhancementWarning(preparedImageResult.getWarning());
@@ -104,7 +104,7 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
         // 检测前先清理过期会话，避免内存会话长期堆积。
         purgeExpiredSessions();
         EnhancedImageResult enhancedImageResult = enhanceImageSafely(image);
-        DetectionSession session = buildSession(enhancedImageResult.imageForDetection());
+        DetectionSession session = detectWithConfiguredClient(enhancedImageResult.imageForDetection());
         if (StringUtils.hasText(enhancedImageResult.enhancedImageUrl())) {
             session.setEnhancedImageUrl(enhancedImageResult.enhancedImageUrl());
         }
@@ -165,6 +165,60 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
         } catch (IOException ex) {
             throw new FaceDetectionException("构建检测会话失败。", ex);
         }
+    }
+
+    private DetectionSession detectWithConfiguredClient(MultipartFile image) {
+        DetectionSession session = isComprefaceEnabled()
+                ? buildSession(image)
+                : detectWithoutCompreface(image);
+        if (session == null || session.getFaces() == null || session.getFaces().isEmpty()) {
+            throw new FaceDetectionException(MISSING_DETECTION_RESULT_ERROR);
+        }
+        return session;
+    }
+
+    private DetectionSession detectWithoutCompreface(MultipartFile image) {
+        try {
+            // 本地禁用 CompreFace 时仍复用后续选脸流程，把整张图作为唯一候选脸。
+            String detectionId = UUID.randomUUID().toString();
+            BufferedImage source = ImageIO.read(new ByteArrayInputStream(image.getBytes()));
+            FaceBoundingBox boundingBox = source == null
+                    ? new FaceBoundingBox().setX(0).setY(0).setWidth(0).setHeight(0)
+                    : new FaceBoundingBox().setX(0).setY(0).setWidth(source.getWidth()).setHeight(source.getHeight());
+            SelectedFaceCrop crop = new SelectedFaceCrop()
+                    .setFilename(resolveBypassFilename(image))
+                    .setContentType(resolveContentType(image))
+                    .setBytes(image.getBytes());
+            DetectedFace face = new DetectedFace()
+                    .setFaceId(detectionId + "-face-1")
+                    .setConfidence(1.0D)
+                    .setFaceBoundingBox(boundingBox)
+                    .setSelectedFaceCrop(crop);
+            return new DetectionSession()
+                    .setDetectionId(detectionId)
+                    .setPreviewImage(toDataUrl(image, image.getContentType()))
+                    .setFaces(List.of(face));
+        } catch (IOException ex) {
+            throw new FaceDetectionException("跳过人脸检测时构建会话失败。", ex);
+        }
+    }
+
+    private boolean isComprefaceEnabled() {
+        return properties == null
+                || properties.getApi() == null
+                || properties.getApi().getCompreface() == null
+                || properties.getApi().getCompreface().isEnabled();
+    }
+
+    private String resolveContentType(MultipartFile image) {
+        return StringUtils.hasText(image.getContentType()) ? image.getContentType() : "image/jpeg";
+    }
+
+    private String resolveBypassFilename(MultipartFile image) {
+        if (StringUtils.hasText(image.getOriginalFilename())) {
+            return image.getOriginalFilename();
+        }
+        return "face-detection-skipped.jpg";
     }
 
     private FaceBoundingBox normalizeBoundingBox(FaceBoundingBox sourceBox, BufferedImage image) {

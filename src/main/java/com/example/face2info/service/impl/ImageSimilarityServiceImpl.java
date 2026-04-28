@@ -1,8 +1,10 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.client.CompreFaceVerificationClient;
+import com.example.face2info.config.ApiProperties;
 import com.example.face2info.service.ImageSimilarityService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -20,14 +22,26 @@ public class ImageSimilarityServiceImpl implements ImageSimilarityService {
     private static final int CONNECT_TIMEOUT_MS = 4000;
     private static final int READ_TIMEOUT_MS = 4000;
     private final CompreFaceVerificationClient compreFaceVerificationClient;
+    private final ApiProperties properties;
 
-    public ImageSimilarityServiceImpl(CompreFaceVerificationClient compreFaceVerificationClient) {
+    @Autowired
+    public ImageSimilarityServiceImpl(CompreFaceVerificationClient compreFaceVerificationClient,
+                                      ApiProperties properties) {
         this.compreFaceVerificationClient = compreFaceVerificationClient;
+        this.properties = properties;
+    }
+
+    ImageSimilarityServiceImpl(CompreFaceVerificationClient compreFaceVerificationClient) {
+        this(compreFaceVerificationClient, new ApiProperties());
     }
 
     @Override
     public double score(MultipartFile originalImage, String candidateImageUrl, double fallbackScore) {
         if (!StringUtils.hasText(candidateImageUrl) || originalImage == null || originalImage.isEmpty()) {
+            return fallbackScore;
+        }
+        if (!isComprefaceEnabled()) {
+            log.debug("CompreFace verification 已禁用，使用回退相似度分数。");
             return fallbackScore;
         }
         try {
@@ -70,5 +84,12 @@ public class ImageSimilarityServiceImpl implements ImageSimilarityService {
 
     private double round(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private boolean isComprefaceEnabled() {
+        return properties == null
+                || properties.getApi() == null
+                || properties.getApi().getCompreface() == null
+                || properties.getApi().getCompreface().isEnabled();
     }
 }

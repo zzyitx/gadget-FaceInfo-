@@ -35,7 +35,7 @@ public class FaceEnhanceProperties {
     @Setter
     public static class Gfpgan {
         private String projectPath = "D:/ideaProject/GFPGAN";
-        private String pythonCommand = "python";
+        private String pythonCommand = "D:/ideaProject/GFPGAN/.venv/Scripts/python.exe";
         private String scriptPath = "inference_gfpgan.py";
         // 与当前可运行命令保持一致，默认使用项目确认可用的 1.3 模型。
         private String modelVersion = "1.3";
