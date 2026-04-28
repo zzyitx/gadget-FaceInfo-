@@ -14,6 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ApiProperties {
 
     private Api api = new Api();
+    private SearchTemplateProperties search = new SearchTemplateProperties();
     private Async async = new Async();
 
     /**
@@ -30,7 +31,6 @@ public class ApiProperties {
         private DeepSeekApiProperties deepseek = new DeepSeekApiProperties();
         private RealtimeTranslationApiProperties realtimeTranslation = new RealtimeTranslationApiProperties();
         private SummaryApiProperties summary = new SummaryApiProperties();
-        private QueryRewriteProperties queryRewrite = new QueryRewriteProperties();
         private FaceCheckApiProperties facecheck = new FaceCheckApiProperties();
         private CompreFaceProperties compreface = new CompreFaceProperties();
         private FaceDetectionProperties faceDetection = new FaceDetectionProperties();

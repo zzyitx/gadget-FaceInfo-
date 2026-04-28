@@ -2,10 +2,13 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
+import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SearchLanguageProfile;
 import com.example.face2info.service.PrimarySearchQueryBuilder;
+import com.example.face2info.service.SearchTemplateQueryBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -81,11 +84,21 @@ public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder 
 
     private final DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient;
     private final SummaryGenerationClient summaryGenerationClient;
+    private final SearchTemplateQueryBuilder searchTemplateQueryBuilder;
+
+    @Autowired
+    public PrimarySearchQueryBuilderImpl(@Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                         SummaryGenerationClient summaryGenerationClient,
+                                         SearchTemplateQueryBuilder searchTemplateQueryBuilder) {
+        this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
+        this.summaryGenerationClient = summaryGenerationClient;
+        this.searchTemplateQueryBuilder = searchTemplateQueryBuilder;
+    }
 
     public PrimarySearchQueryBuilderImpl(@Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                          SummaryGenerationClient summaryGenerationClient) {
-        this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
-        this.summaryGenerationClient = summaryGenerationClient;
+        this(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                new SearchTemplateQueryBuilderImpl(new ApiProperties()));
     }
 
     @Override
@@ -107,27 +120,15 @@ public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder 
                                        SearchLanguageProfile languageProfile,
                                        @Nullable ResolvedPersonProfile profile,
                                        String sectionType) {
-        List<String> deepSeekQueries = runModelSafely(
-                () -> deepSeekSummaryGenerationClient == null ? null
-                        : deepSeekSummaryGenerationClient.generatePrimarySearchQueries(resolvedName, languageProfile, profile, sectionType),
+        List<String> templateQueries = searchTemplateQueryBuilder.build(
+                sectionType,
                 resolvedName,
                 languageProfile,
                 profile,
-                sectionType
+                Map.of()
         );
-        if (!deepSeekQueries.isEmpty()) {
-            return deepSeekQueries;
-        }
-
-        List<String> kimiQueries = runModelSafely(
-                () -> summaryGenerationClient.generatePrimarySearchQueries(resolvedName, languageProfile, profile, sectionType),
-                resolvedName,
-                languageProfile,
-                profile,
-                sectionType
-        );
-        if (!kimiQueries.isEmpty()) {
-            return kimiQueries;
+        if (!templateQueries.isEmpty()) {
+            return templateQueries;
         }
 
         return fallbackQueries(resolvedName, languageProfile, profile, sectionType);

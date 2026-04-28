@@ -14,26 +14,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class PrimarySearchQueryBuilderImplTest {
 
     @Test
-    void shouldReturnValidatedSecondaryQueriesFromDeepSeek() {
+    void shouldReturnSecondaryQueriesFromConfiguredTemplatesWithoutCallingModels() {
         DeepSeekSummaryGenerationClient deepSeek = mock(DeepSeekSummaryGenerationClient.class);
         SummaryGenerationClient kimi = mock(SummaryGenerationClient.class);
-
-        when(deepSeek.generatePrimarySearchQueries(anyString(), any(), any(), anyString()))
-                .thenReturn("""
-                        尼古拉斯·伯恩斯 驻华大使
-                        尼古拉斯·伯恩斯 驻华大使 涉华言论
-                        尼古拉斯·伯恩斯 驻华大使 政策表态
-                        尼古拉斯·伯恩斯 驻华大使 对华策略
-                        Nicholas Burns Ambassador China policy
-                        尼古拉斯·伯恩斯 驻华大使 演讲 PDF
-                        尼古拉斯·伯恩斯 驻华大使 争议 采访
-                        """);
 
         List<String> queries = builder(deepSeek, kimi).buildSecondaryProfileQueries(
                 "伯恩斯",
@@ -42,41 +31,18 @@ class PrimarySearchQueryBuilderImplTest {
         );
 
         assertThat(queries).containsExactly(
-                "尼古拉斯·伯恩斯 驻华大使",
-                "尼古拉斯·伯恩斯 驻华大使 涉华言论",
-                "尼古拉斯·伯恩斯 驻华大使 政策表态",
-                "尼古拉斯·伯恩斯 驻华大使 对华策略",
-                "Nicholas Burns Ambassador China policy",
-                "尼古拉斯·伯恩斯 驻华大使 演讲 PDF",
-                "尼古拉斯·伯恩斯 驻华大使 争议 采访"
+                "Nicholas Burns",
+                "Nicholas Burns biography",
+                "Nicholas Burns official profile",
+                "尼古拉斯·伯恩斯 人物简介"
         );
+        verifyNoInteractions(deepSeek, kimi);
     }
 
     @Test
-    void shouldFallbackToKimiWhenDeepSeekOutputViolatesIdentityRule() {
+    void shouldReturnSectionQueriesFromConfiguredTemplatesWithoutCallingModels() {
         DeepSeekSummaryGenerationClient deepSeek = mock(DeepSeekSummaryGenerationClient.class);
         SummaryGenerationClient kimi = mock(SummaryGenerationClient.class);
-
-        when(deepSeek.generatePrimarySearchQueries(anyString(), any(), any(), anyString()))
-                .thenReturn("""
-                        伯恩斯 涉华言论
-                        伯恩斯 政策表态
-                        伯恩斯 对华策略
-                        伯恩斯 威胁 采访
-                        Burns China policy
-                        Burns speech PDF
-                        Burns controversy interview
-                        """);
-        when(kimi.generatePrimarySearchQueries(anyString(), any(), any(), anyString()))
-                .thenReturn("""
-                        尼古拉斯·伯恩斯 驻华大使
-                        尼古拉斯·伯恩斯 驻华大使 涉华言论
-                        尼古拉斯·伯恩斯 驻华大使 政策表态
-                        尼古拉斯·伯恩斯 驻华大使 对华策略
-                        Nicholas Burns Ambassador China policy
-                        尼古拉斯·伯恩斯 驻华大使 演讲 PDF
-                        尼古拉斯·伯恩斯 驻华大使 争议 采访
-                        """);
 
         List<String> queries = builder(deepSeek, kimi).buildSectionQueries(
                 "伯恩斯",
@@ -86,38 +52,32 @@ class PrimarySearchQueryBuilderImplTest {
         );
 
         assertThat(queries).containsExactly(
-                "尼古拉斯·伯恩斯 驻华大使",
-                "尼古拉斯·伯恩斯 驻华大使 涉华言论",
-                "尼古拉斯·伯恩斯 驻华大使 政策表态",
-                "尼古拉斯·伯恩斯 驻华大使 对华策略",
-                "Nicholas Burns Ambassador China policy",
-                "尼古拉斯·伯恩斯 驻华大使 演讲 PDF",
-                "尼古拉斯·伯恩斯 驻华大使 争议 采访"
+                "尼古拉斯·伯恩斯 涉华言论",
+                "尼古拉斯·伯恩斯 中国评价",
+                "尼古拉斯·伯恩斯 中美关系",
+                "尼古拉斯·伯恩斯 中欧关系",
+                "Nicholas Burns China policy"
         );
-        verify(kimi).generatePrimarySearchQueries(anyString(), any(), any(), anyString());
+        verifyNoInteractions(deepSeek, kimi);
     }
 
     @Test
-    void shouldFallbackToTemplateQueriesWhenBothModelsFail() {
+    void shouldUseFallbackQueriesWhenNoTemplateExists() {
         DeepSeekSummaryGenerationClient deepSeek = mock(DeepSeekSummaryGenerationClient.class);
         SummaryGenerationClient kimi = mock(SummaryGenerationClient.class);
-
-        when(deepSeek.generatePrimarySearchQueries(anyString(), any(), any(), anyString()))
-                .thenThrow(new RuntimeException("deepseek failed"));
-        when(kimi.generatePrimarySearchQueries(anyString(), any(), any(), anyString()))
-                .thenThrow(new RuntimeException("kimi failed"));
 
         List<String> queries = builder(deepSeek, kimi).buildSectionQueries(
                 "伯恩斯",
                 languageProfile("尼古拉斯·伯恩斯", "Nicholas Burns"),
                 ambassadorProfile(),
-                "china_related_statements"
+                "unknown_section"
         );
 
         assertThat(queries).hasSize(7);
         assertThat(queries.get(0)).isEqualTo("尼古拉斯·伯恩斯 驻华大使");
-        assertThat(queries.get(4)).isEqualTo("Nicholas Burns Ambassador China policy");
+        assertThat(queries.get(4)).isEqualTo("Nicholas Burns Ambassador profile");
         assertThat(queries.stream().filter(query -> query.contains("驻华大使"))).hasSizeGreaterThanOrEqualTo(5);
+        verifyNoInteractions(deepSeek, kimi);
     }
 
     private PrimarySearchQueryBuilder builder(DeepSeekSummaryGenerationClient deepSeek,

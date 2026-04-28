@@ -806,7 +806,7 @@ class InformationAggregationServiceImplTest {
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
         ApiProperties properties = createApiProperties(null);
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().remove("family_member_situation");
+        properties.getSearch().getQueryTemplates().remove("family_member_situation");
 
         PageContent familyPage = new PageContent()
                 .setUrl("https://example.com/family")
@@ -964,10 +964,10 @@ class InformationAggregationServiceImplTest {
 
         ApiProperties properties = createApiProperties(null);
         properties.getApi().getSummary().setPageRoutingEnabled(false);
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("family", List.of("%s的家庭背景"));
-        List<String> expandEnabledTopics = new ArrayList<>(properties.getApi().getQueryRewrite().getExpandEnabledTopics());
+        properties.getSearch().getQueryTemplates().put("family", List.of("{name}的家庭背景"));
+        List<String> expandEnabledTopics = new ArrayList<>(properties.getSearch().getExpandEnabledTopics());
         expandEnabledTopics.add("family");
-        properties.getApi().getQueryRewrite().setExpandEnabledTopics(expandEnabledTopics);
+        properties.getSearch().setExpandEnabledTopics(expandEnabledTopics);
 
         PageContent basePage = new PageContent()
                 .setUrl("https://example.com/family-base")
@@ -1036,7 +1036,7 @@ class InformationAggregationServiceImplTest {
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
         ApiProperties properties = createApiProperties(null);
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("family_member_situation", List.of("%s 家庭成员"));
+        properties.getSearch().getQueryTemplates().put("family_member_situation", List.of("{native_name} 家庭成员"));
 
         PageContent familyPage = new PageContent()
                 .setUrl("https://example.com/family-member")
@@ -2262,47 +2262,47 @@ class InformationAggregationServiceImplTest {
         if (maxPageReads != null) {
             properties.getApi().getJina().setMaxPageReads(maxPageReads);
         }
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("china_related_statements", List.of(
-                "%s 涉华言论",
-                "%s 中国评价",
-                "%s 中美关系",
-                "%s 中欧关系"
+        properties.getSearch().getQueryTemplates().put("china_related_statements", List.of(
+                "{native_name} 涉华言论",
+                "{native_name} 中国评价",
+                "{native_name} 中美关系",
+                "{native_name} 中欧关系"
         ));
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("political_view", List.of(
-                "%s 政治倾向",
-                "%s 政党",
-                "%s 政治理念",
-                "%s 政策立场"
+        properties.getSearch().getQueryTemplates().put("political_view", List.of(
+                "{native_name} 政治倾向",
+                "{native_name} 政党",
+                "{native_name} 政治理念",
+                "{native_name} 政策立场"
         ));
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("contact_information", List.of(
-                "%s 公开通讯",
-                "%s 办公电话",
-                "%s 官方邮箱",
-                "%s 认证社交账号",
-                "%s 联系方式"
+        properties.getSearch().getQueryTemplates().put("contact_information", List.of(
+                "{native_name} 公开通讯",
+                "{native_name} 办公电话",
+                "{native_name} 官方邮箱",
+                "{native_name} 认证社交账号",
+                "{native_name} 联系方式"
         ));
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("family_member_situation", List.of(
-                "%s 家庭成员",
-                "%s 亲属",
-                "%s 经商",
-                "%s 在华投资",
-                "%s 商业纠纷"
+        properties.getSearch().getQueryTemplates().put("family_member_situation", List.of(
+                "{native_name} 家庭成员",
+                "{native_name} 亲属",
+                "{native_name} 经商",
+                "{native_name} 在华投资",
+                "{native_name} 商业纠纷"
         ));
-        properties.getApi().getQueryRewrite().getBaseQueryTemplates().put("misconduct", List.of(
-                "%s 违法记录",
-                "%s 行政处罚",
-                "%s 负面事件",
-                "%s 失信行为"
+        properties.getSearch().getQueryTemplates().put("misconduct", List.of(
+                "{native_name} 违法记录",
+                "{native_name} 行政处罚",
+                "{native_name} 负面事件",
+                "{native_name} 失信行为"
         ));
-        properties.getApi().getQueryRewrite().setExpandEnabledTopics(List.of(
+        properties.getSearch().setExpandEnabledTopics(List.of(
                 "china_related_statements",
                 "political_view",
                 "contact_information",
                 "family_member_situation",
                 "misconduct"
         ));
-        properties.getApi().getQueryRewrite().setExpandMaxQueryCount(4);
-        properties.getApi().getQueryRewrite().setExpandMaxTermLength(16);
+        properties.getSearch().setExpandMaxQueryCount(4);
+        properties.getSearch().setExpandMaxTermLength(16);
         return properties;
     }
 

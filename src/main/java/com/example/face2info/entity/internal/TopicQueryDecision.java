@@ -9,7 +9,6 @@ import java.util.List;
 public class TopicQueryDecision {
 
     private String finalQuery;
-    private TopicRewriteStrategy strategy = TopicRewriteStrategy.NORMALIZE;
     private boolean sensitive;
     private boolean usedFallback;
     private List<String> tokens = new ArrayList<>();
@@ -20,15 +19,6 @@ public class TopicQueryDecision {
 
     public TopicQueryDecision setFinalQuery(String finalQuery) {
         this.finalQuery = finalQuery;
-        return this;
-    }
-
-    public TopicRewriteStrategy getStrategy() {
-        return strategy;
-    }
-
-    public TopicQueryDecision setStrategy(TopicRewriteStrategy strategy) {
-        this.strategy = strategy;
         return this;
     }
 

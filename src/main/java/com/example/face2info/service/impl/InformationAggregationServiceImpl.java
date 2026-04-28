@@ -193,8 +193,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService(),
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
-                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient),
-                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(new ApiProperties())),
+                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(new ApiProperties())));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -207,8 +209,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService(),
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
-                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient),
-                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)),
+                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -220,8 +224,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 null, executor, properties, new PassThroughDerivedTopicQueryService(),
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
-                new DigitalFootprintQueryBuilderImpl(null, summaryGenerationClient),
-                new PrimarySearchQueryBuilderImpl(null, summaryGenerationClient));
+                new DigitalFootprintQueryBuilderImpl(null, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)),
+                new PrimarySearchQueryBuilderImpl(null, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -232,8 +238,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 null, executor, new ApiProperties(), new PassThroughDerivedTopicQueryService(),
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
-                new DigitalFootprintQueryBuilderImpl(null, summaryGenerationClient),
-                new PrimarySearchQueryBuilderImpl(null, summaryGenerationClient));
+                new DigitalFootprintQueryBuilderImpl(null, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(new ApiProperties())),
+                new PrimarySearchQueryBuilderImpl(null, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(new ApiProperties())));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -247,8 +255,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient), new MultilingualQueryPlanningServiceImpl(noopTranslationClient()),
-                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient),
-                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)),
+                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)));
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -262,8 +272,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, new PassThroughDerivedTopicQueryService(),
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient), multilingualQueryPlanningService,
-                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient),
-                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient));
+                new DigitalFootprintQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)),
+                new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                        new SearchTemplateQueryBuilderImpl(properties)));
     }
 
     @Override
@@ -934,12 +946,16 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
         // 关键逻辑：本地 application.yml 若遗漏拆分模板，仍需回退到内建基础查询词，
         // 否则派生主题会重新退回单条长 query，直接缩小搜索召回范围。
-        List<String> templates = properties.getApi().getQueryRewrite().resolveBaseQueryTemplates(sectionType);
+        List<String> templates = properties.getSearch().resolveQueryTemplates(sectionType);
         if (templates == null || templates.isEmpty()) {
             return List.of();
         }
         return templates.stream()
-                .map(template -> template == null ? null : template.formatted(resolvedName))
+                .map(template -> template == null ? null : template
+                        .replace("{name}", resolvedName)
+                        .replace("{native_name}", resolvedName)
+                        .replace("{english_name}", resolvedName))
+                .filter(template -> template == null || !template.matches(".*\\{[a-zA-Z_]+}.*"))
                 .filter(StringUtils::hasText)
                 .map(String::trim)
                 .distinct()
@@ -1364,7 +1380,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 || !StringUtils.hasText(sectionType)
                 || pageSummaries == null
                 || pageSummaries.isEmpty()
-                || !properties.getApi().getQueryRewrite().getExpandEnabledTopics().contains(sectionType)) {
+                || !properties.getSearch().getExpandEnabledTopics().contains(sectionType)) {
             return new TopicExpansionDecision().setShouldExpand(false).setExpansionQueries(List.of());
         }
         try {
@@ -1388,8 +1404,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (decision == null || !Boolean.TRUE.equals(decision.getShouldExpand()) || decision.getExpansionQueries() == null) {
             return List.of();
         }
-        int maxQueryCount = properties.getApi().getQueryRewrite().getExpandMaxQueryCount();
-        int maxTermLength = properties.getApi().getQueryRewrite().getExpandMaxTermLength();
+        int maxQueryCount = properties.getSearch().getExpandMaxQueryCount();
+        int maxTermLength = properties.getSearch().getExpandMaxTermLength();
         Map<String, TopicExpansionQuery> deduplicated = new LinkedHashMap<>();
         for (TopicExpansionQuery query : decision.getExpansionQueries()) {
             if (query == null || !StringUtils.hasText(query.getTerm())) {

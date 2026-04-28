@@ -2,10 +2,13 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
+import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.DigitalFootprintQuery;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SearchLanguageProfile;
 import com.example.face2info.service.DigitalFootprintQueryBuilder;
+import com.example.face2info.service.SearchTemplateQueryBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,34 +29,39 @@ public class DigitalFootprintQueryBuilderImpl implements DigitalFootprintQueryBu
 
     private final DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient;
     private final SummaryGenerationClient summaryGenerationClient;
+    private final SearchTemplateQueryBuilder searchTemplateQueryBuilder;
+
+    @Autowired
+    public DigitalFootprintQueryBuilderImpl(@Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                            SummaryGenerationClient summaryGenerationClient,
+                                            SearchTemplateQueryBuilder searchTemplateQueryBuilder) {
+        this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
+        this.summaryGenerationClient = summaryGenerationClient;
+        this.searchTemplateQueryBuilder = searchTemplateQueryBuilder;
+    }
 
     public DigitalFootprintQueryBuilderImpl(@Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
                                             SummaryGenerationClient summaryGenerationClient) {
-        this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
-        this.summaryGenerationClient = summaryGenerationClient;
+        this(deepSeekSummaryGenerationClient, summaryGenerationClient,
+                new SearchTemplateQueryBuilderImpl(new ApiProperties()));
     }
 
     @Override
     public List<DigitalFootprintQuery> build(String resolvedName, SearchLanguageProfile languageProfile) {
-        List<DigitalFootprintQuery> deepSeekQueries = runModelSafely(
-                () -> deepSeekSummaryGenerationClient == null ? null
-                        : deepSeekSummaryGenerationClient.generateDigitalFootprintQueries(resolvedName, languageProfile, null),
-                resolvedName,
-                languageProfile,
-                "deepseek"
-        );
-        if (!deepSeekQueries.isEmpty()) {
-            return deepSeekQueries;
+        if (!StringUtils.hasText(preferredQueryName(resolvedName, languageProfile))) {
+            return List.of();
         }
-
-        List<DigitalFootprintQuery> kimiQueries = runModelSafely(
-                () -> summaryGenerationClient.generateDigitalFootprintQueries(resolvedName, languageProfile, null),
-                resolvedName,
-                languageProfile,
-                "kimi"
-        );
-        if (!kimiQueries.isEmpty()) {
-            return kimiQueries;
+        List<DigitalFootprintQuery> templateQueries = searchTemplateQueryBuilder.build(
+                        "contact_information",
+                        resolvedName,
+                        languageProfile,
+                        null,
+                        Map.of()
+                ).stream()
+                .map(query -> toQuery(query, "configured_template", 1))
+                .toList();
+        if (!templateQueries.isEmpty()) {
+            return prioritize(templateQueries);
         }
 
         return fallbackQueries(resolvedName, languageProfile);
