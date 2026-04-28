@@ -69,8 +69,9 @@
 
 - `SERP_API_KEY`
 - `SERPER_API_KEY`
-- `JINA_API_KEY`
 - `KIMI_API_KEY`
+- `TEMPFILE_COOKIE`
+- `FACECHECK_API_KEY`
 - `SOPHNET_API_KEY`
 - `DEEPSEEK_MODEL`
 
@@ -107,14 +108,9 @@ face2info:
   api:
     compreface:
       base-url: http://127.0.0.1:8000
-      connect-timeout-ms: 5000
-      read-timeout-ms: 30000
-      session-ttl-seconds: 600
       detection:
-        api-key: ${COMPREFACE_DETECTION_API_KEY:}
         path: /api/v1/detection/detect
       verification:
-        api-key: ${COMPREFACE_VERIFICATION_API_KEY:}
         path: /api/v1/verification/verify
 ```
 
@@ -237,7 +233,7 @@ mvn clean verify
 - 关键配置位于 `face2info.api.face-enhance`
   - `provider=gfpgan`
   - `gfpgan.project-path` 指向本地 GFPGAN 项目目录，默认示例为 `D:/ideaProject/GFPGAN`
-  - `gfpgan.python-command` 用于指定 Python 可执行文件；如使用虚拟环境，可改为 `D:/ideaProject/GFPGAN/venv/Scripts/python.exe`
+  - `gfpgan.python-command` 用于指定 Python 可执行文件；默认使用 GFPGAN 项目虚拟环境 `D:/ideaProject/GFPGAN/.venv/Scripts/python.exe`
   - `gfpgan.model-version`、`gfpgan.upscale`、`gfpgan.output-extension` 分别对应官方脚本的 `-v`、`-s`、`--ext`
 - 按 GFPGAN 官方 README，首次使用前至少需要：
   - 在 GFPGAN 项目目录安装 `basicsr`、`facexlib` 和 `requirements.txt`
