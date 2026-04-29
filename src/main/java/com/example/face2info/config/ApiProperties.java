@@ -37,6 +37,7 @@ public class ApiProperties {
         private FaceEnhanceProperties faceEnhance = new FaceEnhanceProperties();
         private MinioProperties minio = new MinioProperties();
         private RedisCacheProperties redisCache = new RedisCacheProperties();
+        private MaigretProperties maigret = new MaigretProperties();
         private Proxy proxy = new Proxy();
 
     }

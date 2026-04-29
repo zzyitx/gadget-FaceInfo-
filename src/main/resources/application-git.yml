@@ -167,6 +167,17 @@ face2info:
       search-timeout-ms: 15000
       reset-prev-images: true
       demo: false
+    maigret:
+      enabled: ${MAIGRET_ENABLED:false}
+      executable: ${MAIGRET_EXECUTABLE:maigret}
+      command-prefix: []
+      top-sites: ${MAIGRET_TOP_SITES:200}
+      site-timeout-seconds: ${MAIGRET_SITE_TIMEOUT_SECONDS:10}
+      process-timeout-ms: ${MAIGRET_PROCESS_TIMEOUT_MS:60000}
+      max-usernames: ${MAIGRET_MAX_USERNAMES:3}
+      max-accounts-per-username: ${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}
+      no-recursion: true
+      no-autoupdate: true
     compreface:
       enabled: ${COMPREFACE_ENABLED:true}
       base-url: http://127.0.0.1:8000

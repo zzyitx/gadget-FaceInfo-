@@ -7,6 +7,7 @@ import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
+import com.example.face2info.entity.internal.WebEvidence;
 import org.springframework.lang.Nullable;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -74,5 +75,11 @@ public interface SummaryGenerationClient {
                                         SearchLanguageProfile languageProfile,
                                         @Nullable ResolvedPersonProfile profile,
                                         String sectionType);
-}
 
+    /**
+     * 从账号相关搜索结果中判断最可能属于目标人物的用户名候选。
+     */
+    default List<String> inferLikelySocialUsernames(String resolvedName, List<WebEvidence> evidences) {
+        return List.of();
+    }
+}
