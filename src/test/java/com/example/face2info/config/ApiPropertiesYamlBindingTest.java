@@ -58,6 +58,20 @@ class ApiPropertiesYamlBindingTest {
                 .isEqualTo("/api/v1/verification/verify");
     }
 
+    @Test
+    void shouldExposeMaigretStructureInApplicationGitYaml() {
+        Properties properties = loadApplicationGitProperties();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("face2info.api.maigret.enabled")).isEqualTo("${MAIGRET_ENABLED:false}");
+        assertThat(properties.getProperty("face2info.api.maigret.executable")).isEqualTo("${MAIGRET_EXECUTABLE:maigret}");
+        assertThat(properties.containsKey("face2info.api.maigret.command-prefix[0]")).isFalse();
+        assertThat(properties.getProperty("face2info.api.maigret.top-sites")).isEqualTo("${MAIGRET_TOP_SITES:200}");
+        assertThat(properties.getProperty("face2info.api.maigret.max-usernames")).isEqualTo("${MAIGRET_MAX_USERNAMES:3}");
+        assertThat(properties.getProperty("face2info.api.maigret.max-accounts-per-username"))
+                .isEqualTo("${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}");
+    }
+
     private Properties loadApplicationGitProperties() {
         YamlPropertiesFactoryBean factory = new YamlPropertiesFactoryBean();
         factory.setResources(new ClassPathResource("application-git.yml"));

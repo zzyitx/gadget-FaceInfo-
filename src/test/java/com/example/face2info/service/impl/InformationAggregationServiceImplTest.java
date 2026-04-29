@@ -2,10 +2,12 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
+import com.example.face2info.client.MaigretClient;
 import com.example.face2info.client.RealtimeTranslationClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
+import com.example.face2info.client.impl.NoopMaigretClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
@@ -2203,6 +2205,66 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldAppendMaigretSuspectedAccountsFromModelSelectedUsername() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+        MaigretClient maigretClient = mock(MaigretClient.class);
+
+        List<PageContent> pages = List.of(new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Jensen Huang is a tech executive"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        mockSummaryPipeline(summaryGenerationClient, "Jensen Huang", pages, new ResolvedPersonProfile()
+                .setResolvedName("Jensen Huang")
+                .setSummary("Jensen Huang is a tech executive."));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setRecommendedLanguages(List.of("en"))
+                        .setLocalizedNames(Map.of("en", "Jensen Huang"))
+                        .setConfidence(0.9));
+        when(summaryGenerationClient.inferLikelySocialUsernames(eq("Jensen Huang"), anyList()))
+                .thenReturn(List.of("nvidia"));
+        when(queryBuilder.build(eq("Jensen Huang"), any())).thenReturn(List.of());
+
+        ObjectMapper mapper = new ObjectMapper();
+        when(googleSearchClient.googleSearch(anyString()))
+                .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
+                        {"organic":[{"title":"Jensen Huang (@nvidia)","link":"https://x.com/nvidia","snippet":"official account username @nvidia"}]}
+                        """)));
+        when(maigretClient.findSuspectedAccounts("nvidia")).thenReturn(List.of(
+                new SocialAccount()
+                        .setPlatform("github")
+                        .setUrl("https://github.com/nvidia")
+                        .setUsername("nvidia")
+                        .setSource("maigret")
+                        .setSuspected(true)
+                        .setConfidence("suspected")
+        ));
+
+        AggregationResult result = serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                createApiProperties(null),
+                maigretClient
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jensen Huang"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getSocialAccounts())
+                .anySatisfy(account -> {
+                    assertThat(account.getSource()).isEqualTo("maigret");
+                    assertThat(account.getSuspected()).isTrue();
+                    assertThat(account.getUsername()).isEqualTo("nvidia");
+                });
+        verify(maigretClient).findSuspectedAccounts("nvidia");
+    }
+
+    @Test
     void shouldKeepAggregationFastWithoutStandaloneDetailAggregation() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -2345,6 +2407,16 @@ class InformationAggregationServiceImplTest {
                                                                  SummaryGenerationClient summaryGenerationClient,
                                                                  DigitalFootprintQueryBuilder queryBuilder,
                                                                  ApiProperties properties) {
+        return serviceWithBuilder(googleSearchClient, jinaReaderClient, summaryGenerationClient, queryBuilder,
+                properties, new NoopMaigretClient());
+    }
+
+    private InformationAggregationServiceImpl serviceWithBuilder(GoogleSearchClient googleSearchClient,
+                                                                 JinaReaderClient jinaReaderClient,
+                                                                 SummaryGenerationClient summaryGenerationClient,
+                                                                 DigitalFootprintQueryBuilder queryBuilder,
+                                                                 ApiProperties properties,
+                                                                 MaigretClient maigretClient) {
         return new InformationAggregationServiceImpl(
                 googleSearchClient,
                 mock(SerpApiClient.class),
@@ -2364,7 +2436,8 @@ class InformationAggregationServiceImplTest {
                 new SearchLanguageProfileServiceImpl(summaryGenerationClient),
                 new MultilingualQueryPlanningServiceImpl((query, targetLanguageCode) -> null),
                 queryBuilder,
-                mock(PrimarySearchQueryBuilder.class)
+                mock(PrimarySearchQueryBuilder.class),
+                maigretClient
         );
     }
 
