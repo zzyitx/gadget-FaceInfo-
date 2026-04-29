@@ -178,6 +178,19 @@ face2info:
       max-accounts-per-username: ${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}
       no-recursion: true
       no-autoupdate: true
+    sophnet-vision:
+      enabled: ${SOPHNET_VISION_ENABLED:false}
+      base-url: ${SOPHNET_VISION_API_BASE_URL:https://www.sophnet.com/api/open-apis/v1/chat/completions}
+      api-key: ${SOPHNET_API_KEY:}
+      models:
+        - ${SOPHNET_VISION_GROK_MODEL:grok-4-1-fast-non-reasoning}
+        - ${SOPHNET_VISION_GEMINI_MODEL:gemini-3.1-pro-preview}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 75000
+      max-retries: 2
+      backoff-initial-ms: 500
+      max-evidence-urls: 8
+      system-prompt: ${SOPHNET_VISION_SYSTEM_PROMPT:你是人物公开信息检索助手。必须基于用户提供的图片识别人物，并自行搜索公开来源后输出严格 JSON。}
     compreface:
       enabled: ${COMPREFACE_ENABLED:true}
       base-url: http://127.0.0.1:8000

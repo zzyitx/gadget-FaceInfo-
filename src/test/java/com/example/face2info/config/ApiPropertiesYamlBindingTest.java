@@ -72,6 +72,24 @@ class ApiPropertiesYamlBindingTest {
                 .isEqualTo("${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}");
     }
 
+    @Test
+    void shouldExposeSophnetVisionStructureInApplicationGitYaml() {
+        Properties properties = loadApplicationGitProperties();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.enabled"))
+                .isEqualTo("${SOPHNET_VISION_ENABLED:false}");
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.base-url"))
+                .isEqualTo("${SOPHNET_VISION_API_BASE_URL:https://www.sophnet.com/api/open-apis/v1/chat/completions}");
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.api-key"))
+                .isEqualTo("${SOPHNET_API_KEY:}");
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.models[0]"))
+                .isEqualTo("${SOPHNET_VISION_GROK_MODEL:grok-4-1-fast-non-reasoning}");
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.models[1]"))
+                .isEqualTo("${SOPHNET_VISION_GEMINI_MODEL:gemini-3.1-pro-preview}");
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.max-evidence-urls")).isEqualTo("8");
+    }
+
     private Properties loadApplicationGitProperties() {
         YamlPropertiesFactoryBean factory = new YamlPropertiesFactoryBean();
         factory.setResources(new ClassPathResource("application-git.yml"));

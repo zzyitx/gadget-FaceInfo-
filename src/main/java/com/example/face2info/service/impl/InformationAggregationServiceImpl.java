@@ -318,7 +318,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             profile = resolveProfileFromEvidence(
                     evidence.getWebEvidences(),
                     firstSeedQuery(evidence),
-                    result.getWarnings()
+                    result.getWarnings(),
+                    evidence.getVisionModelSummaries()
             );
         } catch (ApiCallException ex) {
             if (isLlmProfileFailure(ex)) {
@@ -388,26 +389,37 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences,
                                                      String fallbackName,
                                                      List<String> warnings) {
+        return resolveProfileFromEvidence(evidences, fallbackName, warnings, List.of());
+    }
+
+    ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences,
+                                                     String fallbackName,
+                                                     List<String> warnings,
+                                                     List<PageSummary> directPageSummaries) {
         List<String> urls = selectTopUrls(evidences);
-        if (urls.isEmpty()) {
+        List<PageSummary> modelPageSummaries = normalizeDirectPageSummaries(directPageSummaries);
+        if (urls.isEmpty() && modelPageSummaries.isEmpty()) {
             return new ResolvedPersonProfile();
         }
 
         List<PageContent> pages = List.of();
-        try {
-            pages = jinaReaderClient.readPages(urls);
-        } catch (RuntimeException ex) {
-            log.warn("Jina 正文提取失败 fallbackName={} urlCount={} error={}", fallbackName, urls.size(), ex.getMessage(), ex);
+        if (!urls.isEmpty()) {
+            try {
+                pages = jinaReaderClient.readPages(urls);
+            } catch (RuntimeException ex) {
+                log.warn("Jina 正文提取失败 fallbackName={} urlCount={} error={}", fallbackName, urls.size(), ex.getMessage(), ex);
+            }
         }
         if (pages == null || pages.isEmpty()) {
             pages = buildFallbackPages(evidences, urls);
         }
-        if (pages.isEmpty()) {
+        if (pages.isEmpty() && modelPageSummaries.isEmpty()) {
             return new ResolvedPersonProfile()
                     .setEvidenceUrls(urls);
         }
 
-        List<PageSummary> pageSummaries = collectPageSummaries(fallbackName, pages);
+        List<PageSummary> pageSummaries = new ArrayList<>(modelPageSummaries);
+        pageSummaries.addAll(collectPageSummaries(fallbackName, pages));
         if (pageSummaries.isEmpty()) {
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
@@ -2334,6 +2346,32 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private List<String> selectTopUrls(List<WebEvidence> evidences) {
         return selectTopUrls(evidences, properties.getApi().getJina().getMaxPageReads());
+    }
+
+    private List<PageSummary> normalizeDirectPageSummaries(List<PageSummary> summaries) {
+        if (summaries == null || summaries.isEmpty()) {
+            return List.of();
+        }
+        List<PageSummary> normalized = new ArrayList<>();
+        int nextId = 1;
+        for (PageSummary summary : summaries) {
+            if (summary == null || !StringUtils.hasText(summary.getSummary())) {
+                continue;
+            }
+            if (summary.getSourceId() == null || summary.getSourceId() <= 0) {
+                summary.setSourceId(nextId);
+            }
+            if (summary.getArticleSources() == null || summary.getArticleSources().isEmpty()) {
+                summary.setArticleSources(List.of(new ArticleCitation()
+                        .setId(summary.getSourceId())
+                        .setTitle(summary.getTitle())
+                        .setUrl(summary.getSourceUrl())
+                        .setSource(summary.getSourcePlatform())));
+            }
+            normalized.add(summary);
+            nextId = Math.max(nextId + 1, summary.getSourceId() + 1);
+        }
+        return normalized;
     }
 
     private List<String> selectTopUrls(List<WebEvidence> evidences, int maxPageReads) {

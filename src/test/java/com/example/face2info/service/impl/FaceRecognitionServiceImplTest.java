@@ -3,8 +3,10 @@ package com.example.face2info.service.impl;
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.TmpfilesClient;
+import com.example.face2info.client.VisionPersonSearchClient;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
+import com.example.face2info.entity.internal.VisionModelSearchResult;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.service.ImageResultCacheService;
 import com.example.face2info.service.ImageSimilarityService;
@@ -34,6 +36,7 @@ class FaceRecognitionServiceImplTest {
     private final GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
     private final SerpApiClient serpApiClient = mock(SerpApiClient.class);
     private final TmpfilesClient tmpfilesClient = mock(TmpfilesClient.class);
+    private final VisionPersonSearchClient visionPersonSearchClient = mock(VisionPersonSearchClient.class);
     private final ImageSimilarityService imageSimilarityService = mock(ImageSimilarityService.class);
     private final ImageResultCacheService imageResultCacheService = mock(ImageResultCacheService.class);
     private final NameExtractor nameExtractor = new NameExtractor();
@@ -473,6 +476,38 @@ class FaceRecognitionServiceImplTest {
         executor.setQueueCapacity(8);
         executor.initialize();
         return new FaceRecognitionServiceImpl(
-                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, imageSimilarityService, imageResultCacheService, executor);
+                googleSearchClient, serpApiClient, nameExtractor, tmpfilesClient, imageSimilarityService,
+                imageResultCacheService, visionPersonSearchClient, executor);
+    }
+
+    @Test
+    void shouldIncludeSophnetVisionSummariesAsRecognitionEvidence() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"organic\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(visionPersonSearchClient.searchPersonByImageUrl(PREVIEW_URL)).thenReturn(List.of(
+                new VisionModelSearchResult()
+                        .setModel("gemini-3.1-pro-preview")
+                        .setCandidateName("Ada Lovelace")
+                        .setSummary("Ada Lovelace 是公开资料中的计算机先驱。")
+                        .setEvidenceUrls(List.of("https://example.com/ada"))
+                        .setTags(List.of("mathematician"))
+        ));
+
+        FaceRecognitionServiceImpl service = createService();
+
+        RecognitionEvidence evidence = service.recognize(image);
+
+        assertThat(evidence.getWebEvidences()).extracting(WebEvidence::getUrl).contains("https://example.com/ada");
+        assertThat(evidence.getSeedQueries()).contains("Ada Lovelace");
+        assertThat(evidence.getVisionModelSummaries()).hasSize(1);
+        assertThat(evidence.getVisionModelSummaries().get(0).getSummary()).contains("Ada Lovelace");
     }
 }

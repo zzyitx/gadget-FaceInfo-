@@ -21,6 +21,9 @@ public class RecognitionEvidence {
     @Schema(description = "网页证据列表")
     private List<WebEvidence> webEvidences = new ArrayList<>();
 
+    @Schema(description = "视觉大模型自行检索后生成的直接摘要")
+    private List<PageSummary> visionModelSummaries = new ArrayList<>();
+
     @Schema(description = "用于搜索扩展的种子查询")
     private List<String> seedQueries = new ArrayList<>();
 
@@ -51,6 +54,15 @@ public class RecognitionEvidence {
 
     public RecognitionEvidence setWebEvidences(List<WebEvidence> webEvidences) {
         this.webEvidences = webEvidences;
+        return this;
+    }
+
+    public List<PageSummary> getVisionModelSummaries() {
+        return visionModelSummaries;
+    }
+
+    public RecognitionEvidence setVisionModelSummaries(List<PageSummary> visionModelSummaries) {
+        this.visionModelSummaries = visionModelSummaries == null ? new ArrayList<>() : new ArrayList<>(visionModelSummaries);
         return this;
     }
 

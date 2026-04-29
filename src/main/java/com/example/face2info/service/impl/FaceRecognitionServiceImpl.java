@@ -3,8 +3,13 @@ package com.example.face2info.service.impl;
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.TmpfilesClient;
+import com.example.face2info.client.VisionPersonSearchClient;
+import com.example.face2info.entity.internal.ArticleCitation;
+import com.example.face2info.entity.internal.PageSummary;
+import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SerpApiResponse;
+import com.example.face2info.entity.internal.VisionModelSearchResult;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.service.FaceRecognitionService;
@@ -51,6 +56,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     private final TmpfilesClient tmpfilesClient;
     private final ImageSimilarityService imageSimilarityService;
     private final ImageResultCacheService imageResultCacheService;
+    private final VisionPersonSearchClient visionPersonSearchClient;
     private final ThreadPoolTaskExecutor executor;
 
     @Autowired
@@ -60,6 +66,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                                       TmpfilesClient tmpfilesClient,
                                       ImageSimilarityService imageSimilarityService,
                                       ImageResultCacheService imageResultCacheService,
+                                      VisionPersonSearchClient visionPersonSearchClient,
                                       @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
@@ -67,6 +74,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         this.tmpfilesClient = tmpfilesClient;
         this.imageSimilarityService = imageSimilarityService;
         this.imageResultCacheService = imageResultCacheService;
+        this.visionPersonSearchClient = visionPersonSearchClient;
         this.executor = executor;
     }
 
@@ -129,11 +137,13 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 () -> serpApiClient.reverseImageSearchByUrlYandex(imageUrl, "similar"));
         CompletableFuture<SearchOutcome> bingFuture = submitSearch("bing_images", imageUrl,
                 () -> serpApiClient.reverseImageSearchByUrlBing(imageUrl));
+        CompletableFuture<VisionSearchOutcome> visionFuture = submitVisionSearch(imageUrl);
 
         SearchOutcome lensOutcome = joinSearch("serper_google_lens", lensFuture);
         SearchOutcome yandexAboutOutcome = joinSearch("yandex_images_about", yandexAboutFuture);
         SearchOutcome yandexSimilarOutcome = joinSearch("yandex_images_similar", yandexSimilarFuture);
         SearchOutcome bingOutcome = joinSearch("bing_images", bingFuture);
+        VisionSearchOutcome visionOutcome = joinVisionSearch(visionFuture);
 
         for (SearchOutcome outcome : List.of(lensOutcome, yandexAboutOutcome, yandexSimilarOutcome, bingOutcome)) {
             if (outcome.error() != null) {
@@ -141,6 +151,10 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             }
             webEvidences.addAll(outcome.webEvidences());
         }
+        if (visionOutcome.error() != null) {
+            evidence.getErrors().add(visionOutcome.error());
+        }
+        webEvidences.addAll(visionOutcome.webEvidences());
 
         ImageMatchExtractionResult imageMatchResult = extractImageMatches(
                 originalImage,
@@ -153,6 +167,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         evidence.setImageMatches(imageMatchResult.matches());
         evidence.setArticleImageMatches(imageMatchResult.articleMatches());
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
+        evidence.setVisionModelSummaries(visionOutcome.pageSummaries());
         evidence.setSeedQueries(extractSeedQueries(lensOutcome.root(), evidence.getWebEvidences(), evidence.getImageMatches()));
         log.info("识别证据去重完成 before={} after={}", webEvidences.size(), evidence.getWebEvidences().size());
         return evidence;
@@ -161,6 +176,114 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     /**
      * 提交单个识别源查询任务，统一由 face2InfoExecutor 执行。
      */
+    private CompletableFuture<VisionSearchOutcome> submitVisionSearch(String imageUrl) {
+        try {
+            return CompletableFuture.supplyAsync(() -> performVisionSearch(imageUrl), executor);
+        } catch (TaskRejectedException ex) {
+            log.debug("视觉模型线程池繁忙，回退同步执行 imageUrl={} error={}", imageUrl, ex.getMessage());
+            return CompletableFuture.completedFuture(performVisionSearch(imageUrl));
+        }
+    }
+
+    private VisionSearchOutcome joinVisionSearch(CompletableFuture<VisionSearchOutcome> future) {
+        try {
+            return future.join();
+        } catch (CompletionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            log.warn("视觉模型人物搜索失败 error={}", cause.getMessage(), cause);
+            return VisionSearchOutcome.failure("sophnet_vision: " + cause.getMessage());
+        }
+    }
+
+    private VisionSearchOutcome performVisionSearch(String imageUrl) {
+        try {
+            List<VisionModelSearchResult> results = visionPersonSearchClient.searchPersonByImageUrl(imageUrl);
+            if (results == null || results.isEmpty()) {
+                return VisionSearchOutcome.empty();
+            }
+            List<WebEvidence> evidences = new ArrayList<>();
+            List<PageSummary> summaries = new ArrayList<>();
+            int sourceId = 1;
+            for (VisionModelSearchResult result : results) {
+                if (result == null) {
+                    continue;
+                }
+                evidences.addAll(toVisionWebEvidence(result));
+                PageSummary summary = toVisionPageSummary(result, sourceId++);
+                if (summary != null) {
+                    summaries.add(summary);
+                }
+            }
+            return new VisionSearchOutcome(evidences, summaries, null);
+        } catch (RuntimeException ex) {
+            log.warn("视觉模型人物搜索失败 imageUrl={} error={}", imageUrl, ex.getMessage(), ex);
+            return VisionSearchOutcome.failure("sophnet_vision: " + ex.getMessage());
+        }
+    }
+
+    private List<WebEvidence> toVisionWebEvidence(VisionModelSearchResult result) {
+        List<WebEvidence> evidences = new ArrayList<>();
+        if (result.getEvidenceUrls() != null) {
+            for (String url : result.getEvidenceUrls()) {
+                if (!StringUtils.hasText(url)) {
+                    continue;
+                }
+                evidences.add(new WebEvidence()
+                        .setUrl(url)
+                        .setTitle(result.getCandidateName())
+                        .setSource(result.getModel())
+                        .setSourceEngine("sophnet_vision")
+                        .setSnippet(result.getSummary()));
+            }
+        }
+        if (evidences.isEmpty() && (StringUtils.hasText(result.getCandidateName()) || StringUtils.hasText(result.getSummary()))) {
+            evidences.add(new WebEvidence()
+                    .setTitle(result.getCandidateName())
+                    .setSource(result.getModel())
+                    .setSourceEngine("sophnet_vision")
+                    .setSnippet(result.getSummary()));
+        }
+        return evidences;
+    }
+
+    private PageSummary toVisionPageSummary(VisionModelSearchResult result, int sourceId) {
+        if (!StringUtils.hasText(result.getSummary()) && !StringUtils.hasText(result.getCandidateName())) {
+            return null;
+        }
+        String sourceUrl = firstEvidenceUrl(result);
+        ArticleCitation citation = new ArticleCitation()
+                .setId(sourceId)
+                .setTitle(StringUtils.hasText(result.getCandidateName()) ? result.getCandidateName() : result.getModel())
+                .setUrl(sourceUrl)
+                .setSource("sophnet_vision:" + result.getModel());
+        String summaryText = StringUtils.hasText(result.getSummary())
+                ? result.getSummary()
+                : "视觉大模型候选人物：" + result.getCandidateName();
+        return new PageSummary()
+                .setSourceId(sourceId)
+                .setSourceUrl(sourceUrl)
+                .setTitle(citation.getTitle())
+                .setSourcePlatform(citation.getSource())
+                .setSummary(summaryText)
+                .setTags(result.getTags())
+                .setKeyFacts(result.getSourceNotes())
+                .setArticleSources(List.of(citation))
+                .setSummaryParagraphs(List.of(new ParagraphSummaryItem()
+                        .setText(summaryText + "[" + sourceId + "]")
+                        .setSourceIds(List.of(sourceId))
+                        .setSourceUrls(StringUtils.hasText(sourceUrl) ? List.of(sourceUrl) : List.of())));
+    }
+
+    private String firstEvidenceUrl(VisionModelSearchResult result) {
+        if (result == null || result.getEvidenceUrls() == null) {
+            return null;
+        }
+        return result.getEvidenceUrls().stream()
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse(null);
+    }
+
     private CompletableFuture<SearchOutcome> submitSearch(String source, String imageUrl, SearchSupplier supplier) {
         return CompletableFuture.supplyAsync(() -> performSearch(source, imageUrl, supplier), executor);
     }
@@ -689,6 +812,17 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
         private static ImageMatchExtractionResult empty() {
             return new ImageMatchExtractionResult(List.of(), List.of());
+        }
+    }
+
+    private record VisionSearchOutcome(List<WebEvidence> webEvidences, List<PageSummary> pageSummaries, String error) {
+
+        private static VisionSearchOutcome failure(String error) {
+            return new VisionSearchOutcome(List.of(), List.of(), error);
+        }
+
+        private static VisionSearchOutcome empty() {
+            return new VisionSearchOutcome(List.of(), List.of(), null);
         }
     }
 }

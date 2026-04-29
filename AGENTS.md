@@ -259,6 +259,8 @@ Field: image
 - `src/main/resources/application.yml` 是本地真实配置文件，允许保留真实 key，不提交到 Git
 - `src/main/resources/application-git.yml` 是仓库脱敏配置文件，结构必须与本地版保持同步
 - 任何配置变更都必须同时同步这两个文件中的结构，提交时只提交 `application-git.yml`
+- 代理修改任一配置文件后，必须立即检查并同步另一个配置文件的结构；禁止只更新 `application-git.yml` 或只更新 `application.yml` 后结束任务
+- 同步本地 `application.yml` 时只能补齐结构和默认占位，不得删除、覆盖、脱敏或改写已有真实 key
 - 禁止为了提交远端而删除或清空本地 `application.yml` 中的真实 key
 
 **关键**：配置变更必须同时考虑本地开发、测试环境和生产环境的兼容性。

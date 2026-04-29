@@ -77,6 +77,7 @@ class RestTemplateConfigTest {
         properties.getApi().getFaceDetection().setConnectTimeoutMs(1500);
         properties.getApi().getFaceEnhance().setConnectTimeoutMs(1800);
         properties.getApi().getFacecheck().setConnectTimeoutMs(60000);
+        properties.getApi().getSophnetVision().setConnectTimeoutMs(2000);
 
         properties.getApi().getSerp().setReadTimeoutMs(6000);
         properties.getApi().getGoogle().setReadTimeoutMs(7000);
@@ -87,6 +88,7 @@ class RestTemplateConfigTest {
         properties.getApi().getFaceDetection().setReadTimeoutMs(3000);
         properties.getApi().getFaceEnhance().setReadTimeoutMs(4000);
         properties.getApi().getFacecheck().setReadTimeoutMs(120000);
+        properties.getApi().getSophnetVision().setReadTimeoutMs(5000);
         return properties;
     }
 

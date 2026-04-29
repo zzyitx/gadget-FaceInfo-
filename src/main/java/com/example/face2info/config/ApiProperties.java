@@ -38,6 +38,7 @@ public class ApiProperties {
         private MinioProperties minio = new MinioProperties();
         private RedisCacheProperties redisCache = new RedisCacheProperties();
         private MaigretProperties maigret = new MaigretProperties();
+        private SophnetVisionApiProperties sophnetVision = new SophnetVisionApiProperties();
         private Proxy proxy = new Proxy();
 
     }
