@@ -2,10 +2,12 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
+import com.example.face2info.client.MaigretClient;
 import com.example.face2info.client.RealtimeTranslationClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
+import com.example.face2info.client.impl.NoopMaigretClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
@@ -62,6 +64,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -138,8 +141,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             "ixigua.com"
     );
     private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
+    private static final Pattern HANDLE_PATTERN = Pattern.compile("(?<![\\w.])@([A-Za-z0-9._-]{2,64})");
     private static final int CONTACT_INFORMATION_QUERY_LIMIT = 10;
     private static final int SOCIAL_ACCOUNT_QUERY_LIMIT = 12;
+    private static final int SOCIAL_USERNAME_QUERY_LIMIT = 6;
     private static final int SECTION_TOPIC_MAX_PAGE_READS = 20;
 
     @SuppressWarnings("unused")
@@ -156,6 +161,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final MultilingualQueryPlanningService multilingualQueryPlanningService;
     private final DigitalFootprintQueryBuilder digitalFootprintQueryBuilder;
     private final PrimarySearchQueryBuilder primarySearchQueryBuilder;
+    private final MaigretClient maigretClient;
 
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -169,7 +175,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              SearchLanguageProfileService searchLanguageProfileService,
                                              MultilingualQueryPlanningService multilingualQueryPlanningService,
                                              DigitalFootprintQueryBuilder digitalFootprintQueryBuilder,
-                                             PrimarySearchQueryBuilder primarySearchQueryBuilder) {
+                                             PrimarySearchQueryBuilder primarySearchQueryBuilder,
+                                             @Nullable MaigretClient maigretClient) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.jinaReaderClient = jinaReaderClient;
@@ -182,6 +189,25 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.multilingualQueryPlanningService = multilingualQueryPlanningService;
         this.digitalFootprintQueryBuilder = digitalFootprintQueryBuilder;
         this.primarySearchQueryBuilder = primarySearchQueryBuilder;
+        this.maigretClient = maigretClient == null ? new NoopMaigretClient() : maigretClient;
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor,
+                                      ApiProperties properties,
+                                      DerivedTopicQueryService derivedTopicQueryService,
+                                      SearchLanguageProfileService searchLanguageProfileService,
+                                      MultilingualQueryPlanningService multilingualQueryPlanningService,
+                                      DigitalFootprintQueryBuilder digitalFootprintQueryBuilder,
+                                      PrimarySearchQueryBuilder primarySearchQueryBuilder) {
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
+                deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
+                searchLanguageProfileService, multilingualQueryPlanningService, digitalFootprintQueryBuilder,
+                primarySearchQueryBuilder, new NoopMaigretClient());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -2434,13 +2460,106 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 name,
                 new ResolvedPersonProfile().setResolvedName(name)
         );
-        List<SocialAccount> accounts = digitalFootprintQueryBuilder.build(name, languageProfile).stream()
+        List<SocialAccount> accounts = new ArrayList<>(digitalFootprintQueryBuilder.build(name, languageProfile).stream()
                 .filter(this::isSocialProfileQuery)
                 .sorted(Comparator.comparing(query -> query.getPriority() == null ? Integer.MAX_VALUE : query.getPriority()))
                 .limit(SOCIAL_ACCOUNT_QUERY_LIMIT)
                 .flatMap(query -> searchSocialAccounts(query).stream())
-                .toList();
+                .toList());
+        accounts.addAll(collectMaigretSuspectedAccounts(name));
         return accounts.isEmpty() ? List.of() : deduplicateSocialAccounts(accounts);
+    }
+
+    private List<SocialAccount> collectMaigretSuspectedAccounts(String name) {
+        List<String> usernames = inferLikelySocialUsernames(name).stream()
+                .filter(StringUtils::hasText)
+                .map(username -> username.replaceFirst("^@", "").trim())
+                .filter(username -> username.matches("[A-Za-z0-9._-]{2,64}"))
+                .distinct()
+                .limit(properties.getApi().getMaigret().getMaxUsernames())
+                .toList();
+        if (usernames.isEmpty()) {
+            return List.of();
+        }
+        List<SocialAccount> accounts = new ArrayList<>();
+        for (String username : usernames) {
+            try {
+                accounts.addAll(maigretClient.findSuspectedAccounts(username));
+            } catch (RuntimeException ex) {
+                log.warn("Maigret suspected account search failed username={} error={}", username, ex.getMessage(), ex);
+            }
+        }
+        return accounts;
+    }
+
+    private List<String> inferLikelySocialUsernames(String name) {
+        List<WebEvidence> evidences = collectSocialUsernameSearchEvidence(name);
+        if (evidences.isEmpty()) {
+            return List.of();
+        }
+        try {
+            // ??????????????????????????????????? Maigret ???
+            List<String> modelUsernames = deepSeekSummaryGenerationClient == null
+                    ? summaryGenerationClient.inferLikelySocialUsernames(name, evidences)
+                    : deepSeekSummaryGenerationClient.inferLikelySocialUsernames(name, evidences);
+            if (modelUsernames != null && !modelUsernames.isEmpty()) {
+                return modelUsernames;
+            }
+        } catch (RuntimeException ex) {
+            log.warn("social username model inference failed name={} error={}", name, ex.getMessage(), ex);
+        }
+        return extractUsernameCandidatesFromEvidence(evidences);
+    }
+
+    private List<WebEvidence> collectSocialUsernameSearchEvidence(String name) {
+        List<WebEvidence> evidences = new ArrayList<>();
+        for (String query : buildSocialUsernameQueries(name)) {
+            try {
+                SerpApiResponse response = googleSearchClient.googleSearch(query);
+                if (response != null && response.getRoot() != null) {
+                    evidences.addAll(extractSearchOrganicWebEvidence(response.getRoot()));
+                }
+            } catch (RuntimeException ex) {
+                log.warn("social username query failed name={} query={} error={}", name, query, ex.getMessage(), ex);
+            }
+        }
+        return deduplicateWebEvidencePrioritized(evidences);
+    }
+
+    private List<String> buildSocialUsernameQueries(String name) {
+        if (!StringUtils.hasText(name)) {
+            return List.of();
+        }
+        String normalizedName = name.trim();
+        return List.of(
+                        normalizedName + " Twitter username",
+                        normalizedName + " X username",
+                        normalizedName + " Instagram username",
+                        normalizedName + " official social account",
+                        normalizedName + " ???? ???",
+                        normalizedName + " ?? ???"
+                ).stream()
+                .distinct()
+                .limit(SOCIAL_USERNAME_QUERY_LIMIT)
+                .toList();
+    }
+
+    private List<String> extractUsernameCandidatesFromEvidence(List<WebEvidence> evidences) {
+        LinkedHashSet<String> usernames = new LinkedHashSet<>();
+        for (WebEvidence evidence : evidences) {
+            String text = Stream.of(
+                            cleanText(evidence == null ? null : evidence.getTitle()),
+                            cleanText(evidence == null ? null : evidence.getSnippet()),
+                            cleanText(evidence == null ? null : evidence.getUrl()))
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.joining(" "));
+            // ????????????????? @handle ???????????
+            Matcher matcher = HANDLE_PATTERN.matcher(text);
+            while (matcher.find()) {
+                usernames.add(matcher.group(1));
+            }
+        }
+        return usernames.stream().limit(5).toList();
     }
 
     private List<SocialAccount> searchSocialAccounts(DigitalFootprintQuery query) {
@@ -2476,7 +2595,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return new SocialAccount()
                 .setPlatform(platform)
                 .setUrl(url)
-                .setUsername(extractSocialUsername(url, evidence.getTitle()));
+                .setUsername(extractSocialUsername(url, evidence.getTitle()))
+                .setSource("google")
+                .setSuspected(false)
+                .setConfidence("search_result");
     }
 
     private boolean isContactInformationQuery(DigitalFootprintQuery query) {
@@ -2737,9 +2859,18 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             if (!StringUtils.hasText(account.getUrl())) {
                 continue;
             }
-            deduplicated.putIfAbsent(account.getPlatform(), account);
+            String key = normalizeSocialAccountKey(account);
+            deduplicated.putIfAbsent(key, account);
         }
         return new ArrayList<>(deduplicated.values());
+    }
+
+    private String normalizeSocialAccountKey(SocialAccount account) {
+        String url = normalizeDedupUrl(account.getUrl());
+        if (StringUtils.hasText(url)) {
+            return url.toLowerCase(Locale.ROOT);
+        }
+        return (cleanText(account.getPlatform()) + ":" + cleanText(account.getUsername())).toLowerCase(Locale.ROOT);
     }
 
     private <T> T joinTask(String label, CompletableFuture<T> future, T fallback, List<String> errors) {

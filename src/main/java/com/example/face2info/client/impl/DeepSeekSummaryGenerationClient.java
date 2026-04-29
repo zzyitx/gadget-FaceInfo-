@@ -15,6 +15,7 @@ import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
 import com.example.face2info.entity.internal.TopicExpansionQuery;
+import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
@@ -53,6 +54,7 @@ public class DeepSeekSummaryGenerationClient {
     private static final String SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME = "submit_sectioned_family_summary";
     private static final String PROFILE_JUDGEMENT_FUNCTION_NAME = "submit_profile_judgement";
     private static final String SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME = "submit_search_language_inference";
+    private static final String SOCIAL_USERNAME_INFERENCE_FUNCTION_NAME = "submit_social_username_candidates";
     private static final Pattern XML_INVOKE_PATTERN = Pattern.compile(
             "<invoke\\s+name\\s*=\\s*\"([^\"]+)\"\\s*>(.*?)</invoke>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
@@ -195,6 +197,15 @@ public class DeepSeekSummaryGenerationClient {
         return RetryUtils.execute("DeepSeek 主路径搜索词生成", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
             JsonNode body = callDeepSeek(deepseek, buildPrimarySearchRequest(deepseek, resolvedName, languageProfile, profile, sectionType));
             return parseDigitalFootprintQueries(body);
+        });
+    }
+
+    public List<String> inferLikelySocialUsernames(String resolvedName, List<WebEvidence> evidences) {
+        DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
+        validateConfig(deepseek);
+        return RetryUtils.execute("DeepSeek ???????", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+            JsonNode body = callDeepSeek(deepseek, buildSocialUsernameInferenceRequest(deepseek, resolvedName, evidences));
+            return parseSocialUsernameCandidates(extractStructuredPayload(body, SOCIAL_USERNAME_INFERENCE_FUNCTION_NAME));
         });
     }
 
@@ -349,6 +360,40 @@ public class DeepSeekSummaryGenerationClient {
                         Map.of("role", "user", "content",
                                 buildPrimarySearchPrompt(resolvedName, languageProfile, profile, sectionType))
                 )
+        );
+    }
+
+    private Map<String, Object> buildSocialUsernameInferenceRequest(DeepSeekApiProperties deepseek,
+                                                                    String resolvedName,
+                                                                    List<WebEvidence> evidences) {
+        return Map.of(
+                "model", deepseek.getModel(),
+                "stream", false,
+                "messages", List.of(
+                        Map.of("role", "system", "content", firstNonBlank(
+                                deepseek.getSystemPrompt(),
+                                "?????????????????? JSON?"
+                        )),
+                        Map.of("role", "user", "content", buildSocialUsernameInferencePrompt(resolvedName, evidences))
+                ),
+                "tools", List.of(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", SOCIAL_USERNAME_INFERENCE_FUNCTION_NAME,
+                                "description", "????????????????",
+                                "parameters", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "usernames", Map.of("type", "array", "items", Map.of("type", "string")),
+                                                "reason", Map.of("type", "string"),
+                                                "confidence", Map.of("type", "number")
+                                        ),
+                                        "required", List.of("usernames"),
+                                        "additionalProperties", false
+                                )
+                        )
+                )),
+                "tool_choice", Map.of("type", "function", "function", Map.of("name", SOCIAL_USERNAME_INFERENCE_FUNCTION_NAME))
         );
     }
 
@@ -886,6 +931,39 @@ public class DeepSeekSummaryGenerationClient {
         );
     }
 
+    private String buildSocialUsernameInferencePrompt(String resolvedName, List<WebEvidence> evidences) {
+        String evidenceText = evidences == null ? "" : evidences.stream()
+                .limit(12)
+                .map(evidence -> """
+                        title: %s
+                        url: %s
+                        snippet: %s
+                        source: %s
+                        """.formatted(
+                        evidence == null ? null : evidence.getTitle(),
+                        evidence == null ? null : evidence.getUrl(),
+                        evidence == null ? null : evidence.getSnippet(),
+                        evidence == null ? null : evidence.getSource()
+                ))
+                .collect(Collectors.joining("\n---\n"));
+        return """
+                ?? Google ???????????????????????????????
+
+                ???
+                1. ?????????????????URL?@ ??????
+                2. ????????????????????????????
+                3. ????????????????????????????
+                4. ????????????
+                5. ???????? Maigret ????????Maigret ???????????
+
+                ?????
+                %s
+
+                ?????
+                %s
+                """.formatted(resolvedName, evidenceText);
+    }
+
     private String summarizePrimarySearchBackground(@Nullable ResolvedPersonProfile profile) {
         if (profile == null) {
             return "资料不足";
@@ -1303,6 +1381,32 @@ public class DeepSeekSummaryGenerationClient {
         } catch (JsonProcessingException ex) {
             throw new ApiCallException("INVALID_RESPONSE: DeepSeek 搜索语言推断不是合法 JSON", ex);
         }
+    }
+
+    List<String> parseSocialUsernameCandidates(String content) {
+        try {
+            JsonNode json = objectMapper.readTree(content);
+            return readStringList(json.path("usernames")).stream()
+                    .map(this::normalizeUsernameCandidate)
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .limit(5)
+                    .toList();
+        } catch (JsonProcessingException ex) {
+            throw new ApiCallException("INVALID_RESPONSE: DeepSeek ??????????? JSON", ex);
+        }
+    }
+
+    private String normalizeUsernameCandidate(String username) {
+        String value = trimToNull(username);
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        value = value.replaceFirst("^@", "").trim();
+        if (!value.matches("[A-Za-z0-9._-]{2,64}")) {
+            return null;
+        }
+        return value;
     }
 
     private void recoverContaminatedProfileFields(ResolvedPersonProfile profile) {
