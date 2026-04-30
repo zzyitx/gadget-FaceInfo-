@@ -11,5 +11,4 @@ public interface MultilingualQueryPlanningService {
 
     List<SearchQueryTask> planSectionQueries(SearchLanguageProfile profile, String sectionType, List<String> terms);
 
-    List<SearchQueryTask> planExpansionQueries(SearchLanguageProfile profile, String sectionType, List<String> terms);
 }

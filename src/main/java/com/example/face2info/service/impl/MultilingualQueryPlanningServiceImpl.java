@@ -73,14 +73,6 @@ public class MultilingualQueryPlanningServiceImpl implements MultilingualQueryPl
         return buildTasks(profile, "section_base", terms, 10);
     }
 
-    @Override
-    public List<SearchQueryTask> planExpansionQueries(SearchLanguageProfile profile, String sectionType, List<String> terms) {
-        if (terms == null || terms.isEmpty()) {
-            return List.of();
-        }
-        return buildTasks(profile, "section_expansion", terms, 20);
-    }
-
     private List<SearchQueryTask> buildTasks(SearchLanguageProfile profile, String kind, List<String> terms, int priority) {
         if (profile == null) {
             return List.of();

@@ -23,68 +23,38 @@ face2info:
         - "{name} official profile"
         - "{english_name} biography"
         - "{native_name} 人物简介"
-      education:
-        - "{name} education"
-        - "{name} alma mater"
-        - "{native_name} 教育经历"
-        - "{native_name} 毕业院校"
       family:
         - "{name} family background"
         - "{name} upbringing"
         - "{native_name} 家庭背景"
         - "{native_name} 成长经历"
-      family_members:
-        - "{name} family members"
-        - "{name} relatives"
-        - "{native_name} 家庭成员"
-        - "{native_name} 亲属"
-      family_member_situation:
-        - "{name} family members"
-        - "{name} relatives"
-        - "{native_name} 家庭成员"
-        - "{native_name} 亲属"
-        - "{native_name} 经商"
-        - "{native_name} 在华投资"
-        - "{native_name} 商业纠纷"
-      career:
-        - "{name} career"
-        - "{name} biography"
-        - "{native_name} 职业经历"
-        - "{native_name} 任职经历"
-      contact_information:
-        - "{native_name} 公开通讯"
-        - "{native_name} 办公电话"
-        - "{native_name} 官方邮箱"
-        - "{native_name} 联系方式"
-        - "{name} official website"
-        - "{name} verified social accounts"
-        - "{native_name} 官方网站"
-        - "{native_name} 认证社交账号"
-        - "{username} {platform}"
+    derived-section-titles:
       china_related_statements:
-        - "{native_name} 涉华言论"
-        - "{native_name} 中国评价"
-        - "{native_name} 中美关系"
-        - "{native_name} 中欧关系"
-        - "{name} China policy"
+        - 涉华言论
+        - 中国评价
+        - 国际关系
+        - 相关争议
       political_view:
-        - "{native_name} 政治倾向"
-        - "{native_name} 政党"
-        - "{native_name} 政策立场"
-        - "{name} political stance"
+        - 政治倾向
+        - 党派与组织
+        - 政治理念
+        - 政策立场
+      contact_information:
+        - 公开通讯
+        - 办公电话
+        - 官方邮箱
+        - 认证社交账号
+        - 其他联系方式
+      family_member_situation:
+        - 家庭成员
+        - 亲属信息
+        - 经商与投资
+        - 争议与纠纷
       misconduct:
-        - "{native_name} 违法记录"
-        - "{native_name} 行政处罚"
-        - "{native_name} 负面事件"
-        - "{name} controversy"
-    expand-enabled-topics:
-      - china_related_statements
-      - political_view
-      - contact_information
-      - family_member_situation
-      - misconduct
-    expand-max-query-count: 4
-    expand-max-term-length: 16
+        - 违法记录
+        - 行政处罚
+        - 负面事件
+        - 失信信息
   api:
     google:
       search-url: https://google.serper.dev/search
@@ -161,8 +131,6 @@ face2info:
       upload-path: /api/upload_pic
       search-path: /api/get_results
       api-key: ${FACECHECK_API_KEY:}
-      connect-timeout-ms: 5000
-      read-timeout-ms: 15000
       poll-interval-ms: 1000
       search-timeout-ms: 15000
       reset-prev-images: true

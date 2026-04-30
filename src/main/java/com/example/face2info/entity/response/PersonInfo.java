@@ -1,12 +1,14 @@
 package com.example.face2info.entity.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Schema(description = "人物信息")
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
 public class PersonInfo {
 
     @Schema(description = "识别或聚合后得到的人物姓名", example = "周杰伦")

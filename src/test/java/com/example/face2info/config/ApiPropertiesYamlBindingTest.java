@@ -32,15 +32,20 @@ class ApiPropertiesYamlBindingTest {
 
         assertThat(properties).isNotNull();
         assertThat(properties.getProperty("face2info.search.query-templates.secondary_profile[0]")).isEqualTo("{name}");
-        assertThat(properties.getProperty("face2info.search.query-templates.education[0]")).isEqualTo("{name} education");
-        assertThat(properties.getProperty("face2info.search.query-templates.family_member_situation[6]"))
-                .isEqualTo("{native_name} 商业纠纷");
-        assertThat(properties.getProperty("face2info.search.query-templates.contact_information[8]"))
-                .isEqualTo("{username} {platform}");
-        assertThat(properties.getProperty("face2info.search.expand-enabled-topics[3]"))
-                .isEqualTo("family_member_situation");
-        assertThat(properties.getProperty("face2info.search.expand-max-query-count")).isEqualTo("4");
-        assertThat(properties.getProperty("face2info.search.expand-max-term-length")).isEqualTo("16");
+        assertThat(properties.getProperty("face2info.search.query-templates.family[0]")).isEqualTo("{name} family background");
+        assertThat(properties.containsKey("face2info.search.query-templates.education[0]")).isFalse();
+        assertThat(properties.containsKey("face2info.search.query-templates.family_member_situation[0]")).isFalse();
+        assertThat(properties.containsKey("face2info.search.query-templates.contact_information[0]")).isFalse();
+        assertThat(properties.containsKey("face2info.search.query-templates.china_related_statements[0]")).isFalse();
+        assertThat(properties.containsKey("face2info.search.query-templates.political_view[0]")).isFalse();
+        assertThat(properties.containsKey("face2info.search.query-templates.misconduct[0]")).isFalse();
+        assertThat(properties.getProperty("face2info.search.derived-section-titles.china_related_statements[0]"))
+                .isEqualTo("涉华言论");
+        assertThat(properties.getProperty("face2info.search.derived-section-titles.contact_information[4]"))
+                .isEqualTo("其他联系方式");
+        assertThat(properties.containsKey("face2info.search.expand-enabled-topics[0]")).isFalse();
+        assertThat(properties.containsKey("face2info.search.expand-max-query-count")).isFalse();
+        assertThat(properties.containsKey("face2info.search.expand-max-term-length")).isFalse();
         assertThat(properties.containsKey("face2info.api.query-rewrite.enabled")).isFalse();
     }
 

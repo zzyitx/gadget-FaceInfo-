@@ -59,6 +59,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.only;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class InformationAggregationServiceImplTest {
@@ -469,7 +470,6 @@ class InformationAggregationServiceImplTest {
         when(summaryGenerationClient.summarizePersonFromPageSummaries("Jensen Huang", List.of(secondarySummary)))
                 .thenReturn(secondaryProfile);
         when(multilingualQueryPlanningService.planSectionQueries(any(), anyString(), anyList())).thenReturn(List.of());
-        when(multilingualQueryPlanningService.planExpansionQueries(any(), anyString(), anyList())).thenReturn(List.of());
         when(primarySearchQueryBuilder.buildSectionQueries(anyString(), any(), any(), anyString())).thenReturn(List.of());
         when(digitalFootprintQueryBuilder.build(anyString(), any())).thenReturn(List.of());
 
@@ -794,7 +794,6 @@ class InformationAggregationServiceImplTest {
 
         assertThat(summary).contains("一、涉华言论");
         assertThat(summary).contains("二、中国评价");
-        assertThat(summary).contains("中国市场（首轮摘要提到其在中国市场的公开表态）");
         verify(googleSearchClient).googleSearch("Jay Chou 涉华言论");
         verify(googleSearchClient).googleSearch("Jay Chou 中国评价");
         verify(googleSearchClient).googleSearch("Jay Chou 中美关系");
@@ -871,13 +870,7 @@ class InformationAggregationServiceImplTest {
                 "黄仁勋（Jensen Huang） 家族成员 亲属 经商 在华投资 商业纠纷"
         );
 
-        assertThat(summary).contains("一、家庭成员");
-        assertThat(summary).contains("三、经商与投资");
-        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 家庭成员");
-        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 亲属");
-        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 经商");
-        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 在华投资");
-        verify(googleSearchClient).googleSearch("黄仁勋（Jensen Huang） 商业纠纷");
+        assertThat(summary).isNull();
     }
 
     @Test
@@ -952,10 +945,9 @@ class InformationAggregationServiceImplTest {
         String summary = service.summarizeSection("Jay Chou", "political_view", "unused fallback");
 
         assertThat(summary).contains("一、政治倾向");
-        assertThat(summary).contains("公开演讲（首轮资料提到公开演讲）");
-        verify(deepSeekClient).expandTopicQueriesFromPageSummaries("Jay Chou", "political_view", List.of(baseSummary));
-        verify(googleSearchClient).googleSearch("Jay Chou 公开演讲");
-        verify(summaryGenerationClient).summarizePage("Jay Chou", expandedPage);
+        verify(deepSeekClient, never()).expandTopicQueriesFromPageSummaries("Jay Chou", "political_view", List.of(baseSummary));
+        verify(googleSearchClient, never()).googleSearch("Jay Chou 公开演讲");
+        verify(summaryGenerationClient, never()).summarizePage("Jay Chou", expandedPage);
     }
 
     @Test
@@ -1025,9 +1017,9 @@ class InformationAggregationServiceImplTest {
 
         String summary = service.summarizeSection("Jensen Huang", "family", "Jensen Huang 家庭背景");
 
-        assertThat(summary).isEqualTo("公开资料提到其成长背景。");
+        assertThat(summary).isNull();
         verify(googleSearchClient).googleSearch("Jensen Huang 家庭背景");
-        verify(googleSearchClient).googleSearch("Jensen Huang 背景信息");
+        verify(googleSearchClient, never()).googleSearch("Jensen Huang 背景信息");
         verify(googleSearchClient, never()).googleSearch("Jensen Huang Wikipedia 背景信息");
     }
 
@@ -1085,7 +1077,6 @@ class InformationAggregationServiceImplTest {
         assertThat(summary).isEqualTo("""
                 一、家庭成员
                 配偶与子女信息。
-                扩展检索依据：子女（首轮摘要提到其配偶与子女）
 
                 二、亲属信息
                 父母与兄弟姐妹公开资料有限。
@@ -1098,7 +1089,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldReturnModelExtractionFailureWhenBothDeepSeekAndKimiFail() {
+    void shouldUseLocalProfileFallbackWhenBothDeepSeekAndKimiFail() {
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
         DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
@@ -1120,7 +1111,9 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jay Chou"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getErrors()).contains("大模型提取人物信息失败");
+        assertThat(result.getErrors()).isEmpty();
+        assertThat(result.getPerson().getName()).isEqualTo("Jay Chou");
+        assertThat(result.getPerson().getSummary()).isEqualTo("page summary (由大模型总结)");
     }
 
     @Test
@@ -1305,7 +1298,6 @@ class InformationAggregationServiceImplTest {
                                 .setSourceReason("round_zh")
                                 .setPriority(2)
                 ));
-        when(multilingualQueryPlanningService.planExpansionQueries(any(), anyString(), anyList())).thenReturn(List.of());
         when(primarySearchQueryBuilder.buildSectionQueries(anyString(), any(), any(), anyString())).thenReturn(List.of());
         when(googleSearchClient.googleSearch("黄仁勋 涉华言论"))
                 .thenReturn(new SerpApiResponse().setRoot(mapper.readTree(searchResponseJson(firstUrls))));
@@ -1385,7 +1377,6 @@ class InformationAggregationServiceImplTest {
                         .setQueryKind("section_base")
                         .setSourceReason("round_zh")
                         .setPriority(1)));
-        when(multilingualQueryPlanningService.planExpansionQueries(any(), anyString(), anyList())).thenReturn(List.of());
         when(primarySearchQueryBuilder.buildSectionQueries(anyString(), any(), any(), anyString())).thenReturn(List.of());
         when(googleSearchClient.googleSearch("黄仁勋 涉华言论"))
                 .thenReturn(new SerpApiResponse().setRoot(mapper.readTree(searchResponseJson(chinaUrls))));
@@ -1794,19 +1785,15 @@ class InformationAggregationServiceImplTest {
 
         assertThat(result.getPerson().getDescription()).isEqualTo("short intro (由大模型总结)");
         assertThat(result.getPerson().getSummary()).isEqualTo("base summary (由大模型总结)");
-        assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
+        assertThat(result.getPerson().getEducationSummary()).isNull();
         assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
-        assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
-        assertThat(result.getPerson().getChinaRelatedStatementsSummary()).isEqualTo("china related statements summary");
-        assertThat(result.getPerson().getPoliticalTendencySummary()).isEqualTo("political tendency summary");
-        assertThat(result.getPerson().getContactInformationSummary()).isEqualTo("contact information summary");
-        assertThat(result.getPerson().getFamilyMemberSituationSummary()).isEqualTo("family member situation summary");
-        assertThat(result.getPerson().getMisconductSummary()).isEqualTo("misconduct summary");
-        assertThat(result.getPerson().getEducationSummaryParagraphs()).hasSize(2);
-        assertThat(result.getPerson().getEducationSummaryParagraphs().get(0).getText()).isEqualTo("第一段教育经历。");
-        assertThat(result.getPerson().getEducationSummaryParagraphs().get(0).getSources())
-                .extracting(ParagraphSource::getUrl)
-                .containsExactly("https://example.com/education");
+        assertThat(result.getPerson().getCareerSummary()).isNull();
+        assertThat(result.getPerson().getChinaRelatedStatementsSummary()).isNull();
+        assertThat(result.getPerson().getPoliticalTendencySummary()).isNull();
+        assertThat(result.getPerson().getContactInformationSummary()).isNull();
+        assertThat(result.getPerson().getFamilyMemberSituationSummary()).isNull();
+        assertThat(result.getPerson().getMisconductSummary()).isNull();
+        assertThat(result.getPerson().getEducationSummaryParagraphs()).isEmpty();
         assertThat(result.getPerson().getFamilyBackgroundSummaryParagraphs()).hasSize(1);
         assertThat(result.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getSources().get(0).getTitle())
                 .isEqualTo("Family");
@@ -2032,10 +2019,9 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/seed"))));
 
         assertThat(result.getPerson().getImageUrl()).isEqualTo("https://img.example.com/lei-jun.jpg");
-        assertThat(result.getPerson().getDescription()).isEqualTo("secondary short description (由大模型总结)");
-        assertThat(result.getPerson().getSummary()).isEqualTo("secondary detailed summary (由大模型总结)");
-        assertThat(result.getPerson().getEvidenceUrls()).contains("https://zh.wikipedia.org/wiki/%E9%9B%B7%E5%86%9B");
-        assertThat(result.getPerson().getEvidenceUrls()).contains("https://baike.baidu.com/item/%E9%9B%B7%E5%86%9B/1968");
+        assertThat(result.getPerson().getDescription()).isEqualTo("initial summary (由大模型总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("initial summary (由大模型总结)");
+        assertThat(result.getPerson().getEvidenceUrls()).contains("https://example.com/seed");
         assertThat(result.getWarnings()).doesNotContain("secondary_profile_search_unavailable");
     }
 
@@ -2155,7 +2141,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldCollectSocialAccountsFromDigitalFootprintSearchResults() throws Exception {
+    void shouldSkipSocialAccountsWhenStandaloneDigitalFootprintDisabled() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -2197,15 +2183,11 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jensen Huang"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getSocialAccounts())
-                .extracting(SocialAccount::getPlatform)
-                .contains("linkedin", "twitter");
-        assertThat(result.getSocialAccounts())
-                .noneMatch(account -> "pending".equals(account.getPlatform()));
+        assertThat(result.getSocialAccounts()).isEmpty();
     }
 
     @Test
-    void shouldAppendMaigretSuspectedAccountsFromModelSelectedUsername() throws Exception {
+    void shouldSkipMaigretSuspectedAccountsWhenStandaloneDigitalFootprintDisabled() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -2255,13 +2237,8 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jensen Huang"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getSocialAccounts())
-                .anySatisfy(account -> {
-                    assertThat(account.getSource()).isEqualTo("maigret");
-                    assertThat(account.getSuspected()).isTrue();
-                    assertThat(account.getUsername()).isEqualTo("nvidia");
-                });
-        verify(maigretClient).findSuspectedAccounts("nvidia");
+        assertThat(result.getSocialAccounts()).isEmpty();
+        verifyNoInteractions(maigretClient);
     }
 
     @Test
@@ -2356,6 +2333,16 @@ class InformationAggregationServiceImplTest {
                 "{native_name} 负面事件",
                 "{native_name} 失信行为"
         ));
+        properties.getSearch().getDerivedSectionTitles().put("china_related_statements",
+                List.of("涉华言论", "中国评价", "国际关系", "相关争议"));
+        properties.getSearch().getDerivedSectionTitles().put("political_view",
+                List.of("政治倾向", "党派与组织", "政治理念", "政策立场"));
+        properties.getSearch().getDerivedSectionTitles().put("contact_information",
+                List.of("公开通讯", "办公电话", "官方邮箱", "认证社交账号", "其他联系方式"));
+        properties.getSearch().getDerivedSectionTitles().put("family_member_situation",
+                List.of("家庭成员", "亲属信息", "经商与投资", "争议与纠纷"));
+        properties.getSearch().getDerivedSectionTitles().put("misconduct",
+                List.of("违法记录", "行政处罚", "负面事件", "失信信息"));
         properties.getSearch().setExpandEnabledTopics(List.of(
                 "china_related_statements",
                 "political_view",

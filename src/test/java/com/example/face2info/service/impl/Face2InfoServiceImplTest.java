@@ -299,13 +299,13 @@ class Face2InfoServiceImplTest {
                                                         .setSource("Example")
                                         ))
                         ))
-                        .setEducationSummaryParagraphs(List.of(
+                        .setFamilyBackgroundSummaryParagraphs(List.of(
                                 new ParagraphSummaryItem()
-                                        .setText("第一段教育经历。")
+                                        .setText("第一段家庭背景。")
                                         .setSources(List.of(
                                                 new ParagraphSource()
-                                                        .setTitle("教育文章")
-                                                        .setUrl("https://example.com/education")
+                                                        .setTitle("家庭文章")
+                                                        .setUrl("https://example.com/family")
                                         ))
                         ))
                         .setBasicInfo(new com.example.face2info.entity.internal.PersonBasicInfo()
@@ -325,10 +325,10 @@ class Face2InfoServiceImplTest {
         assertThat(response.getPerson().getSummaryParagraphs().get(0).getText()).isEqualTo("第一段主体信息。[1]");
         assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources()).hasSize(1);
         assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources().get(0).getTitle()).isEqualTo("文章 A");
-        assertThat(response.getPerson().getEducationSummaryParagraphs()).hasSize(1);
-        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getText()).isEqualTo("第一段教育经历。[2]");
-        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getSources().get(0).getUrl())
-                .isEqualTo("https://example.com/education");
+        assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs()).hasSize(1);
+        assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getText()).isEqualTo("第一段家庭背景。[2]");
+        assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getSources().get(0).getUrl())
+                .isEqualTo("https://example.com/family");
     }
 
     @Test
@@ -351,9 +351,9 @@ class Face2InfoServiceImplTest {
                                                 new ParagraphSource().setTitle("文章 B").setUrl("https://example.com/b").setSource("Example B")
                                         ))
                         ))
-                        .setEducationSummaryParagraphs(List.of(
+                        .setFamilyBackgroundSummaryParagraphs(List.of(
                                 new ParagraphSummaryItem()
-                                        .setText("教育段落")
+                                        .setText("家庭段落")
                                         .setSources(List.of(
                                                 new ParagraphSource().setTitle("文章 B").setUrl("https://example.com/b").setSource("Example B")
                                         ))
@@ -366,9 +366,9 @@ class Face2InfoServiceImplTest {
         assertThat(response.getPerson().getSummaryParagraphs().get(0).getSources())
                 .extracting(source -> source.getIndex())
                 .containsExactly(1, 2);
-        assertThat(response.getPerson().getEducationSummaryParagraphs()).hasSize(1);
-        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getText()).isEqualTo("教育段落[2]");
-        assertThat(response.getPerson().getEducationSummaryParagraphs().get(0).getSources())
+        assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs()).hasSize(1);
+        assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getText()).isEqualTo("家庭段落[2]");
+        assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getSources())
                 .extracting(source -> source.getIndex())
                 .containsExactly(2);
     }

@@ -107,7 +107,7 @@ class KimiSummaryGenerationClientTest {
                     assertThat(body).contains("<background_info>");
                     assertThat(body).contains("<investigation_topic>");
                     assertThat(body).contains("title: 涉华言论");
-                    assertThat(body).contains("sub_topics: (驻华期间政策表态, 对华策略分析, 近期关于新兴威胁的论述)");
+                    assertThat(body).contains("sub_topics: (中国评价, 国际关系, 相关争议)");
                 })
                 .andRespond(withSuccess("""
                         {"choices":[{"message":{"content":"尼古拉斯·伯恩斯 驻华大使\\n尼古拉斯·伯恩斯 驻华大使 涉华言论\\n尼古拉斯·伯恩斯 驻华大使 政策表态\\n尼古拉斯·伯恩斯 驻华大使 对华策略\\nNicholas Burns Ambassador China policy\\n尼古拉斯·伯恩斯 驻华大使 演讲 PDF\\n尼古拉斯·伯恩斯 驻华大使 争议 采访"}}]}
@@ -748,6 +748,10 @@ class KimiSummaryGenerationClientTest {
         properties.getApi().getKimi().setModel("Kimi-K2.5");
         properties.getApi().getKimi().setMaxRetries(maxRetries);
         properties.getApi().getKimi().setBackoffInitialMs(backoffInitialMs);
+        properties.getSearch().getDerivedSectionTitles().put("china_related_statements",
+                List.of("涉华言论", "中国评价", "国际关系", "相关争议"));
+        properties.getSearch().getDerivedSectionTitles().put("family_member_situation",
+                List.of("家庭成员", "亲属信息", "经商与投资", "争议与纠纷"));
         return properties;
     }
 }

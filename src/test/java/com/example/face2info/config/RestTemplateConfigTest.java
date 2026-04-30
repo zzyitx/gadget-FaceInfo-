@@ -9,8 +9,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RestTemplateConfigTest {
 
     @Test
-    void shouldExcludeFacecheckTimeoutWhenCalculatingConnectTimeout() {
-        ApiProperties properties = createPropertiesWithFacecheckOutlier();
+    void shouldCalculateConnectTimeoutWithoutFacecheckProperties() {
+        ApiProperties properties = createPropertiesForDefaultRestTemplate();
         RestTemplateConfig config = new RestTemplateConfig();
 
         int timeout = config.resolveConnectTimeout(properties);
@@ -19,8 +19,8 @@ class RestTemplateConfigTest {
     }
 
     @Test
-    void shouldExcludeFacecheckTimeoutWhenCalculatingReadTimeout() {
-        ApiProperties properties = createPropertiesWithFacecheckOutlier();
+    void shouldCalculateReadTimeoutWithoutFacecheckProperties() {
+        ApiProperties properties = createPropertiesForDefaultRestTemplate();
         RestTemplateConfig config = new RestTemplateConfig();
 
         int timeout = config.resolveReadTimeout(properties);
@@ -66,7 +66,7 @@ class RestTemplateConfigTest {
         assertThat(properties.getApi().getSummary().getStructuredPageKeywords()).contains("履历");
     }
 
-    private ApiProperties createPropertiesWithFacecheckOutlier() {
+    private ApiProperties createPropertiesForDefaultRestTemplate() {
         ApiProperties properties = new ApiProperties();
         properties.getApi().getSerp().setConnectTimeoutMs(3000);
         properties.getApi().getGoogle().setConnectTimeoutMs(3500);
@@ -76,7 +76,6 @@ class RestTemplateConfigTest {
         properties.getApi().getSummary().setConnectTimeoutMs(2800);
         properties.getApi().getFaceDetection().setConnectTimeoutMs(1500);
         properties.getApi().getFaceEnhance().setConnectTimeoutMs(1800);
-        properties.getApi().getFacecheck().setConnectTimeoutMs(60000);
         properties.getApi().getSophnetVision().setConnectTimeoutMs(2000);
 
         properties.getApi().getSerp().setReadTimeoutMs(6000);
@@ -87,7 +86,6 @@ class RestTemplateConfigTest {
         properties.getApi().getSummary().setReadTimeoutMs(7500);
         properties.getApi().getFaceDetection().setReadTimeoutMs(3000);
         properties.getApi().getFaceEnhance().setReadTimeoutMs(4000);
-        properties.getApi().getFacecheck().setReadTimeoutMs(120000);
         properties.getApi().getSophnetVision().setReadTimeoutMs(5000);
         return properties;
     }
@@ -101,7 +99,6 @@ class RestTemplateConfigTest {
         properties.getApi().getSummary().setConnectTimeoutMs(2800);
         properties.getApi().getFaceDetection().setConnectTimeoutMs(1500);
         properties.getApi().getFaceEnhance().setConnectTimeoutMs(60000);
-        properties.getApi().getFacecheck().setConnectTimeoutMs(1000);
 
         properties.getApi().getSerp().setReadTimeoutMs(6000);
         properties.getApi().getGoogle().setReadTimeoutMs(7000);
@@ -110,7 +107,6 @@ class RestTemplateConfigTest {
         properties.getApi().getSummary().setReadTimeoutMs(7500);
         properties.getApi().getFaceDetection().setReadTimeoutMs(3000);
         properties.getApi().getFaceEnhance().setReadTimeoutMs(90000);
-        properties.getApi().getFacecheck().setReadTimeoutMs(120000);
         return properties;
     }
 }

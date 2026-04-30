@@ -41,6 +41,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.regex.Matcher;
@@ -64,6 +65,12 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             "<[^>]*parameter\\s+name\\s*=\\s*\"([^\"]+)\"[^>]*>(.*?)</[^>]*parameter>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
+    private static final int FINAL_PROFILE_MAX_PAGE_SUMMARIES = 5;
+    private static final int FINAL_PROFILE_SUMMARY_MAX_CHARS = 700;
+    private static final int FINAL_PROFILE_MAX_KEY_FACTS = 6;
+    private static final int FINAL_PROFILE_KEY_FACT_MAX_CHARS = 160;
+    private static final int FINAL_PROFILE_MAX_TAGS = 8;
+    private static final int FINAL_PROFILE_DRAFT_FIELD_MAX_CHARS = 900;
 
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
@@ -611,7 +618,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private String buildPersonPrompt(String fallbackName, List<PageSummary> pageSummaries) {
-        String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
+        String pageSummaryContent = compactProfileInputSummaries(pageSummaries).stream()
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
@@ -627,9 +634,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         summary.getAuthor(),
                         summary.getPublishedAt(),
                         summary.getSourcePlatform(),
-                        summary.getSummary(),
-                        summary.getKeyFacts(),
-                        summary.getTags()
+                        truncatePromptValue(summary.getSummary(), FINAL_PROFILE_SUMMARY_MAX_CHARS),
+                        compactPromptList(summary.getKeyFacts(), FINAL_PROFILE_MAX_KEY_FACTS, FINAL_PROFILE_KEY_FACT_MAX_CHARS),
+                        compactPromptList(summary.getTags(), FINAL_PROFILE_MAX_TAGS, 60)
                 ))
                 .collect(Collectors.joining("\n---\n"));
 
@@ -660,7 +667,7 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     private String buildJudgementPrompt(String fallbackName,
                                         List<PageSummary> pageSummaries,
                                         ResolvedPersonProfile draftProfile) {
-        String pageSummaryContent = pageSummaries == null ? "" : pageSummaries.stream()
+        String pageSummaryContent = compactProfileInputSummaries(pageSummaries).stream()
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
@@ -676,9 +683,9 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                         summary.getAuthor(),
                         summary.getPublishedAt(),
                         summary.getSourcePlatform(),
-                        summary.getSummary(),
-                        summary.getKeyFacts(),
-                        summary.getTags()
+                        truncatePromptValue(summary.getSummary(), FINAL_PROFILE_SUMMARY_MAX_CHARS),
+                        compactPromptList(summary.getKeyFacts(), FINAL_PROFILE_MAX_KEY_FACTS, FINAL_PROFILE_KEY_FACT_MAX_CHARS),
+                        compactPromptList(summary.getTags(), FINAL_PROFILE_MAX_TAGS, 60)
                 ))
                 .collect(Collectors.joining("\n---\n"));
 
@@ -713,13 +720,52 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
                 fallbackName,
                 buildArticleCitationContext(pageSummaries),
                 draftProfile == null ? null : draftProfile.getResolvedName(),
-                draftProfile == null ? null : draftProfile.getDescription(),
-                draftProfile == null ? null : draftProfile.getSummary(),
-                draftProfile == null ? null : draftProfile.getKeyFacts(),
-                draftProfile == null ? null : draftProfile.getTags(),
+                draftProfile == null ? null : truncatePromptValue(draftProfile.getDescription(), FINAL_PROFILE_DRAFT_FIELD_MAX_CHARS),
+                draftProfile == null ? null : truncatePromptValue(draftProfile.getSummary(), FINAL_PROFILE_DRAFT_FIELD_MAX_CHARS),
+                draftProfile == null ? null : compactPromptList(draftProfile.getKeyFacts(), FINAL_PROFILE_MAX_KEY_FACTS, FINAL_PROFILE_KEY_FACT_MAX_CHARS),
+                draftProfile == null ? null : compactPromptList(draftProfile.getTags(), FINAL_PROFILE_MAX_TAGS, 60),
                 draftProfile == null ? null : draftProfile.getEvidenceUrls(),
                 pageSummaryContent
         );
+    }
+
+    private List<PageSummary> compactProfileInputSummaries(List<PageSummary> pageSummaries) {
+        if (pageSummaries == null || pageSummaries.isEmpty()) {
+            return List.of();
+        }
+        List<PageSummary> validSummaries = pageSummaries.stream()
+                .filter(Objects::nonNull)
+                .filter(summary -> StringUtils.hasText(summary.getSummary()))
+                .filter(summary -> !summary.getSummary().startsWith("[不采纳]"))
+                .limit(FINAL_PROFILE_MAX_PAGE_SUMMARIES)
+                .toList();
+        if (!validSummaries.isEmpty()) {
+            return validSummaries;
+        }
+        return pageSummaries.stream()
+                .filter(Objects::nonNull)
+                .limit(FINAL_PROFILE_MAX_PAGE_SUMMARIES)
+                .toList();
+    }
+
+    private List<String> compactPromptList(List<String> values, int maxItems, int maxChars) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream()
+                .filter(StringUtils::hasText)
+                .map(value -> truncatePromptValue(value, maxChars))
+                .distinct()
+                .limit(maxItems)
+                .toList();
+    }
+
+    private String truncatePromptValue(String value, int maxChars) {
+        String normalized = trimToNull(value);
+        if (!StringUtils.hasText(normalized) || maxChars <= 0 || normalized.length() <= maxChars) {
+            return normalized;
+        }
+        return normalized.substring(0, maxChars) + "…";
     }
 
     private String buildSearchLanguageInferencePrompt(String resolvedName, ResolvedPersonProfile profile) {
@@ -937,11 +983,14 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private SectionPromptMetadata resolveSectionMetadata(String sectionType) {
+        List<String> derivedSectionTitles = properties.getSearch().resolveDerivedSectionTitles(sectionType);
+        if (!derivedSectionTitles.isEmpty()) {
+            List<String> subTopics = derivedSectionTitles.size() > 1
+                    ? derivedSectionTitles.subList(1, derivedSectionTitles.size())
+                    : derivedSectionTitles;
+            return new SectionPromptMetadata(derivedSectionTitles.get(0), subTopics);
+        }
         return switch (trimToNull(sectionType) == null ? "" : trimToNull(sectionType)) {
-            case "china_related_statements" -> new SectionPromptMetadata(
-                    "涉华言论",
-                    List.of("驻华期间政策表态", "对华策略分析", "近期关于新兴威胁的论述")
-            );
             case "education" -> new SectionPromptMetadata(
                     "教育经历",
                     List.of("学历背景", "毕业院校", "学术经历")
@@ -953,22 +1002,6 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
             case "career" -> new SectionPromptMetadata(
                     "职业经历",
                     List.of("任职经历", "关键职位", "职业轨迹")
-            );
-            case "political_view" -> new SectionPromptMetadata(
-                    "政治倾向",
-                    List.of("党派与组织", "政治理念", "政策立场")
-            );
-            case "contact_information" -> new SectionPromptMetadata(
-                    "联系方式",
-                    List.of("公开通讯", "官方邮箱", "认证社交账号")
-            );
-            case "family_member_situation" -> new SectionPromptMetadata(
-                    "家庭成员情况",
-                    List.of("家庭成员", "经商与投资", "争议与纠纷")
-            );
-            case "misconduct" -> new SectionPromptMetadata(
-                    "污点劣迹",
-                    List.of("违法记录", "行政处罚", "负面事件")
             );
             default -> new SectionPromptMetadata(
                     "人物背景",
@@ -1813,14 +1846,8 @@ public class KimiSummaryGenerationClient implements SummaryGenerationClient {
     }
 
     private List<String> allowedSectionNames(String sectionType) {
-        return switch (sectionType) {
-            case "china_related_statements" -> List.of("涉华言论", "中国评价", "国际关系", "相关争议");
-            case "political_view" -> List.of("政治倾向", "党派与组织", "政治理念", "政策立场");
-            case "contact_information" -> List.of("公开通讯", "办公电话", "官方邮箱", "认证社交账号", "其他联系方式");
-            case "family_member_situation" -> List.of("家庭成员", "亲属信息", "经商与投资", "争议与纠纷");
-            case "misconduct" -> List.of("违法记录", "行政处罚", "负面事件", "失信信息");
-            default -> List.of(sectionType);
-        };
+        List<String> titles = properties.getSearch().resolveDerivedSectionTitles(sectionType);
+        return titles.isEmpty() ? List.of(sectionType) : titles;
     }
 
     private PersonBasicInfo readBasicInfo(JsonNode basicInfoNode) {

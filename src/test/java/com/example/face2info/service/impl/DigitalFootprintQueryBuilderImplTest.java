@@ -19,7 +19,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class DigitalFootprintQueryBuilderImplTest {
 
     @Test
-    void shouldReturnDigitalFootprintQueriesFromConfiguredTemplatesWithoutCallingModels() {
+    void shouldReturnDigitalFootprintQueriesFromFallbackTemplatesWithoutCallingModels() {
         DeepSeekSummaryGenerationClient deepSeek = mock(DeepSeekSummaryGenerationClient.class);
         SummaryGenerationClient kimi = mock(SummaryGenerationClient.class);
 
@@ -32,13 +32,12 @@ class DigitalFootprintQueryBuilderImplTest {
                 .extracting(DigitalFootprintQuery::getQueryText)
                 .contains(
                         "Jensen Huang official website",
-                        "Jensen Huang verified social accounts",
-                        "黄仁勋 官方网站",
-                        "黄仁勋 认证社交账号"
+                        "Jensen Huang LinkedIn profile",
+                        "Jensen Huang YouTube channel"
                 );
         assertThat(queries)
                 .extracting(DigitalFootprintQuery::getSourceReason)
-                .containsOnly("configured_template");
+                .containsOnly("fallback_template");
         verifyNoInteractions(deepSeek, kimi);
     }
 

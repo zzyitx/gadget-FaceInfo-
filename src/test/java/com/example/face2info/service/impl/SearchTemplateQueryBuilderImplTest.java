@@ -55,7 +55,20 @@ class SearchTemplateQueryBuilderImplTest {
     }
 
     @Test
-    void shouldUseDefaultTemplatesWhenConfigurationIsEmpty() {
+    void shouldUseFamilyDefaultTemplatesWhenConfigurationIsEmpty() {
+        List<String> queries = new SearchTemplateQueryBuilderImpl(new ApiProperties()).build(
+                "family",
+                "黄仁勋",
+                languageProfile(),
+                null,
+                Map.of()
+        );
+
+        assertThat(queries).contains("Jensen Huang family background", "黄仁勋 家庭背景");
+    }
+
+    @Test
+    void shouldNotFallbackToRemovedTopicDefaultsWhenConfigurationIsEmpty() {
         List<String> queries = new SearchTemplateQueryBuilderImpl(new ApiProperties()).build(
                 "career",
                 "黄仁勋",
@@ -64,7 +77,7 @@ class SearchTemplateQueryBuilderImplTest {
                 Map.of()
         );
 
-        assertThat(queries).contains("Jensen Huang career", "黄仁勋 职业经历");
+        assertThat(queries).isEmpty();
     }
 
     private SearchLanguageProfile languageProfile() {

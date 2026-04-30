@@ -225,26 +225,8 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setImageUrl(aggregationResult.getPerson().getImageUrl())
                 .setSummary(aggregationResult.getPerson().getSummary())
                 .setSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getSummaryParagraphs()))
-                .setEducationSummary(aggregationResult.getPerson().getEducationSummary())
-                .setEducationSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getEducationSummaryParagraphs()))
                 .setFamilyBackgroundSummary(aggregationResult.getPerson().getFamilyBackgroundSummary())
                 .setFamilyBackgroundSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getFamilyBackgroundSummaryParagraphs()))
-                .setCareerSummary(aggregationResult.getPerson().getCareerSummary())
-                .setCareerSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getCareerSummaryParagraphs()))
-                .setChinaRelatedStatementsSummary(aggregationResult.getPerson().getChinaRelatedStatementsSummary())
-                .setChinaRelatedStatementsSummaryParagraphs(toResponseParagraphs(
-                        aggregationResult.getPerson().getChinaRelatedStatementsSummaryParagraphs()))
-                .setPoliticalTendencySummary(aggregationResult.getPerson().getPoliticalTendencySummary())
-                .setPoliticalTendencySummaryParagraphs(toResponseParagraphs(
-                        aggregationResult.getPerson().getPoliticalTendencySummaryParagraphs()))
-                .setContactInformationSummary(aggregationResult.getPerson().getContactInformationSummary())
-                .setContactInformationSummaryParagraphs(toResponseParagraphs(
-                        aggregationResult.getPerson().getContactInformationSummaryParagraphs()))
-                .setFamilyMemberSituationSummary(aggregationResult.getPerson().getFamilyMemberSituationSummary())
-                .setFamilyMemberSituationSummaryParagraphs(toResponseParagraphs(
-                        aggregationResult.getPerson().getFamilyMemberSituationSummaryParagraphs()))
-                .setMisconductSummary(aggregationResult.getPerson().getMisconductSummary())
-                .setMisconductSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getMisconductSummaryParagraphs()))
                 .setTags(aggregationResult.getPerson().getTags())
                 .setArticleSources(toResponseArticleSources(aggregationResult.getPerson().getArticleSources()))
                 .setTotalArticlesRead(aggregationResult.getPerson().getTotalArticlesRead())

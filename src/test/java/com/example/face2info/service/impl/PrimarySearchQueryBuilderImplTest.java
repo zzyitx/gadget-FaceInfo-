@@ -40,7 +40,7 @@ class PrimarySearchQueryBuilderImplTest {
     }
 
     @Test
-    void shouldReturnSectionQueriesFromConfiguredTemplatesWithoutCallingModels() {
+    void shouldReturnFamilySectionQueriesFromConfiguredTemplatesWithoutCallingModels() {
         DeepSeekSummaryGenerationClient deepSeek = mock(DeepSeekSummaryGenerationClient.class);
         SummaryGenerationClient kimi = mock(SummaryGenerationClient.class);
 
@@ -48,15 +48,14 @@ class PrimarySearchQueryBuilderImplTest {
                 "伯恩斯",
                 languageProfile("尼古拉斯·伯恩斯", "Nicholas Burns"),
                 ambassadorProfile(),
-                "china_related_statements"
+                "family"
         );
 
         assertThat(queries).containsExactly(
-                "尼古拉斯·伯恩斯 涉华言论",
-                "尼古拉斯·伯恩斯 中国评价",
-                "尼古拉斯·伯恩斯 中美关系",
-                "尼古拉斯·伯恩斯 中欧关系",
-                "Nicholas Burns China policy"
+                "Nicholas Burns family background",
+                "Nicholas Burns upbringing",
+                "尼古拉斯·伯恩斯 家庭背景",
+                "尼古拉斯·伯恩斯 成长经历"
         );
         verifyNoInteractions(deepSeek, kimi);
     }
