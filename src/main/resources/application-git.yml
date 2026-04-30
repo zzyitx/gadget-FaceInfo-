@@ -95,7 +95,7 @@ face2info:
       api-key: ${SOPHNET_API_KEY:}
       model: ${DEEPSEEK_MODEL:DeepSeek-V3.2-Fast}
       connect-timeout-ms: 5000
-      read-timeout-ms: 60000
+      read-timeout-ms: 90000
       max-retries: 2
       backoff-initial-ms: 500
       system-prompt: ${DEEPSEEK_SYSTEM_PROMPT:你是一个人物信息提取助手，输出结构化文本时只输出JSON。}
@@ -136,13 +136,13 @@ face2info:
       reset-prev-images: true
       demo: false
     maigret:
-      enabled: ${MAIGRET_ENABLED:false}
+      enabled: ${MAIGRET_ENABLED:true}
       executable: ${MAIGRET_EXECUTABLE:maigret}
       command-prefix: []
       top-sites: ${MAIGRET_TOP_SITES:200}
       site-timeout-seconds: ${MAIGRET_SITE_TIMEOUT_SECONDS:10}
       process-timeout-ms: ${MAIGRET_PROCESS_TIMEOUT_MS:60000}
-      max-usernames: ${MAIGRET_MAX_USERNAMES:3}
+      max-usernames: ${MAIGRET_MAX_USERNAMES:5}
       max-accounts-per-username: ${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}
       no-recursion: true
       no-autoupdate: true

@@ -68,13 +68,32 @@ class ApiPropertiesYamlBindingTest {
         Properties properties = loadApplicationGitProperties();
 
         assertThat(properties).isNotNull();
-        assertThat(properties.getProperty("face2info.api.maigret.enabled")).isEqualTo("${MAIGRET_ENABLED:false}");
+        assertThat(properties.getProperty("face2info.api.maigret.enabled")).isEqualTo("${MAIGRET_ENABLED:true}");
         assertThat(properties.getProperty("face2info.api.maigret.executable")).isEqualTo("${MAIGRET_EXECUTABLE:maigret}");
         assertThat(properties.containsKey("face2info.api.maigret.command-prefix[0]")).isFalse();
         assertThat(properties.getProperty("face2info.api.maigret.top-sites")).isEqualTo("${MAIGRET_TOP_SITES:200}");
-        assertThat(properties.getProperty("face2info.api.maigret.max-usernames")).isEqualTo("${MAIGRET_MAX_USERNAMES:3}");
+        assertThat(properties.getProperty("face2info.api.maigret.max-usernames")).isEqualTo("${MAIGRET_MAX_USERNAMES:5}");
         assertThat(properties.getProperty("face2info.api.maigret.max-accounts-per-username"))
                 .isEqualTo("${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}");
+    }
+
+    @Test
+    void shouldExposeDeepSeekTimeoutInApplicationGitYaml() {
+        Properties properties = loadApplicationGitProperties();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("face2info.api.deepseek.read-timeout-ms")).isEqualTo("90000");
+    }
+
+    @Test
+    void shouldUseKimiAsSummaryFallbackProviderInApplicationGitYaml() {
+        Properties properties = loadApplicationGitProperties();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("face2info.api.summary.provider")).isEqualTo("kimi");
+        assertThat(properties.containsKey("face2info.api.summary.base-url")).isTrue();
+        assertThat(properties.containsKey("face2info.api.summary.api-key")).isTrue();
+        assertThat(properties.containsKey("face2info.api.summary.model")).isTrue();
     }
 
     @Test
