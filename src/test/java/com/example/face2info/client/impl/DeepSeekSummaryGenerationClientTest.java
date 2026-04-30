@@ -91,6 +91,33 @@ class DeepSeekSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldOmitToolChoiceInPageSummaryRequestForThinkingModeCompatibility() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("\"tools\"");
+                    assertThat(body).contains("submit_page_summary");
+                    assertThat(body).doesNotContain("tool_choice");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"summary\\":\\"Singer\\",\\"sourceUrl\\":\\"https://example.com/a\\",\\"title\\":\\"A\\"}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        client.summarizePage("Jay Chou", new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("body"));
+
+        server.verify();
+    }
+
+    @Test
     void shouldGeneratePrimarySearchQueriesWithSevenSlotPromptConstraints() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
@@ -441,6 +468,64 @@ class DeepSeekSummaryGenerationClientTest {
 
         assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
         assertThat(profile.getSummary()).isEqualTo("Mandopop singer-songwriter");
+        server.verify();
+    }
+
+    @Test
+    void shouldRetryComprehensiveJudgementWithBatchedSummariesAfterTimeout() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("submit_profile_judgement");
+                })
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("submit_person_profile");
+                    assertThat(body).contains("https://example.com/a");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Jackie Chan\\",\\"summary\\":\\"Batch A\\",\\"evidenceUrls\\":[\\"https://example.com/a\\"]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("submit_person_profile");
+                    assertThat(body).contains("https://example.com/b");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Jackie Chan\\",\\"summary\\":\\"Batch B\\",\\"evidenceUrls\\":[\\"https://example.com/b\\"]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("submit_profile_judgement");
+                    assertThat(body).contains("Batch A");
+                    assertThat(body).contains("Batch B");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Jackie Chan\\",\\"summary\\":\\"Final judged profile\\",\\"evidenceUrls\\":[\\"https://example.com/a\\",\\"https://example.com/b\\"]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.applyComprehensiveJudgement("Jackie Chan", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setTitle("A").setSummary("Summary A"),
+                new PageSummary().setSourceUrl("https://example.com/b").setTitle("B").setSummary("Summary B")
+        ), new ResolvedPersonProfile().setResolvedName("Jackie Chan").setSummary("Draft"));
+
+        assertThat(profile.getSummary()).isEqualTo("Final judged profile");
+        assertThat(profile.getEvidenceUrls()).containsExactly("https://example.com/a", "https://example.com/b");
         server.verify();
     }
 

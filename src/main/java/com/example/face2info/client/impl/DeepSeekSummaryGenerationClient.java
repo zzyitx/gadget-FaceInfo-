@@ -83,6 +83,8 @@ public class DeepSeekSummaryGenerationClient {
     private static final int FINAL_PROFILE_KEY_FACT_MAX_CHARS = 160;
     private static final int FINAL_PROFILE_MAX_TAGS = 8;
     private static final int FINAL_PROFILE_DRAFT_FIELD_MAX_CHARS = 900;
+    private static final int JUDGEMENT_BATCH_SIZE = 1;
+    private static final int JUDGEMENT_BATCH_MIN_SUMMARIES = 2;
 
     private final RestTemplate restTemplate;
     private final ApiProperties properties;
@@ -156,10 +158,75 @@ public class DeepSeekSummaryGenerationClient {
                                                              ResolvedPersonProfile draftProfile) {
         DeepSeekApiProperties deepseek = properties.getApi().getDeepseek();
         validateConfig(deepseek);
-        return RetryUtils.execute("DeepSeek 综合判断", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
-            JsonNode body = callDeepSeek(deepseek, buildJudgementRequest(deepseek, fallbackName, pageSummaries, draftProfile));
-            return parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
-        });
+        try {
+            return RetryUtils.execute("DeepSeek 综合判断", deepseek.getMaxRetries(), deepseek.getBackoffInitialMs(), () -> {
+                JsonNode body = callDeepSeek(deepseek, buildJudgementRequest(deepseek, fallbackName, pageSummaries, draftProfile));
+                return parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
+            });
+        } catch (RuntimeException ex) {
+            if (!shouldRetryJudgementWithBatches(pageSummaries)) {
+                throw ex;
+            }
+            log.warn("DeepSeek 综合判断超时或失败，改用分批压缩后再判断 fallbackName={} pageSummaryCount={} error={}",
+                    fallbackName, pageSummaries == null ? 0 : pageSummaries.size(), ex.getMessage());
+            try {
+                return applyComprehensiveJudgementWithBatches(deepseek, fallbackName, pageSummaries, draftProfile);
+            } catch (RuntimeException batchEx) {
+                ex.addSuppressed(batchEx);
+                throw ex;
+            }
+        }
+    }
+
+    private boolean shouldRetryJudgementWithBatches(List<PageSummary> pageSummaries) {
+        return pageSummaries != null && pageSummaries.stream().filter(Objects::nonNull).count() >= JUDGEMENT_BATCH_MIN_SUMMARIES;
+    }
+
+    private ResolvedPersonProfile applyComprehensiveJudgementWithBatches(DeepSeekApiProperties deepseek,
+                                                                         String fallbackName,
+                                                                         List<PageSummary> pageSummaries,
+                                                                         ResolvedPersonProfile draftProfile) {
+        List<PageSummary> condensedSummaries = new ArrayList<>();
+        List<PageSummary> validSummaries = pageSummaries.stream()
+                .filter(Objects::nonNull)
+                .toList();
+        // 综合判断超时通常来自上下文过长，先把单篇摘要压缩成短画像，再交给最终判断。
+        for (int start = 0; start < validSummaries.size(); start += JUDGEMENT_BATCH_SIZE) {
+            List<PageSummary> batch = validSummaries.subList(start, Math.min(start + JUDGEMENT_BATCH_SIZE, validSummaries.size()));
+            JsonNode batchBody = callDeepSeek(deepseek, buildPersonRequest(deepseek, fallbackName, batch));
+            ResolvedPersonProfile batchProfile = parseProfileFromPageSummaries(fallbackName, batch, batchBody);
+            condensedSummaries.add(toCondensedPageSummary(batch, batchProfile, start + 1));
+        }
+        JsonNode body = callDeepSeek(deepseek, buildJudgementRequest(deepseek, fallbackName, condensedSummaries, draftProfile));
+        return parseJudgedProfile(fallbackName, pageSummaries, draftProfile, body);
+    }
+
+    private PageSummary toCondensedPageSummary(List<PageSummary> sourceSummaries,
+                                               ResolvedPersonProfile batchProfile,
+                                               int sourceId) {
+        PageSummary first = sourceSummaries.isEmpty() ? null : sourceSummaries.get(0);
+        List<String> evidenceUrls = batchProfile == null || batchProfile.getEvidenceUrls() == null
+                ? sourceSummaries.stream()
+                .map(PageSummary::getSourceUrl)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList()
+                : batchProfile.getEvidenceUrls();
+        String sourceUrl = evidenceUrls == null || evidenceUrls.isEmpty()
+                ? first == null ? null : first.getSourceUrl()
+                : evidenceUrls.get(0);
+        return new PageSummary()
+                .setSourceId(sourceId)
+                .setSourceUrl(sourceUrl)
+                .setTitle(first == null ? null : first.getTitle())
+                .setSummary(batchProfile == null ? null : firstNonBlank(batchProfile.getSummary(), batchProfile.getDescription()))
+                .setKeyFacts(batchProfile == null ? List.of() : batchProfile.getKeyFacts())
+                .setTags(batchProfile == null ? List.of() : batchProfile.getTags())
+                .setArticleSources(sourceSummaries.stream()
+                        .flatMap(summary -> summary.getArticleSources() == null
+                                ? java.util.stream.Stream.<ArticleCitation>empty()
+                                : summary.getArticleSources().stream())
+                        .toList());
     }
 
     public SearchLanguageInferenceResult inferSearchLanguageProfile(String resolvedName,
@@ -274,8 +341,7 @@ public class DeepSeekSummaryGenerationClient {
                                         "additionalProperties", false
                                 )
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", PAGE_SUMMARY_FUNCTION_NAME))
+                ))
         );
     }
 
@@ -296,8 +362,7 @@ public class DeepSeekSummaryGenerationClient {
                                 "description", "提交人物聚合画像的结构化结果",
                                 "parameters", profileSchema()
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", PERSON_PROFILE_FUNCTION_NAME))
+                ))
         );
     }
 
@@ -329,8 +394,7 @@ public class DeepSeekSummaryGenerationClient {
                                         "additionalProperties", false
                                 )
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", SEARCH_LANGUAGE_INFERENCE_FUNCTION_NAME))
+                ))
         );
     }
 
@@ -399,8 +463,7 @@ public class DeepSeekSummaryGenerationClient {
                                         "additionalProperties", false
                                 )
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", SOCIAL_USERNAME_INFERENCE_FUNCTION_NAME))
+                ))
         );
     }
 
@@ -422,8 +485,7 @@ public class DeepSeekSummaryGenerationClient {
                                 "description", "提交综合判断后的最终人物画像",
                                 "parameters", profileSchema()
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", PROFILE_JUDGEMENT_FUNCTION_NAME))
+                ))
         );
     }
 
@@ -453,8 +515,7 @@ public class DeepSeekSummaryGenerationClient {
                                         "additionalProperties", false
                                 )
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", SECTION_SUMMARY_FUNCTION_NAME))
+                ))
         );
     }
 
@@ -497,8 +558,7 @@ public class DeepSeekSummaryGenerationClient {
                                         "additionalProperties", false
                                 )
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", TOPIC_EXPANSION_FUNCTION_NAME))
+                ))
         );
     }
 
@@ -539,8 +599,7 @@ public class DeepSeekSummaryGenerationClient {
                                         "additionalProperties", false
                                 )
                         )
-                )),
-                "tool_choice", Map.of("type", "function", "function", Map.of("name", SECTIONED_FAMILY_SUMMARY_FUNCTION_NAME))
+                ))
         );
     }
 

@@ -640,6 +640,55 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
+    void shouldKeepDraftProfileWhenAllComprehensiveJudgementProvidersFail() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+
+        PageContent page = new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Jackie Chan profile");
+        PageSummary pageSummary = new PageSummary()
+                .setSourceUrl("https://example.com/a")
+                .setTitle("A")
+                .setSummary("Jackie Chan is an actor.");
+        ResolvedPersonProfile draftProfile = new ResolvedPersonProfile()
+                .setResolvedName("Jackie Chan")
+                .setSummary("Draft profile")
+                .setEvidenceUrls(List.of("https://example.com/a"));
+
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(List.of(page));
+        when(deepSeekClient.summarizePage("Jackie Chan", page)).thenReturn(pageSummary);
+        when(kimiClient.summarizePage("Jackie Chan", page)).thenReturn(pageSummary);
+        when(deepSeekClient.summarizePersonFromPageSummaries("Jackie Chan", List.of(pageSummary))).thenReturn(draftProfile);
+        when(deepSeekClient.applyComprehensiveJudgement("Jackie Chan", List.of(pageSummary), draftProfile))
+                .thenThrow(new ApiCallException("HTTP_ERROR: DeepSeek timeout"));
+        when(kimiClient.applyComprehensiveJudgement("Jackie Chan", List.of(pageSummary), draftProfile))
+                .thenThrow(new ApiCallException("HTTP_ERROR: Kimi timeout"));
+
+        List<String> warnings = new ArrayList<>();
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class),
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                kimiClient,
+                deepSeekClient,
+                executor,
+                createApiProperties(null)
+        ).resolveProfileFromEvidence(
+                List.of(new WebEvidence().setUrl("https://example.com/a")),
+                "Jackie Chan",
+                warnings
+        );
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jackie Chan");
+        assertThat(profile.getSummary()).isEqualTo("Draft profile");
+        assertThat(profile.getEvidenceUrls()).containsExactly("https://example.com/a");
+        assertThat(warnings).isNotEmpty();
+    }
+
+    @Test
     void shouldRunSectionBaseQueriesInMultipleLanguages() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);

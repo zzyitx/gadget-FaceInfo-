@@ -49,6 +49,17 @@ class RestTemplateConfigTest {
     }
 
     @Test
+    void shouldIncludeDeepSeekTimeoutsInDefaultRestTemplate() {
+        ApiProperties properties = createPropertiesForDefaultRestTemplate();
+        properties.getApi().getDeepseek().setConnectTimeoutMs(6500);
+        properties.getApi().getDeepseek().setReadTimeoutMs(90000);
+        RestTemplateConfig config = new RestTemplateConfig();
+
+        assertThat(config.resolveConnectTimeout(properties)).isEqualTo(6500);
+        assertThat(config.resolveReadTimeout(properties)).isEqualTo(90000);
+    }
+
+    @Test
     void shouldExposeDeepSeekAndSummaryRoutingProperties() {
         ApiProperties properties = new ApiProperties();
 
@@ -72,6 +83,7 @@ class RestTemplateConfigTest {
         properties.getApi().getGoogle().setConnectTimeoutMs(3500);
         properties.getApi().getJina().setConnectTimeoutMs(2500);
         properties.getApi().getKimi().setConnectTimeoutMs(4000);
+        properties.getApi().getDeepseek().setConnectTimeoutMs(4500);
         properties.getApi().getCompreface().setConnectTimeoutMs(5000);
         properties.getApi().getSummary().setConnectTimeoutMs(2800);
         properties.getApi().getFaceDetection().setConnectTimeoutMs(1500);
@@ -82,6 +94,7 @@ class RestTemplateConfigTest {
         properties.getApi().getGoogle().setReadTimeoutMs(7000);
         properties.getApi().getJina().setReadTimeoutMs(8000);
         properties.getApi().getKimi().setReadTimeoutMs(9000);
+        properties.getApi().getDeepseek().setReadTimeoutMs(9500);
         properties.getApi().getCompreface().setReadTimeoutMs(30000);
         properties.getApi().getSummary().setReadTimeoutMs(7500);
         properties.getApi().getFaceDetection().setReadTimeoutMs(3000);
@@ -96,6 +109,7 @@ class RestTemplateConfigTest {
         properties.getApi().getGoogle().setConnectTimeoutMs(3500);
         properties.getApi().getJina().setConnectTimeoutMs(2500);
         properties.getApi().getKimi().setConnectTimeoutMs(12000);
+        properties.getApi().getDeepseek().setConnectTimeoutMs(5000);
         properties.getApi().getSummary().setConnectTimeoutMs(2800);
         properties.getApi().getFaceDetection().setConnectTimeoutMs(1500);
         properties.getApi().getFaceEnhance().setConnectTimeoutMs(60000);
@@ -104,6 +118,7 @@ class RestTemplateConfigTest {
         properties.getApi().getGoogle().setReadTimeoutMs(7000);
         properties.getApi().getJina().setReadTimeoutMs(8000);
         properties.getApi().getKimi().setReadTimeoutMs(75000);
+        properties.getApi().getDeepseek().setReadTimeoutMs(60000);
         properties.getApi().getSummary().setReadTimeoutMs(7500);
         properties.getApi().getFaceDetection().setReadTimeoutMs(3000);
         properties.getApi().getFaceEnhance().setReadTimeoutMs(90000);

@@ -452,10 +452,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 );
                 return completeJudgedProfile(judged, profile, warnings);
             } catch (RuntimeException kimiEx) {
-                log.error("综合判断Kimi兜底失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                log.warn("综合判断Kimi兜底失败，使用已有画像草稿 fallbackName={} pageSummaryCount={} category={} error={}",
                         fallbackName, pageSummaries.size(),
                         classifySummaryFailure(kimiEx), kimiEx.getMessage(), kimiEx);
-                throw new ApiCallException("LLM_PROFILE_FAILED: " + LLM_FAILURE_MESSAGE, kimiEx);
+                warnings.add(JUDGEMENT_WARNING);
+                return profile;
             }
         }
     }
