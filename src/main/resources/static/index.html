@@ -6,44 +6,109 @@
   <title>Face2Info 人脸信息聚合</title>
   <style>
     :root {
-      --bg: #f7efe6;
-      --surface: rgba(255, 250, 246, 0.95);
-      --surface-2: rgba(255, 255, 255, 0.88);
-      --border: rgba(41, 28, 20, 0.12);
-      --text: #1f1712;
-      --muted: #675a51;
-      --primary: #8c3f25;
-      --primary-2: #b85b33;
-      --shadow: 0 18px 38px rgba(59, 34, 20, 0.14);
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-muted: #f8fafc;
+      --surface-blue: #eff6ff;
+      --border: #d9e2ef;
+      --border-strong: #a9b8cc;
+      --text: #0b1220;
+      --muted: #526071;
+      --primary: #2563eb;
+      --primary-strong: #1d4ed8;
+      --primary-soft: #dbeafe;
+      --danger: #dc2626;
+      --shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+      --radius: 8px;
+      --radius-sm: 6px;
+      --focus: 0 0 0 3px rgba(37, 99, 235, 0.24);
     }
 
     * { box-sizing: border-box; }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
 
     body {
       margin: 0;
       min-height: 100vh;
       color: var(--text);
-      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(184, 91, 51, 0.13), transparent 28%),
-        linear-gradient(180deg, #f8f2eb, var(--bg));
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+      background: linear-gradient(180deg, #ffffff 0%, var(--bg) 58%, #eef4ff 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(37, 99, 235, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37, 99, 235, 0.045) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(180deg, #000 0%, transparent 72%);
     }
 
     .page {
-      width: min(920px, calc(100% - 24px));
-      margin: 20px auto 36px;
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
       display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      grid-template-areas:
+        "hero hero"
+        "upload status"
+        "selection selection";
       gap: 16px;
+      align-items: start;
     }
 
-    .hero,
     .upload-card,
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 24px;
+      border-radius: var(--radius);
       box-shadow: var(--shadow);
-      padding: 22px;
+      padding: 24px;
+      min-width: 0;
+    }
+
+    .hero {
+      grid-area: hero;
+      display: grid;
+      gap: 10px;
+      padding: 2px 0 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .upload-card {
+      grid-area: upload;
+    }
+
+    .selection-card {
+      grid-area: selection;
+    }
+
+    .status-card {
+      grid-area: status;
+      position: sticky;
+      top: 16px;
+      background: #0b1220;
+      border-color: #1f2a3d;
+      color: #ffffff;
+    }
+
+    .status-card .eyebrow {
+      color: #bfdbfe;
+      background: rgba(37, 99, 235, 0.18);
+      border-color: rgba(191, 219, 254, 0.24);
+    }
+
+    .status-card .meta-line {
+      color: #cbd5e1;
     }
 
     .eyebrow,
@@ -51,36 +116,45 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      width: fit-content;
       border-radius: 999px;
       font-size: 12px;
       font-weight: 700;
-      padding: 8px 12px;
+      line-height: 1.3;
+      letter-spacing: 0;
     }
 
     .eyebrow {
       color: var(--primary);
-      background: rgba(140, 63, 37, 0.12);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      background: var(--primary-soft);
+      border: 1px solid rgba(37, 99, 235, 0.16);
+      padding: 7px 10px;
     }
 
     .pill {
       color: var(--primary);
-      background: rgba(140, 63, 37, 0.08);
+      background: var(--surface-blue);
+      border: 1px solid rgba(37, 99, 235, 0.14);
       padding: 7px 12px;
     }
 
     h1,
     h2 {
       margin: 0;
-      font-family: Georgia, serif;
-      letter-spacing: -0.02em;
+      letter-spacing: 0;
+      color: var(--text);
     }
 
     .hero h1 {
-      margin-top: 12px;
-      font-size: clamp(34px, 5vw, 56px);
-      line-height: 1;
+      max-width: 760px;
+      font-size: clamp(30px, 4.2vw, 50px);
+      line-height: 1.08;
+      font-weight: 750;
+    }
+
+    h2 {
+      font-size: clamp(20px, 2.2vw, 28px);
+      line-height: 1.22;
     }
 
     .hero-copy,
@@ -93,7 +167,25 @@
     .face-card-meta,
     .face-card-bbox {
       color: var(--muted);
-      line-height: 1.7;
+      line-height: 1.65;
+      overflow-wrap: anywhere;
+    }
+
+    .hero-copy {
+      max-width: 760px;
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .section-summary,
+    .tip,
+    .selection-note,
+    .selection-progress,
+    .empty,
+    .meta-line,
+    .face-card-meta,
+    .face-card-bbox {
+      font-size: 14px;
     }
 
     .section-title {
@@ -105,15 +197,25 @@
     .selection-preview,
     .meta-box,
     .face-card {
-      border: 1px solid rgba(41, 28, 20, 0.12);
-      border-radius: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
     }
 
     .dropzone {
       display: grid;
       gap: 12px;
       padding: 16px;
-      background: rgba(255, 255, 255, 0.74);
+      background: linear-gradient(180deg, #ffffff 0%, var(--surface-muted) 100%);
+      border-style: dashed;
+      border-color: var(--border-strong);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text);
+      font-weight: 650;
+      line-height: 1.5;
     }
 
     .upload-actions {
@@ -125,24 +227,53 @@
       display: contents;
     }
 
-    input[type="file"] { width: 100%; }
+    input[type="file"] {
+      width: 100%;
+      min-height: 48px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      background: #ffffff;
+      font: inherit;
+    }
+
+    input[type="file"]::file-selector-button {
+      min-height: 32px;
+      margin-right: 12px;
+      border: 0;
+      border-radius: var(--radius-sm);
+      padding: 0 12px;
+      color: #ffffff;
+      background: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    input:focus-visible,
+    button:focus-visible {
+      outline: none;
+      box-shadow: var(--focus);
+    }
 
     .preview {
       display: none;
       overflow: hidden;
-      border-radius: 18px;
-      padding: 8px;
-      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #ffffff;
     }
 
     .preview.preview-visible {
-      display: block;
+      display: grid;
+      place-items: center;
     }
 
     .preview img {
       display: block;
       width: 100%;
-      max-height: 520px;
+      max-width: 100%;
+      max-height: min(52vh, 520px);
       height: auto;
       object-fit: contain;
       object-position: center;
@@ -150,21 +281,29 @@
 
     button {
       width: 100%;
-      padding: 16px 18px;
+      min-height: 48px;
+      padding: 12px 16px;
       border: 0;
-      border-radius: 999px;
+      border-radius: var(--radius);
       color: #fff;
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      background: linear-gradient(135deg, var(--primary), var(--text));
       font: inherit;
       font-weight: 700;
       cursor: pointer;
-      box-shadow: 0 12px 24px rgba(140, 63, 37, 0.24);
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 28px rgba(37, 99, 235, 0.22);
     }
 
     button:disabled {
-      opacity: 0.7;
+      opacity: 0.56;
       cursor: wait;
       box-shadow: none;
+      transform: none;
     }
 
     .selection-card[hidden] { display: none !important; }
@@ -174,19 +313,19 @@
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
     .selection-top {
       display: grid;
-      grid-template-columns: minmax(0, 1.3fr) minmax(220px, 0.7fr);
+      grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
       gap: 14px;
       margin-bottom: 14px;
     }
 
     .selection-preview {
       overflow: auto;
-      background: var(--surface-2);
+      background: var(--surface-muted);
       min-height: 240px;
       display: grid;
       place-items: center;
@@ -196,6 +335,7 @@
     .selection-preview img {
       display: block;
       width: 100%;
+      max-width: 100%;
       max-height: 520px;
       height: auto;
       object-fit: contain;
@@ -218,14 +358,14 @@
 
     .meta-box {
       padding: 14px 16px;
-      background: rgba(255, 255, 255, 0.78);
+      background: var(--surface-muted);
     }
 
     .meta-box span {
       display: block;
       font-size: 12px;
-      text-transform: uppercase;
       color: var(--muted);
+      letter-spacing: 0;
     }
 
     .meta-box strong {
@@ -238,25 +378,27 @@
     .selection-progress {
       margin-top: 12px;
       padding: 12px 14px;
-      border: 1px solid rgba(140, 63, 37, 0.14);
-      border-radius: 16px;
-      background: rgba(140, 63, 37, 0.08);
+      border: 1px solid rgba(37, 99, 235, 0.18);
+      border-radius: var(--radius);
+      background: var(--surface-blue);
     }
 
     .face-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
       gap: 12px;
       margin-top: 12px;
     }
 
     .face-card {
+      display: grid;
       padding: 0;
       overflow: hidden;
       background: #fff;
+      color: var(--text);
       text-align: left;
       cursor: pointer;
-      border-radius: 18px;
+      box-shadow: none;
     }
 
     .face-card:disabled {
@@ -265,8 +407,14 @@
     }
 
     .face-card.is-selected {
-      border-color: var(--primary-2);
-      box-shadow: 0 14px 28px rgba(140, 63, 37, 0.16);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+    }
+
+    .face-card:hover:not(:disabled) {
+      transform: none;
+      border-color: rgba(37, 99, 235, 0.52);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
     }
 
     .face-card img {
@@ -283,14 +431,14 @@
       color: var(--muted);
       padding: 18px;
       text-align: center;
-      background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(242, 225, 210, 0.82));
+      background: var(--surface-muted);
     }
 
     .face-card-body {
       display: grid;
       gap: 6px;
       padding: 14px 16px 16px;
-      border-top: 1px solid rgba(41, 28, 20, 0.08);
+      border-top: 1px solid var(--border);
     }
 
     .face-card-title {
@@ -298,11 +446,31 @@
       line-height: 1.4;
     }
 
-    .status-card {
-      background: rgba(255, 255, 255, 0.86);
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
     }
 
     @media (max-width: 980px) {
+      .page {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "hero"
+          "upload"
+          "selection"
+          "status";
+      }
+
+      .status-card {
+        position: static;
+      }
+
       .selection-top {
         grid-template-columns: 1fr;
       }
@@ -310,19 +478,31 @@
 
     @media (max-width: 640px) {
       .page {
-        width: min(100% - 16px, 920px);
-        margin: 12px auto 24px;
+        width: min(100% - 16px, 1180px);
+        padding: 12px 0 24px;
+        gap: 12px;
       }
 
-      .hero,
       .upload-card,
       .card {
-        padding: 18px;
-        border-radius: 20px;
+        padding: 16px;
+      }
+
+      .hero {
+        padding-bottom: 12px;
+      }
+
+      .selection-header {
+        display: grid;
+      }
+
+      .preview img,
+      .selection-preview img {
+        max-height: 340px;
       }
 
       .face-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
       }
     }
   </style>
@@ -331,9 +511,9 @@
 <div class="page">
   <section class="hero">
     <div class="eyebrow">Face2Info</div>
-    <h1>上传图片并选择目标人脸</h1>
+    <h1>人脸信息检索工作台</h1>
     <p class="hero-copy">
-      上传图片后点击 <code>启动程序</code> 直接进入主流程。单脸会直接检索并跳转详情页，多脸会先展示候选人脸供继续选择。
+      上传图片，选择目标人脸，查看公开信息聚合结果。
     </p>
   </section>
 
@@ -341,8 +521,8 @@
     <form id="faceForm">
       <div class="section-title">
         <span class="eyebrow">上传</span>
-        <h2>上传待识别图片</h2>
-        <p class="section-summary">系统会先将上传图片转换为图床 URL，再进入检测与识别流程。检测到单脸时直接继续主流程，多脸时再进入选脸步骤。</p>
+        <h2>上传识别图片</h2>
+        <p class="section-summary">单脸图片会直接检索，多脸图片会先进入候选选择。</p>
       </div>
 
       <div style="display:grid; gap:12px; margin-top:14px;">
@@ -350,13 +530,13 @@
           <label for="imageInput">待识别图片</label>
           <div class="dropzone">
             <input id="imageInput" name="image" type="file" accept="image/*" required>
-            <div class="tip">提交后会先进入主流程：单脸直接检索，多脸返回候选人脸供继续选择。</div>
+            <div class="tip">支持常见图片格式，建议使用清晰正面人像。</div>
             <div class="upload-actions">
               <div class="preview" id="preview">
                 <img id="previewImage" alt="图片预览">
               </div>
               <div class="action-slot" id="uploadActionSlot">
-                <button id="submitButton" type="submit" form="faceForm">启动程序</button>
+                <button id="submitButton" type="submit" form="faceForm">开始分析</button>
               </div>
             </div>
           </div>
@@ -403,7 +583,7 @@
       <span class="eyebrow">状态</span>
       <h2 id="statusTitle">等待上传图片</h2>
     </div>
-    <p class="meta-line" id="statusText">提交图片后会在本页展示候选人脸，详情结果将在新页面显示。</p>
+    <p class="meta-line" id="statusText">上传后在本页完成候选选择，结果页展示聚合信息。</p>
   </section>
 </div>
 
@@ -455,8 +635,8 @@
     }
 
     clearSelection();
-    setBusy(true, "启动中...");
-    setStatus("处理中", "正在上传图片并进入主流程，请稍候。");
+    setBusy(true, "分析中...");
+    setStatus("处理中", "正在上传图片并检测人脸，请稍候。");
 
     try {
       const formData = new FormData();
@@ -607,7 +787,7 @@
       submitButton.disabled = !state.selectedFaceId;
       return;
     }
-    submitButton.textContent = "启动程序";
+    submitButton.textContent = "开始分析";
     submitButton.disabled = false;
   }
 

@@ -6,41 +6,65 @@
   <title>Face2Info 检索结果</title>
   <style>
     :root {
-      --bg: #f7efe6;
-      --surface: rgba(255, 250, 246, 0.95);
-      --surface-2: rgba(255, 255, 255, 0.88);
-      --border: rgba(41, 28, 20, 0.12);
-      --text: #1f1712;
-      --muted: #675a51;
-      --primary: #8c3f25;
-      --primary-2: #b85b33;
-      --shadow: 0 18px 38px rgba(59, 34, 20, 0.14);
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-muted: #f8fafc;
+      --surface-blue: #eff6ff;
+      --border: #d9e2ef;
+      --border-strong: #a9b8cc;
+      --text: #0b1220;
+      --muted: #526071;
+      --primary: #2563eb;
+      --primary-strong: #1d4ed8;
+      --primary-soft: #dbeafe;
+      --shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+      --radius: 8px;
+      --radius-sm: 6px;
+      --focus: 0 0 0 3px rgba(37, 99, 235, 0.24);
     }
 
     * { box-sizing: border-box; }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
 
     body {
       margin: 0;
       min-height: 100vh;
       color: var(--text);
-      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(184, 91, 51, 0.13), transparent 28%),
-        linear-gradient(180deg, #f8f2eb, var(--bg));
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+      background: linear-gradient(180deg, #ffffff 0%, var(--bg) 58%, #eef4ff 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(37, 99, 235, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37, 99, 235, 0.045) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(180deg, #000 0%, transparent 72%);
     }
 
     .page {
-      width: min(1200px, calc(100% - 24px));
-      margin: 20px auto 36px;
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
       display: grid;
       gap: 16px;
     }
 
     .result-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 296px;
-      gap: 20px;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
       align-items: start;
+      min-width: 0;
     }
 
     .main-column {
@@ -51,16 +75,24 @@
 
     .match-rail {
       position: sticky;
-      top: 20px;
+      top: 16px;
+      min-width: 0;
     }
 
-    .hero,
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 24px;
+      border-radius: var(--radius);
       box-shadow: var(--shadow);
-      padding: 22px;
+      padding: 24px;
+      min-width: 0;
+    }
+
+    .hero {
+      display: grid;
+      gap: 10px;
+      padding: 2px 0 16px;
+      border-bottom: 1px solid var(--border);
     }
 
     .hero-top {
@@ -74,14 +106,20 @@
     .hero h1,
     .section-title h2 {
       margin: 0;
-      font-family: Georgia, serif;
-      letter-spacing: -0.02em;
+      letter-spacing: 0;
+      color: var(--text);
     }
 
     .hero h1 {
-      margin-top: 12px;
-      font-size: clamp(32px, 4vw, 50px);
-      line-height: 1;
+      max-width: 760px;
+      font-size: clamp(30px, 4vw, 48px);
+      line-height: 1.08;
+      font-weight: 750;
+    }
+
+    .section-title h2 {
+      font-size: clamp(20px, 2vw, 28px);
+      line-height: 1.22;
     }
 
     .eyebrow,
@@ -89,23 +127,26 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      width: fit-content;
       border-radius: 999px;
       font-size: 12px;
       font-weight: 700;
+      line-height: 1.3;
+      letter-spacing: 0;
     }
 
     .eyebrow {
-      padding: 8px 12px;
+      padding: 7px 10px;
       color: var(--primary);
-      background: rgba(140, 63, 37, 0.12);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      background: var(--primary-soft);
+      border: 1px solid rgba(37, 99, 235, 0.16);
     }
 
     .chip {
       padding: 7px 12px;
       color: var(--primary);
-      background: rgba(140, 63, 37, 0.08);
+      background: var(--surface-blue);
+      border: 1px solid rgba(37, 99, 235, 0.14);
     }
 
     .hero-copy,
@@ -115,20 +156,42 @@
     .image-source,
     .person-summary {
       color: var(--muted);
-      line-height: 1.7;
+      line-height: 1.65;
+      overflow-wrap: anywhere;
+    }
+
+    .hero-copy {
+      max-width: 760px;
+      margin: 0;
+      font-size: 16px;
     }
 
     .back-link {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      min-height: 44px;
       padding: 10px 14px;
-      border-radius: 999px;
-      border: 1px solid rgba(140, 63, 37, 0.22);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
       background: #fff;
-      color: var(--primary);
+      color: var(--text);
       text-decoration: none;
       font-weight: 700;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+    }
+
+    .back-link:hover {
+      border-color: rgba(37, 99, 235, 0.48);
+      color: var(--primary);
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+    }
+
+    .back-link:focus-visible,
+    a:focus-visible,
+    summary:focus-visible {
+      outline: none;
+      box-shadow: var(--focus);
     }
 
     .section-title {
@@ -175,7 +238,7 @@
       color: var(--muted);
       line-height: 1.75;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: anywhere;
       font-size: 15px;
     }
 
@@ -192,9 +255,9 @@
 
     .profile-section {
       padding: 18px 20px;
-      border-radius: 20px;
-      border: 1px solid rgba(41, 28, 20, 0.12);
-      background: linear-gradient(180deg, rgba(255, 249, 244, 0.96), rgba(242, 225, 210, 0.44));
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, var(--surface-muted) 100%);
       min-width: 0;
     }
 
@@ -208,9 +271,9 @@
 
     .profile-section-title {
       margin: 0;
-      font-family: Georgia, serif;
-      font-size: 24px;
-      letter-spacing: -0.02em;
+      font-size: 20px;
+      line-height: 1.3;
+      letter-spacing: 0;
     }
 
     .profile-section-body {
@@ -229,7 +292,7 @@
       height: 24px;
       padding: 0 7px;
       border-radius: 999px;
-      background: rgba(140, 63, 37, 0.1);
+      background: var(--primary-soft);
       color: var(--primary);
       text-decoration: none;
       font-size: 12px;
@@ -250,14 +313,14 @@
       min-width: 220px;
       max-width: min(320px, 72vw);
       padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(31, 23, 18, 0.94);
-      color: #fff7f0;
+      border-radius: var(--radius);
+      background: rgba(11, 18, 32, 0.96);
+      color: #f8fafc;
       font-size: 12px;
       line-height: 1.6;
       white-space: pre-wrap;
-      word-break: break-word;
-      box-shadow: 0 16px 28px rgba(31, 23, 18, 0.28);
+      overflow-wrap: anywhere;
+      box-shadow: 0 16px 28px rgba(15, 23, 42, 0.24);
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.16s ease;
@@ -276,8 +339,8 @@
     .person-avatar-wrap {
       width: 120px;
       height: 120px;
-      border-radius: 16px;
-      border: 1px solid rgba(41, 28, 20, 0.12);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
       overflow: hidden;
       background: #fff;
       flex: 0 0 120px;
@@ -294,8 +357,8 @@
     .item,
     .info-box,
     pre {
-      border: 1px solid rgba(41, 28, 20, 0.12);
-      border-radius: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
     }
 
     .match-list,
@@ -305,6 +368,7 @@
     }
 
     .match-list {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
       gap: 12px;
     }
 
@@ -316,7 +380,7 @@
     .match-group + .match-group {
       margin-top: 18px;
       padding-top: 18px;
-      border-top: 1px solid rgba(41, 28, 20, 0.1);
+      border-top: 1px solid var(--border);
     }
 
     .match-group-header {
@@ -350,7 +414,7 @@
       align-items: center;
       padding: 6px 10px;
       border-radius: 999px;
-      background: rgba(140, 63, 37, 0.1);
+      background: var(--primary-soft);
       color: var(--primary);
       font-size: 12px;
       font-weight: 700;
@@ -360,16 +424,22 @@
       overflow: hidden;
       cursor: default;
       background: #fff;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
     }
 
     .match-item.is-clickable {
       cursor: pointer;
     }
 
+    .match-item.is-clickable:hover {
+      border-color: rgba(37, 99, 235, 0.48);
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+    }
+
     .match-thumb {
-      aspect-ratio: 4 / 5;
+      aspect-ratio: 4 / 3;
       overflow: hidden;
-      background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(242, 225, 210, 0.82));
+      background: var(--surface-muted);
     }
 
     .match-thumb img {
@@ -385,7 +455,8 @@
       justify-content: space-between;
       gap: 10px;
       padding: 12px 14px 14px;
-      background: rgba(255, 250, 246, 0.95);
+      background: #ffffff;
+      border-top: 1px solid var(--border);
     }
 
     .match-order,
@@ -398,7 +469,7 @@
       padding: 0 10px;
       border-radius: 999px;
       color: var(--primary);
-      background: rgba(140, 63, 37, 0.1);
+      background: var(--primary-soft);
       font-weight: 700;
       line-height: 1.5;
     }
@@ -412,21 +483,16 @@
     }
 
     .info-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+      gap: 10px;
       margin-top: 12px;
     }
 
-    .info-grid {
-      gap: 10px;
-    }
-
     .info-box {
-      min-width: 180px;
-      flex: 1 1 180px;
       padding: 12px 14px;
-      background: rgba(242, 225, 210, 0.36);
+      background: var(--surface-muted);
+      min-width: 0;
     }
 
     .info-box span {
@@ -440,7 +506,7 @@
       display: block;
       margin-top: 4px;
       line-height: 1.5;
-      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     .info-box strong a {
@@ -454,7 +520,12 @@
 
     .item {
       padding: 14px 16px;
-      background: rgba(242, 225, 210, 0.34);
+      background: var(--surface-muted);
+      min-width: 0;
+    }
+
+    .item a {
+      overflow-wrap: anywhere;
     }
 
     .article-line-list {
@@ -466,7 +537,7 @@
       display: grid;
       gap: 4px;
       padding: 10px 12px;
-      background: rgba(242, 225, 210, 0.28);
+      background: var(--surface-muted);
     }
 
     .article-line-top {
@@ -484,7 +555,7 @@
       display: block;
       min-width: 0;
       line-height: 1.45;
-      word-break: break-word;
+      overflow-wrap: anywhere;
       font-size: 14px;
     }
 
@@ -514,6 +585,7 @@
       color: var(--primary);
       font-weight: 700;
       margin-bottom: 12px;
+      border-radius: var(--radius-sm);
     }
 
     .debug-details[open] summary {
@@ -534,19 +606,45 @@
       display: inline-flex;
       align-items: center;
       padding: 9px 12px;
-      border-radius: 999px;
-      border: 1px solid rgba(140, 63, 37, 0.12);
+      border-radius: var(--radius);
+      border: 1px solid rgba(37, 99, 235, 0.16);
       color: var(--primary);
       text-decoration: none;
-      background: rgba(140, 63, 37, 0.06);
+      background: var(--surface-blue);
     }
 
     pre {
       margin: 0;
       padding: 14px 16px;
-      background: rgba(255, 255, 255, 0.88);
+      background: #0b1220;
+      color: #e2e8f0;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: anywhere;
+      overflow: auto;
+      max-height: 520px;
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .selection-empty {
+      display: grid;
+      min-height: 180px;
+      place-items: center;
+      padding: 16px;
+      color: var(--muted);
+      text-align: center;
+      background: var(--surface-muted);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
     }
 
     @media (max-width: 960px) {
@@ -561,14 +659,17 @@
 
     @media (max-width: 640px) {
       .page {
-        width: min(100% - 16px, 1200px);
-        margin: 12px auto 24px;
+        width: min(100% - 16px, 1240px);
+        padding: 12px 0 24px;
+        gap: 12px;
       }
 
-      .hero,
       .card {
-        padding: 18px;
-        border-radius: 20px;
+        padding: 16px;
+      }
+
+      .hero {
+        padding-bottom: 12px;
       }
 
       .person-intro {
@@ -579,6 +680,11 @@
         width: 96px;
         height: 96px;
         flex-basis: 96px;
+      }
+
+      .section-header,
+      .hero-top {
+        display: grid;
       }
 
       .profile-sections {
@@ -607,8 +713,8 @@
       <div class="eyebrow">Face2Info 结果页</div>
       <a class="back-link" href="/index.html">返回首页重新上传</a>
     </div>
-    <h1>人物详情检索结果</h1>
-    <p class="hero-copy">本页展示所选人像框对应的人物基本信息、家庭背景、图片匹配及其文章来源。</p>
+    <h1>人物信息分析结果</h1>
+    <p class="hero-copy">展示人物资料、公开账号、图片匹配与文章来源。</p>
   </section>
 
   <div class="result-layout">
@@ -872,13 +978,14 @@
       socialBody.innerHTML = '<p class="empty">暂无公开社交账号。</p>';
       return;
     }
-    const html = accounts.map(account => `
+    const html = accounts.map((account, index) => `
       <article class="item">
-        <div class="chip">${escapeHtml(account.platform || "未知平台")}</div>
+        <div class="chip">#${index + 1} ${escapeHtml(account.platform || "未知平台")}</div>
+        ${account.suspected ? '<div class="chip">疑似账号</div>' : ""}
         <a href="${escapeHtml(account.url || "#")}" target="_blank" rel="noreferrer">
           ${escapeHtml(account.username || account.url || "打开链接")}
         </a>
-        <p>${escapeHtml(account.url || "-")}</p>
+        <p>${escapeHtml(account.source ? `${account.source} · ${account.url || "-"}` : (account.url || "-"))}</p>
       </article>
     `).join("");
     socialBody.innerHTML = `<div class="list">${html}</div>`;
