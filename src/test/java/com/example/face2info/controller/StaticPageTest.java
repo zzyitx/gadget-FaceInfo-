@@ -106,8 +106,9 @@ class StaticPageTest {
                 .andExpect(content().string(containsString(".source-footnote")))
                 .andExpect(content().string(containsString(".citation-tooltip")))
                 .andExpect(content().string(containsString("renderProfileSection(")))
-                .andExpect(content().string(containsString("family_member_situation_summary")))
-                .andExpect(content().string(containsString("family_member_situation_summary_paragraphs")))
+                .andExpect(content().string(containsString("renderBasicInfoSection(")))
+                .andExpect(content().string(containsString("family_background_summary")))
+                .andExpect(content().string(containsString("family_background_summary_paragraphs")))
                 .andExpect(content().string(containsString("renderParagraphBlock(")))
                 .andExpect(content().string(containsString("normalizeParagraphs(")))
                 .andExpect(content().string(containsString("item.source_urls")))
@@ -122,7 +123,7 @@ class StaticPageTest {
         mockMvc.perform(get("/result.html"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("tags.join(\" / \")")))
-                .andExpect(content().string(not(containsString("info.occupations"))))
+                .andExpect(content().string(containsString("info && info.occupations")))
                 .andExpect(content().string(not(containsString("class=\"tags\""))));
     }
 

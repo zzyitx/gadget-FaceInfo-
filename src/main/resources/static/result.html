@@ -608,8 +608,7 @@
       <a class="back-link" href="/index.html">返回首页重新上传</a>
     </div>
     <h1>人物详情检索结果</h1>
-    <p class="hero-copy">本页展示所选人像框对应的人物信息、图片匹配及其文章来源、公开社交账号。</p>
-    <p class="hero-copy">教育经历、家庭背景、职业经历、涉华言论、政治倾向、地址信息、家族成员情况和污点劣迹都会拆分为独立主题区块展示。</p>
+    <p class="hero-copy">本页展示所选人像框对应的人物基本信息、家庭背景、图片匹配及其文章来源。</p>
   </section>
 
   <div class="result-layout">
@@ -738,14 +737,8 @@
     const evidenceUrls = Array.isArray(person && person.evidence_urls) ? person.evidence_urls : [];
     const wikipediaUrl = person && person.wikipedia ? person.wikipedia : "";
     const baikeUrl = evidenceUrls.find(url => typeof url === "string" && url.includes("baike.baidu.com")) || "";
-    const educationSummary = person && person.education_summary ? person.education_summary : "";
+    const basicInfo = person && person.basic_info && typeof person.basic_info === "object" ? person.basic_info : null;
     const familyBackgroundSummary = person && person.family_background_summary ? person.family_background_summary : "";
-    const careerSummary = person && person.career_summary ? person.career_summary : "";
-    const chinaRelatedStatementsSummary = person && person.china_related_statements_summary ? person.china_related_statements_summary : "";
-    const politicalTendencySummary = person && person.political_tendency_summary ? person.political_tendency_summary : "";
-    const contactInformationSummary = person && person.contact_information_summary ? person.contact_information_summary : "";
-    const familyMemberSituationSummary = person && person.family_member_situation_summary ? person.family_member_situation_summary : "";
-    const misconductSummary = person && person.misconduct_summary ? person.misconduct_summary : "";
 
     const personMeta = [];
     const wikiLinks = [
@@ -761,14 +754,8 @@
     ].join("");
 
     profileSections.innerHTML = [
-      renderProfileSection("教育经历", normalizeParagraphs(person && person.education_summary_paragraphs, educationSummary), "暂无教育经历内容。"),
-      renderProfileSection("家庭背景", normalizeParagraphs(person && person.family_background_summary_paragraphs, familyBackgroundSummary), "暂无家庭背景内容。"),
-      renderProfileSection("职业经历", normalizeParagraphs(person && person.career_summary_paragraphs, careerSummary), "暂无职业经历内容。"),
-      renderProfileSection("涉华言论", normalizeParagraphs(person && person.china_related_statements_summary_paragraphs, chinaRelatedStatementsSummary), "暂无涉华言论内容。"),
-      renderProfileSection("政治倾向", normalizeParagraphs(person && person.political_tendency_summary_paragraphs, politicalTendencySummary), "暂无政治倾向内容。"),
-      renderProfileSection("地址信息", normalizeParagraphs(person && person.contact_information_summary_paragraphs, contactInformationSummary), "暂无公开通讯、网络身份或核心成员信息。"),
-      renderProfileSection("家族成员情况", normalizeParagraphs(person && person.family_member_situation_summary_paragraphs, familyMemberSituationSummary), "暂无家族成员、经商情况或涉华利益信息。"),
-      renderProfileSection("污点劣迹", normalizeParagraphs(person && person.misconduct_summary_paragraphs, misconductSummary), "暂无违法记录、处罚或负面事件信息。")
+      renderBasicInfoSection(basicInfo),
+      renderProfileSection("家庭背景", normalizeParagraphs(person && person.family_background_summary_paragraphs, familyBackgroundSummary), "暂无家庭背景内容。")
     ].join("");
 
     const matches = Array.isArray(data.image_matches) ? data.image_matches : [];
@@ -961,14 +948,7 @@
     if (!person || typeof person !== "object") return [];
     const paragraphKeys = [
       "summary_paragraphs",
-      "education_summary_paragraphs",
-      "family_background_summary_paragraphs",
-      "career_summary_paragraphs",
-      "china_related_statements_summary_paragraphs",
-      "political_tendency_summary_paragraphs",
-      "contact_information_summary_paragraphs",
-      "family_member_situation_summary_paragraphs",
-      "misconduct_summary_paragraphs"
+      "family_background_summary_paragraphs"
     ];
     return paragraphKeys.flatMap(key => Array.isArray(person[key]) ? person[key] : []);
   }
@@ -1073,14 +1053,8 @@
         name: data.person.name || null,
         image_url: data.person.image_url || null,
         summary: data.person.summary || null,
-        education_summary: data.person.education_summary || null,
         family_background_summary: data.person.family_background_summary || null,
-        career_summary: data.person.career_summary || null,
-        china_related_statements_summary: data.person.china_related_statements_summary || null,
-        political_tendency_summary: data.person.political_tendency_summary || null,
-        contact_information_summary: data.person.contact_information_summary || null,
-        family_member_situation_summary: data.person.family_member_situation_summary || null,
-        misconduct_summary: data.person.misconduct_summary || null,
+        basic_info: data.person.basic_info || null,
         tags: Array.isArray(data.person.tags) ? data.person.tags.slice(0, 12) : [],
         article_sources: Array.isArray(data.person.article_sources) ? data.person.article_sources.slice(0, 20).map(item => ({
           index: Number.isInteger(item && item.index) ? item.index : null,
@@ -1189,6 +1163,35 @@
         <span class="${escapeHtml(textClassName)}">${renderParagraphTextWithInlineCitations(item.text, item.sources)}</span>
       </div>
     `).join("");
+  }
+
+  function renderBasicInfoSection(info) {
+    const fields = [
+      ["出生日期", info && info.birth_date],
+      ["教育经历", info && info.education],
+      ["职业身份", info && info.occupations],
+      ["人物简介", info && info.biographies]
+    ]
+      .map(([label, value]) => [label, formatBasicInfoValue(value)])
+      .filter(([, value]) => value);
+
+    return `
+      <section class="profile-section">
+        <div class="profile-section-header">
+          <h3 class="profile-section-title">基本信息</h3>
+        </div>
+        ${fields.length
+          ? `<div class="info-grid">${fields.map(([label, value]) => `<div class="info-box"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>`
+          : '<span class="profile-section-empty">暂无基本信息。</span>'}
+      </section>
+    `;
+  }
+
+  function formatBasicInfoValue(value) {
+    if (Array.isArray(value)) {
+      return value.map(item => String(item || "").trim()).filter(Boolean).join(" / ");
+    }
+    return value ? String(value).trim() : "";
   }
 
   function renderProfileSection(title, paragraphs, emptyText) {

@@ -205,7 +205,7 @@ mvn clean verify
 - 当前聚合链路采用 `DeepSeek + Kimi` 双模型分流
 - 长文和普通网页优先由 `DeepSeek-V3.2-Fast` 处理
 - 结构化特征明显的页面可分流给 `Kimi`
-- 主题摘要采用 `DeepSeek -> Kimi` 的降级顺序
+- 家庭背景主题摘要采用 `DeepSeek -> Kimi` 的降级顺序；新流程不再主动扩展教育、职业、涉华、政治倾向、地址、家族成员情况和负面信息等派生主题
 - 最终人物总结与综合判断采用 `DeepSeek -> Kimi` 的降级顺序
 - 两个模型都失败时，接口返回 `大模型提取人物信息失败`
 - 需要配置环境变量：
@@ -219,6 +219,8 @@ mvn clean verify
   - `person.wikipedia`
   - `person.official_website`
   - `person.basic_info`
+  - `person.family_background_summary`
+  - `person.family_background_summary_paragraphs`
 - `person.basic_info` 包含：
   - `birth_date`
   - `education`
