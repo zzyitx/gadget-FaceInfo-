@@ -31,6 +31,7 @@ public class MaigretClientImpl implements MaigretClient {
 
     private final ApiProperties properties;
     private final ObjectMapper objectMapper;
+    private volatile boolean commandAvailable = true;
 
     public MaigretClientImpl(ApiProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
@@ -43,15 +44,17 @@ public class MaigretClientImpl implements MaigretClient {
         if (!maigret.isEnabled() || !StringUtils.hasText(username)) {
             return List.of();
         }
+        if (!commandAvailable) {
+            return List.of();
+        }
         Path outputDirectory = null;
         try {
             outputDirectory = Files.createTempDirectory("face2info-maigret-");
             List<String> command = buildCommand(maigret, username, outputDirectory);
-            // Maigret 只能按用户名枚举站点，输出必须先落到临时目录，再解析为疑似账号。
-            Process process = new ProcessBuilder(command)
-                    .redirectErrorStream(true)
-                    .directory(outputDirectory.toFile())
-                    .start();
+            Process process = startProcess(command, outputDirectory, maigret, username);
+            if (process == null) {
+                return List.of();
+            }
             boolean finished = process.waitFor(maigret.getProcessTimeoutMs(), TimeUnit.MILLISECONDS);
             if (!finished) {
                 process.destroyForcibly();
@@ -74,6 +77,26 @@ public class MaigretClientImpl implements MaigretClient {
             return List.of();
         } finally {
             cleanup(outputDirectory);
+        }
+    }
+
+    private Process startProcess(List<String> command,
+                                 Path outputDirectory,
+                                 MaigretProperties maigret,
+                                 String username) throws IOException {
+        try {
+            return new ProcessBuilder(command)
+                    .redirectErrorStream(true)
+                    .directory(outputDirectory.toFile())
+                    .start();
+        } catch (IOException ex) {
+            if (isMissingCommand(ex)) {
+                commandAvailable = false;
+                log.warn("Maigret 命令不可用，后续用户名候选将跳过 executable={} username={} error={}",
+                        configuredCommand(maigret), username, ex.getMessage());
+                return null;
+            }
+            throw ex;
         }
     }
 
@@ -100,6 +123,24 @@ public class MaigretClientImpl implements MaigretClient {
             command.add("--no-autoupdate");
         }
         return command;
+    }
+
+    private String configuredCommand(MaigretProperties maigret) {
+        if (maigret.getCommandPrefix() != null && !maigret.getCommandPrefix().isEmpty()) {
+            return String.join(" ", maigret.getCommandPrefix());
+        }
+        return maigret.getExecutable();
+    }
+
+    private boolean isMissingCommand(IOException ex) {
+        String message = ex.getMessage();
+        if (!StringUtils.hasText(message)) {
+            return false;
+        }
+        String normalized = message.toLowerCase(Locale.ROOT);
+        return normalized.contains("createprocess error=2")
+                || normalized.contains("no such file or directory")
+                || normalized.contains("cannot run program");
     }
 
     private List<SocialAccount> readAccounts(Path outputDirectory, String username, int limit) throws IOException {

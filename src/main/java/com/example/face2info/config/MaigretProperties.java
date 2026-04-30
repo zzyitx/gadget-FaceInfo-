@@ -19,7 +19,7 @@ public class MaigretProperties {
     private int topSites = 200;
     private int siteTimeoutSeconds = 10;
     private int processTimeoutMs = 60000;
-    private int maxUsernames = 3;
+    private int maxUsernames = 5;
     private int maxAccountsPerUsername = 30;
     private boolean noRecursion = true;
     private boolean noAutoupdate = true;

@@ -110,6 +110,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     );
     private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
     private static final Pattern HANDLE_PATTERN = Pattern.compile("(?<![\\w.])@([A-Za-z0-9._-]{2,64})");
+    private static final Pattern PARENTHETICAL_NAME_PATTERN = Pattern.compile("^(.+?)\\s*[（(]\\s*([^()（）]+?)\\s*[）)]\\s*$");
+    private static final Pattern LATIN_TEXT_PATTERN = Pattern.compile("[A-Za-z]");
+    private static final Pattern HAN_TEXT_PATTERN = Pattern.compile("\\p{IsHan}");
     private static final int CONTACT_INFORMATION_QUERY_LIMIT = 10;
     private static final int SOCIAL_ACCOUNT_QUERY_LIMIT = 12;
     private static final int SOCIAL_USERNAME_QUERY_LIMIT = 6;
@@ -345,7 +348,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         String finalResolvedName = resolvedName;
         result.setPerson(buildPersonFromProfile(profile, finalResolvedName, enrichedProfile.imageUrl()));
-        result.setSocialAccounts(List.of());
+        result.setSocialAccounts(collectSocialAccounts(finalResolvedName));
         return result;
     }
 
@@ -2274,13 +2277,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private List<SocialAccount> collectMaigretSuspectedAccounts(String name) {
-        List<String> usernames = inferLikelySocialUsernames(name).stream()
-                .filter(StringUtils::hasText)
-                .map(username -> username.replaceFirst("^@", "").trim())
-                .filter(username -> username.matches("[A-Za-z0-9._-]{2,64}"))
-                .distinct()
-                .limit(properties.getApi().getMaigret().getMaxUsernames())
-                .toList();
+        if (!properties.getApi().getMaigret().isEnabled()) {
+            return List.of();
+        }
+        List<String> usernames = buildMaigretUsernameCandidates(name);
         if (usernames.isEmpty()) {
             return List.of();
         }
@@ -2293,6 +2293,75 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             }
         }
         return accounts;
+    }
+
+    private List<String> buildMaigretUsernameCandidates(String name) {
+        LinkedHashSet<String> usernames = new LinkedHashSet<>();
+        List<String> inferredUsernames = inferLikelySocialUsernames(name);
+        // Maigret 按用户名枚举站点，先保留模型识别出的展示名，再补双语姓名和紧凑拼写。
+        inferredUsernames.stream()
+                .filter(this::isLikelyDisplayNameUsername)
+                .forEach(username -> addMaigretUsernameCandidate(usernames, username, false));
+        addMaigretNameCandidates(usernames, name);
+        inferredUsernames.stream()
+                .filter(username -> !isLikelyDisplayNameUsername(username))
+                .forEach(username -> addMaigretUsernameCandidate(usernames, username, true));
+        return usernames.stream()
+                .limit(properties.getApi().getMaigret().getMaxUsernames())
+                .toList();
+    }
+
+    private void addMaigretNameCandidates(Set<String> usernames, String name) {
+        if (!StringUtils.hasText(name)) {
+            return;
+        }
+        String normalized = name.trim();
+        Matcher matcher = PARENTHETICAL_NAME_PATTERN.matcher(normalized);
+        if (!matcher.matches()) {
+            addMaigretUsernameCandidate(usernames, normalized, false);
+            return;
+        }
+        String outside = matcher.group(1);
+        String inside = matcher.group(2);
+        String latinName = containsLatin(inside) ? inside : outside;
+        String nativeName = containsHan(outside) ? outside : inside;
+        addMaigretUsernameCandidate(usernames, latinName, false);
+        addCompactLatinUsernameCandidate(usernames, latinName);
+        addMaigretUsernameCandidate(usernames, nativeName, false);
+    }
+
+    private void addCompactLatinUsernameCandidate(Set<String> usernames, String name) {
+        if (!StringUtils.hasText(name) || !containsLatin(name)) {
+            return;
+        }
+        String compact = name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+        addMaigretUsernameCandidate(usernames, compact, true);
+    }
+
+    private void addMaigretUsernameCandidate(Set<String> usernames, String username, boolean strictHandle) {
+        if (!StringUtils.hasText(username)) {
+            return;
+        }
+        String normalized = username.replaceFirst("^@", "").trim();
+        if (!StringUtils.hasText(normalized) || normalized.length() > 128) {
+            return;
+        }
+        if (strictHandle && !normalized.matches("[A-Za-z0-9._-]{2,64}")) {
+            return;
+        }
+        usernames.add(normalized);
+    }
+
+    private boolean isLikelyDisplayNameUsername(String username) {
+        return StringUtils.hasText(username) && username.trim().contains(" ");
+    }
+
+    private boolean containsLatin(String value) {
+        return StringUtils.hasText(value) && LATIN_TEXT_PATTERN.matcher(value).find();
+    }
+
+    private boolean containsHan(String value) {
+        return StringUtils.hasText(value) && HAN_TEXT_PATTERN.matcher(value).find();
     }
 
     private List<String> inferLikelySocialUsernames(String name) {

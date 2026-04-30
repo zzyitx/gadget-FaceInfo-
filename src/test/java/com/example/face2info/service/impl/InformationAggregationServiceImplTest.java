@@ -2190,7 +2190,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldSkipSocialAccountsWhenStandaloneDigitalFootprintDisabled() throws Exception {
+    void shouldCollectSocialAccountsAfterPersonAggregation() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -2232,7 +2232,12 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jensen Huang"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getSocialAccounts()).isEmpty();
+        assertThat(result.getSocialAccounts())
+                .extracting(SocialAccount::getSource, SocialAccount::getPlatform)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("google", "linkedin"),
+                        org.assertj.core.groups.Tuple.tuple("google", "twitter")
+                );
     }
 
     @Test
@@ -2288,6 +2293,111 @@ class InformationAggregationServiceImplTest {
 
         assertThat(result.getSocialAccounts()).isEmpty();
         verifyNoInteractions(maigretClient);
+    }
+
+    @Test
+    void shouldSearchMaigretWithResolvedPersonNameAfterAggregation() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+        MaigretClient maigretClient = mock(MaigretClient.class);
+
+        List<PageContent> pages = List.of(new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Jensen Huang is a tech executive"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        mockSummaryPipeline(summaryGenerationClient, "Jensen Huang", pages, new ResolvedPersonProfile()
+                .setResolvedName("Jensen Huang")
+                .setSummary("Jensen Huang is a tech executive."));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setRecommendedLanguages(List.of("en"))
+                        .setLocalizedNames(Map.of("en", "Jensen Huang"))
+                        .setConfidence(0.9));
+        when(queryBuilder.build(eq("Jensen Huang"), any())).thenReturn(List.of());
+        when(googleSearchClient.googleSearch(anyString()))
+                .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("{\"organic\":[]}")));
+        when(maigretClient.findSuspectedAccounts("Jensen Huang")).thenReturn(List.of(
+                new SocialAccount()
+                        .setPlatform("github")
+                        .setUrl("https://github.com/jensenhuang")
+                        .setUsername("Jensen Huang")
+                        .setSource("maigret")
+                        .setSuspected(true)
+                        .setConfidence("suspected")
+        ));
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getMaigret().setEnabled(true);
+
+        AggregationResult result = serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                properties,
+                maigretClient
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jensen Huang"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getSocialAccounts())
+                .extracting(SocialAccount::getSource, SocialAccount::getPlatform, SocialAccount::getUsername)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("maigret", "github", "Jensen Huang"));
+        verify(maigretClient).findSuspectedAccounts("Jensen Huang");
+    }
+
+    @Test
+    void shouldExpandMaigretUsernameCandidatesForBilingualResolvedName() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+        MaigretClient maigretClient = mock(MaigretClient.class);
+
+        List<PageContent> pages = List.of(new PageContent()
+                .setUrl("https://example.com/jackie")
+                .setTitle("Jackie Chan")
+                .setContent("成龙 is also known as Jackie Chan and Cheng Long."));
+        when(jinaReaderClient.readPages(List.of("https://example.com/jackie"))).thenReturn(pages);
+        mockSummaryPipeline(summaryGenerationClient, "成龙", pages, new ResolvedPersonProfile()
+                .setResolvedName("成龙（Jackie Chan）")
+                .setSummary("成龙是演员。"));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setRecommendedLanguages(List.of("zh", "en"))
+                        .setLocalizedNames(Map.of("zh", "成龙", "en", "Jackie Chan"))
+                        .setConfidence(0.9));
+        when(summaryGenerationClient.inferLikelySocialUsernames(eq("成龙（Jackie Chan）"), anyList()))
+                .thenReturn(List.of("Cheng Long", "EyeOfJackieChan"));
+        when(queryBuilder.build(eq("成龙（Jackie Chan）"), any())).thenReturn(List.of());
+        when(googleSearchClient.googleSearch(anyString()))
+                .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("""
+                        {"organic":[{"title":"Jackie Chan (@EyeOfJackieChan)","link":"https://x.com/EyeOfJackieChan","snippet":"official account @EyeOfJackieChan"}]}
+                        """)));
+        when(maigretClient.findSuspectedAccounts(anyString())).thenReturn(List.of());
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getMaigret().setEnabled(true);
+
+        serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                properties,
+                maigretClient
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("成龙"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/jackie"))));
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(maigretClient);
+        inOrder.verify(maigretClient).findSuspectedAccounts("Cheng Long");
+        inOrder.verify(maigretClient).findSuspectedAccounts("Jackie Chan");
+        inOrder.verify(maigretClient).findSuspectedAccounts("jackiechan");
+        inOrder.verify(maigretClient).findSuspectedAccounts("成龙");
+        inOrder.verify(maigretClient).findSuspectedAccounts("EyeOfJackieChan");
+        verify(maigretClient, times(5)).findSuspectedAccounts(anyString());
     }
 
     @Test
