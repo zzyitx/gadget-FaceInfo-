@@ -2262,17 +2262,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (!StringUtils.hasText(name)) {
             return List.of();
         }
-        SearchLanguageProfile languageProfile = searchLanguageProfileService.resolveProfile(
-                name,
-                new ResolvedPersonProfile().setResolvedName(name)
-        );
-        List<SocialAccount> accounts = new ArrayList<>(digitalFootprintQueryBuilder.build(name, languageProfile).stream()
-                .filter(this::isSocialProfileQuery)
-                .sorted(Comparator.comparing(query -> query.getPriority() == null ? Integer.MAX_VALUE : query.getPriority()))
-                .limit(SOCIAL_ACCOUNT_QUERY_LIMIT)
-                .flatMap(query -> searchSocialAccounts(query).stream())
-                .toList());
-        accounts.addAll(collectMaigretSuspectedAccounts(name));
+        List<SocialAccount> accounts = new ArrayList<>(collectMaigretSuspectedAccounts(name));
         return accounts.isEmpty() ? List.of() : deduplicateSocialAccounts(accounts);
     }
 
@@ -2297,15 +2287,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private List<String> buildMaigretUsernameCandidates(String name) {
         LinkedHashSet<String> usernames = new LinkedHashSet<>();
-        List<String> inferredUsernames = inferLikelySocialUsernames(name);
-        // Maigret 按用户名枚举站点，先保留模型识别出的展示名，再补双语姓名和紧凑拼写。
-        inferredUsernames.stream()
-                .filter(this::isLikelyDisplayNameUsername)
-                .forEach(username -> addMaigretUsernameCandidate(usernames, username, false));
         addMaigretNameCandidates(usernames, name);
-        inferredUsernames.stream()
-                .filter(username -> !isLikelyDisplayNameUsername(username))
-                .forEach(username -> addMaigretUsernameCandidate(usernames, username, true));
         return usernames.stream()
                 .limit(properties.getApi().getMaigret().getMaxUsernames())
                 .toList();

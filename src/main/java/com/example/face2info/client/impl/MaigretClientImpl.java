@@ -87,7 +87,7 @@ public class MaigretClientImpl implements MaigretClient {
         try {
             return new ProcessBuilder(command)
                     .redirectErrorStream(true)
-                    .directory(outputDirectory.toFile())
+                    .directory(resolveWorkingDirectory(maigret, outputDirectory).toFile())
                     .start();
         } catch (IOException ex) {
             if (isMissingCommand(ex)) {
@@ -98,6 +98,18 @@ public class MaigretClientImpl implements MaigretClient {
             }
             throw ex;
         }
+    }
+
+    // Maigret 依赖项目内资源运行，配置目录不可用时才退回临时输出目录。
+    private Path resolveWorkingDirectory(MaigretProperties maigret, Path outputDirectory) {
+        if (StringUtils.hasText(maigret.getProjectPath())) {
+            Path projectPath = Path.of(maigret.getProjectPath()).toAbsolutePath().normalize();
+            if (Files.isDirectory(projectPath)) {
+                return projectPath;
+            }
+            log.warn("Maigret 项目目录不可用，回退到临时输出目录 projectPath={}", projectPath);
+        }
+        return outputDirectory;
     }
 
     private List<String> buildCommand(MaigretProperties maigret, String username, Path outputDirectory) {

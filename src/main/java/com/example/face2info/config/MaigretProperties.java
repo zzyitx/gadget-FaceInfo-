@@ -14,7 +14,8 @@ import java.util.List;
 public class MaigretProperties {
 
     private boolean enabled;
-    private String executable = "maigret";
+    private String projectPath = "D:/ideaProject/maigret";
+    private String executable = "D:/ideaProject/maigret/.venv/Scripts/maigret.exe";
     private List<String> commandPrefix = new ArrayList<>();
     private int topSites = 200;
     private int siteTimeoutSeconds = 10;

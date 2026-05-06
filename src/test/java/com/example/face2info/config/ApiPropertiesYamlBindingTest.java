@@ -69,7 +69,10 @@ class ApiPropertiesYamlBindingTest {
 
         assertThat(properties).isNotNull();
         assertThat(properties.getProperty("face2info.api.maigret.enabled")).isEqualTo("${MAIGRET_ENABLED:true}");
-        assertThat(properties.getProperty("face2info.api.maigret.executable")).isEqualTo("${MAIGRET_EXECUTABLE:maigret}");
+        assertThat(properties.getProperty("face2info.api.maigret.project-path"))
+                .isEqualTo("${MAIGRET_PROJECT_PATH:D:/ideaProject/maigret}");
+        assertThat(properties.getProperty("face2info.api.maigret.executable"))
+                .isEqualTo("${MAIGRET_EXECUTABLE:D:/ideaProject/maigret/.venv/Scripts/maigret.exe}");
         assertThat(properties.containsKey("face2info.api.maigret.command-prefix[0]")).isFalse();
         assertThat(properties.getProperty("face2info.api.maigret.top-sites")).isEqualTo("${MAIGRET_TOP_SITES:200}");
         assertThat(properties.getProperty("face2info.api.maigret.max-usernames")).isEqualTo("${MAIGRET_MAX_USERNAMES:5}");
@@ -102,7 +105,7 @@ class ApiPropertiesYamlBindingTest {
 
         assertThat(properties).isNotNull();
         assertThat(properties.getProperty("face2info.api.sophnet-vision.enabled"))
-                .isEqualTo("${SOPHNET_VISION_ENABLED:false}");
+                .isEqualTo("${SOPHNET_VISION_ENABLED:true}");
         assertThat(properties.getProperty("face2info.api.sophnet-vision.base-url"))
                 .isEqualTo("${SOPHNET_VISION_API_BASE_URL:https://www.sophnet.com/api/open-apis/v1/chat/completions}");
         assertThat(properties.getProperty("face2info.api.sophnet-vision.api-key"))

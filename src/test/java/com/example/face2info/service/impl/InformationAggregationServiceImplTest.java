@@ -49,6 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
@@ -2190,7 +2191,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldCollectSocialAccountsAfterPersonAggregation() throws Exception {
+    void shouldNotCollectSocialAccountsFromGoogleAfterPersonAggregation() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -2232,12 +2233,9 @@ class InformationAggregationServiceImplTest {
                 .setSeedQueries(List.of("Jensen Huang"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
-        assertThat(result.getSocialAccounts())
-                .extracting(SocialAccount::getSource, SocialAccount::getPlatform)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("google", "linkedin"),
-                        org.assertj.core.groups.Tuple.tuple("google", "twitter")
-                );
+        assertThat(result.getSocialAccounts()).isEmpty();
+        verify(googleSearchClient, never()).googleSearch("site:linkedin.com/in/ Jensen Huang");
+        verify(googleSearchClient, never()).googleSearch("site:twitter.com Jensen Huang");
     }
 
     @Test
@@ -2369,8 +2367,6 @@ class InformationAggregationServiceImplTest {
                         .setRecommendedLanguages(List.of("zh", "en"))
                         .setLocalizedNames(Map.of("zh", "成龙", "en", "Jackie Chan"))
                         .setConfidence(0.9));
-        when(summaryGenerationClient.inferLikelySocialUsernames(eq("成龙（Jackie Chan）"), anyList()))
-                .thenReturn(List.of("Cheng Long", "EyeOfJackieChan"));
         when(queryBuilder.build(eq("成龙（Jackie Chan）"), any())).thenReturn(List.of());
         when(googleSearchClient.googleSearch(anyString()))
                 .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("""
@@ -2392,12 +2388,12 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/jackie"))));
 
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(maigretClient);
-        inOrder.verify(maigretClient).findSuspectedAccounts("Cheng Long");
         inOrder.verify(maigretClient).findSuspectedAccounts("Jackie Chan");
         inOrder.verify(maigretClient).findSuspectedAccounts("jackiechan");
         inOrder.verify(maigretClient).findSuspectedAccounts("成龙");
-        inOrder.verify(maigretClient).findSuspectedAccounts("EyeOfJackieChan");
-        verify(maigretClient, times(5)).findSuspectedAccounts(anyString());
+        verify(maigretClient, times(3)).findSuspectedAccounts(anyString());
+        verify(googleSearchClient, never()).googleSearch(contains("Twitter username"));
+        verify(googleSearchClient, never()).googleSearch(contains("official social account"));
     }
 
     @Test

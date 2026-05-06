@@ -137,7 +137,8 @@ face2info:
       demo: false
     maigret:
       enabled: ${MAIGRET_ENABLED:true}
-      executable: ${MAIGRET_EXECUTABLE:maigret}
+      project-path: ${MAIGRET_PROJECT_PATH:D:/ideaProject/maigret}
+      executable: ${MAIGRET_EXECUTABLE:D:/ideaProject/maigret/.venv/Scripts/maigret.exe}
       command-prefix: []
       top-sites: ${MAIGRET_TOP_SITES:200}
       site-timeout-seconds: ${MAIGRET_SITE_TIMEOUT_SECONDS:10}
@@ -147,7 +148,7 @@ face2info:
       no-recursion: true
       no-autoupdate: true
     sophnet-vision:
-      enabled: ${SOPHNET_VISION_ENABLED:false}
+      enabled: ${SOPHNET_VISION_ENABLED:true}
       base-url: ${SOPHNET_VISION_API_BASE_URL:https://www.sophnet.com/api/open-apis/v1/chat/completions}
       api-key: ${SOPHNET_API_KEY:}
       models:
