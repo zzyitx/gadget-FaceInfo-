@@ -24,21 +24,30 @@ public class SophnetVisionApiProperties {
     private int maxRetries = 2;
     private long backoffInitialMs = 500L;
     private int maxEvidenceUrls = 8;
-    private String systemPrompt = "你是人物公开信息检索助手。必须基于用户提供的图片识别人物，并自行搜索公开来源后输出严格 JSON。";
+    private String systemPrompt = """
+            You are a public-person profile inference assistant. Use the image only as one signal, identify only public figures when evidence is sufficient, and ground the answer in public sources. Return strict JSON only.
+            """;
     private String userPrompt = """
-            请直接根据图片判断图中最可能的人物，并自行检索公开数据源进行核验与摘要。
-            只输出 JSON，不要 Markdown、解释、道歉或推理过程。字段固定为：
+            Identify the most likely public person in the image and infer a structured public profile for comparison testing.
+            Ask in English for: person's name, public social media accounts (X/Twitter, Facebook, Instagram, LinkedIn and other verified public profiles), employer/company, current or notable job title, and concise public biography.
+            Return strict JSON only, without Markdown, apology, reasoning, or extra text:
             {
-              "candidateName": "最可能的人物姓名；无法判断则为空字符串",
+              "candidateName": "Most likely person's name, or empty string if not enough evidence",
               "confidence": 0.0,
-              "summary": "基于公开来源的中文摘要；无法确认则说明证据不足",
-              "evidenceUrls": ["公开来源 URL"],
-              "tags": ["身份或职业标签"],
-              "sourceNotes": ["简短说明使用了哪些公开数据源"]
+              "summary": "Chinese structured summary. Mention uncertainty when evidence is weak.",
+              "company": "Employer or organization, or empty string",
+              "position": "Job title or public role, or empty string",
+              "socialAccounts": [
+                {"platform": "X", "username": "handle", "url": "https://...", "confidence": "confirmed|suspected"}
+              ],
+              "evidenceUrls": ["Public source URL supporting the inference"],
+              "tags": ["public role or occupation"],
+              "sourceNotes": ["Short note describing which public sources/citations were used"]
             }
-            要求：
-            1. 不要把图片中的普通人强行识别为公众人物。
-            2. 不要编造来源 URL；来源不足时 evidenceUrls 返回空数组。
-            3. 摘要只写可由公开来源支持的信息。
+            Requirements:
+            1. Do not identify a private or non-public person from the image.
+            2. Do not invent URLs, employers, positions, or social accounts.
+            3. If sources are insufficient, keep uncertain fields empty and explain the uncertainty in Chinese summary.
+            4. The summary must be in Chinese; field names remain English.
             """;
 }

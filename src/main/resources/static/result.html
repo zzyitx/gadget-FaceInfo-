@@ -284,6 +284,48 @@
       color: var(--muted);
     }
 
+    .vision-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .vision-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-muted);
+    }
+
+    .vision-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .vision-summary {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .vision-source-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .vision-source-list a,
+    .vision-source-list span {
+      overflow-wrap: anywhere;
+    }
+
     .source-footnote {
       display: inline-flex;
       align-items: center;
@@ -748,6 +790,16 @@
         <div id="socialBody"><p class="empty">暂无公开社交账号。</p></div>
       </section>
 
+      <section class="card" id="visionModelCard">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="eyebrow">视觉模型</span>
+            <h2>Sophnet / Gemini 人物画像</h2>
+          </div>
+        </div>
+        <div id="visionModelBody"><p class="empty">暂无视觉模型人物画像。</p></div>
+      </section>
+
       <section class="card" id="articleCard">
         <div class="section-header">
           <div class="section-title">
@@ -792,6 +844,7 @@
   const matchRailCard = document.getElementById("matchRailCard");
   const matchesBody = document.getElementById("matchesBody");
   const socialBody = document.getElementById("socialBody");
+  const visionModelBody = document.getElementById("visionModelBody");
   const articleBody = document.getElementById("articleBody");
 
   matchRailCard.addEventListener("click", handleMatchClick);
@@ -813,11 +866,15 @@
     }
 
     rawResponseEl.textContent = JSON.stringify(compactJson(data), null, 2);
-    if (!data || data.status === "failed") {
+    if (!data || (data.status === "failed" && !hasVisionModelPortraits(data))) {
       renderError((data && data.error) || "检索失败，请返回首页重试。");
       return;
     }
     renderFinal(data);
+  }
+
+  function hasVisionModelPortraits(data) {
+    return Array.isArray(data && data.vision_model_portraits) && data.vision_model_portraits.length > 0;
   }
 
   function renderFinal(data) {
@@ -871,6 +928,7 @@
     const summarySourceArticles = collectArticleSources(person);
     renderImageMatches(displayMatches, data.status, data.error);
     renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
+    renderVisionModelPortraits(Array.isArray(data.vision_model_portraits) ? data.vision_model_portraits : []);
     renderArticleSources(summarySourceArticles, allSortedMatches);
   }
 
@@ -989,6 +1047,51 @@
       </article>
     `).join("");
     socialBody.innerHTML = `<div class="list">${html}</div>`;
+  }
+
+  function renderVisionModelPortraits(portraits) {
+    if (!portraits.length) {
+      visionModelBody.innerHTML = '<p class="empty">暂无视觉模型人物画像。</p>';
+      return;
+    }
+    const html = portraits.map((portrait, index) => {
+      const accounts = Array.isArray(portrait.social_accounts) ? portrait.social_accounts : [];
+      const urls = Array.isArray(portrait.evidence_urls) ? portrait.evidence_urls.filter(Boolean) : [];
+      const notes = Array.isArray(portrait.source_notes) ? portrait.source_notes.filter(Boolean) : [];
+      const tags = Array.isArray(portrait.tags) ? portrait.tags.filter(Boolean) : [];
+      const meta = [
+        portrait.model ? `模型：${portrait.model}` : "",
+        Number.isFinite(Number(portrait.confidence)) ? `置信度：${formatPercent(portrait.confidence)}` : "",
+        portrait.company ? `单位：${portrait.company}` : "",
+        portrait.position ? `职位：${portrait.position}` : ""
+      ].filter(Boolean);
+      return `
+        <article class="vision-card">
+          <div class="vision-meta">
+            <span class="chip">#${index + 1} ${escapeHtml(portrait.provider || "sophnet_vision")}</span>
+            ${portrait.candidate_name ? `<span class="chip">${escapeHtml(portrait.candidate_name)}</span>` : ""}
+            ${tags.map(tag => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}
+          </div>
+          ${meta.length ? `<div class="meta-line">${meta.map(escapeHtml).join(" / ")}</div>` : ""}
+          <p class="vision-summary">${escapeHtml(portrait.summary || "暂无中文摘要。")}</p>
+          ${accounts.length ? `<div class="list">${accounts.map((account, accountIndex) => `
+            <article class="item">
+              <div class="chip">账号 ${accountIndex + 1} ${escapeHtml(account.platform || "未知平台")}</div>
+              ${account.suspected ? '<div class="chip">疑似</div>' : ""}
+              ${account.url
+                ? `<a href="${escapeHtml(account.url)}" target="_blank" rel="noreferrer">${escapeHtml(account.username || account.url)}</a>`
+                : `<strong>${escapeHtml(account.username || "未知账号")}</strong>`}
+              <p>${escapeHtml([account.source, account.confidence].filter(Boolean).join(" / ") || "-")}</p>
+            </article>
+          `).join("")}</div>` : '<p class="empty">该模型未返回社交账号。</p>'}
+          ${urls.length ? `<ul class="vision-source-list">${urls.map((url, sourceIndex) => `
+            <li><span class="article-order">${sourceIndex + 1}</span> <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></li>
+          `).join("")}</ul>` : '<p class="empty">该模型未返回可引用来源 URL。</p>'}
+          ${notes.length ? `<p class="meta-line">引用说明：${escapeHtml(notes.join(" / "))}</p>` : ""}
+        </article>
+      `;
+    }).join("");
+    visionModelBody.innerHTML = `<div class="vision-grid">${html}</div>`;
   }
 
   function buildMatchArticles(matches) {
@@ -1174,6 +1277,9 @@
         wikipedia: data.person.wikipedia || null,
         official_website: data.person.official_website || null
       } : null,
+      vision_model_portraits: Array.isArray(data && data.vision_model_portraits)
+        ? data.vision_model_portraits.slice(0, 5)
+        : [],
       image_matches: Array.isArray(data && data.image_matches) ? data.image_matches.slice(0, 20).map(item => ({
         position: item.position || null,
         title: sanitizeDisplayText(item.title, null),

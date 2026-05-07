@@ -168,6 +168,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         evidence.setArticleImageMatches(imageMatchResult.articleMatches());
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
         evidence.setVisionModelSummaries(visionOutcome.pageSummaries());
+        evidence.setVisionModelResults(visionOutcome.results());
         evidence.setSeedQueries(extractSeedQueries(lensOutcome.root(), evidence.getWebEvidences(), evidence.getImageMatches()));
         log.info("识别证据去重完成 before={} after={}", webEvidences.size(), evidence.getWebEvidences().size());
         return evidence;
@@ -214,7 +215,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                     summaries.add(summary);
                 }
             }
-            return new VisionSearchOutcome(evidences, summaries, null);
+            return new VisionSearchOutcome(evidences, summaries, results, null);
         } catch (RuntimeException ex) {
             log.warn("视觉模型人物搜索失败 imageUrl={} error={}", imageUrl, ex.getMessage(), ex);
             return VisionSearchOutcome.failure("sophnet_vision: " + ex.getMessage());
@@ -548,7 +549,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                                                         JsonNode bingRoot) {
         List<ImageCandidate> collected = new ArrayList<>();
         collectCandidates(collected, lensRoot == null ? null : lensRoot.path("organic"), "serper_google_lens", uploadedImageUrl,
-                "thumbnailUrl", "thumbnail", "imageUrl", "original");
+                "imageUrl", "original", "thumbnailUrl", "thumbnail");
         collectYandexAboutPreview(collected, yandexAboutRoot, "yandex_images_about", uploadedImageUrl);
         collectCandidates(collected, yandexAboutRoot == null ? null : yandexAboutRoot.path("image_results"), "yandex_images_about", uploadedImageUrl,
                 "thumbnail", "original", "cdn_original", "image.link");
@@ -815,14 +816,17 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         }
     }
 
-    private record VisionSearchOutcome(List<WebEvidence> webEvidences, List<PageSummary> pageSummaries, String error) {
+    private record VisionSearchOutcome(List<WebEvidence> webEvidences,
+                                       List<PageSummary> pageSummaries,
+                                       List<VisionModelSearchResult> results,
+                                       String error) {
 
         private static VisionSearchOutcome failure(String error) {
-            return new VisionSearchOutcome(List.of(), List.of(), error);
+            return new VisionSearchOutcome(List.of(), List.of(), List.of(), error);
         }
 
         private static VisionSearchOutcome empty() {
-            return new VisionSearchOutcome(List.of(), List.of(), null);
+            return new VisionSearchOutcome(List.of(), List.of(), List.of(), null);
         }
     }
 }

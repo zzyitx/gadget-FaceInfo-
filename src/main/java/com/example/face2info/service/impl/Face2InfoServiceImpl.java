@@ -10,6 +10,7 @@ import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
+import com.example.face2info.entity.internal.VisionModelSearchResult;
 import com.example.face2info.entity.response.DetectedFaceResponse;
 import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
@@ -17,6 +18,7 @@ import com.example.face2info.entity.response.PersonBasicInfoResponse;
 import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.entity.response.ArticleSourceBadge;
 import com.example.face2info.entity.response.ParagraphWithSources;
+import com.example.face2info.entity.response.VisionModelPortrait;
 import com.example.face2info.service.Face2InfoService;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
@@ -213,6 +215,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                     .setPerson(null)
                     .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                     .setArticleImageMatches(evidence == null ? null : evidence.getArticleImageMatches())
+                    .setVisionModelPortraits(toVisionModelPortraits(evidence == null ? null : evidence.getVisionModelResults()))
                     .setWarnings(warnings)
                     .setStatus("failed")
                     .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
@@ -245,6 +248,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setWarnings(warnings)
                 .setImageMatches(evidence == null ? null : evidence.getImageMatches())
                 .setArticleImageMatches(evidence == null ? null : evidence.getArticleImageMatches())
+                .setVisionModelPortraits(toVisionModelPortraits(evidence == null ? null : evidence.getVisionModelResults()))
                 .setStatus(status)
                 .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
         imageResultCacheService.cacheFaceInfoResponse(image, response);
@@ -399,6 +403,31 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setEducation(basicInfo.getEducation())
                 .setOccupations(basicInfo.getOccupations())
                 .setBiographies(basicInfo.getBiographies());
+    }
+
+    private List<VisionModelPortrait> toVisionModelPortraits(List<VisionModelSearchResult> results) {
+        List<VisionModelPortrait> portraits = new ArrayList<>();
+        if (results == null) {
+            return portraits;
+        }
+        for (VisionModelSearchResult result : results) {
+            if (result == null) {
+                continue;
+            }
+            portraits.add(new VisionModelPortrait()
+                    .setProvider(result.getProvider())
+                    .setModel(result.getModel())
+                    .setCandidateName(result.getCandidateName())
+                    .setConfidence(result.getConfidence())
+                    .setSummary(result.getSummary())
+                    .setCompany(result.getCompany())
+                    .setPosition(result.getPosition())
+                    .setSocialAccounts(result.getSocialAccounts())
+                    .setEvidenceUrls(result.getEvidenceUrls())
+                    .setSourceNotes(result.getSourceNotes())
+                    .setTags(result.getTags()));
+        }
+        return portraits;
     }
 
     private List<ParagraphWithSources> toResponseParagraphs(List<ParagraphSummaryItem> paragraphs) {

@@ -266,6 +266,53 @@ class FaceRecognitionServiceImplTest {
     }
 
     @Test
+    void shouldCompareGoogleLensImageUrlAndKeepLowConfidenceMatchVisible() throws Exception {
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
+        when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("""
+                        {
+                          "searchParameters": {
+                            "type": "lens",
+                            "url": "https://tempfile.org/ACQK16NPKnj/preview",
+                            "engine": "google"
+                          },
+                          "organic": [
+                            {
+                              "title": "Regal Tuxedo's Ben Dobson explains why the Centerline Drive location was chosen",
+                              "source": "Knoxville News Sentinel",
+                              "link": "https://www.knoxnews.com/videos/money/business/2020/01/29/regal-tuxedos-ben-dobson-explains-why-centerline-drive-location-chosen/4534421002/",
+                              "imageUrl": "https://www.knoxnews.com/gcdn/presto/2020/01/21/PKNS/299ff7bf-607e-4340-ba2b-f7e663a1d486-KNS-REGALTUX_BP.jpg?crop=1928,2571,x1440,y0",
+                              "thumbnailUrl": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSBO-Gg5D08bgNP3eDAyrx8lvtbeUEfdKAx-pgcFXOGWPZEj1W2"
+                            }
+                          ],
+                          "credits": 3
+                        }
+                        """)));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "about")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlYandex(PREVIEW_URL, "similar")).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(serpApiClient.reverseImageSearchByUrlBing(PREVIEW_URL)).thenReturn(new SerpApiResponse()
+                .setRoot(objectMapper.readTree("{\"image_results\": []}")));
+        when(imageSimilarityService.score(any(), anyString(), anyDouble())).thenReturn(32.4D);
+
+        FaceRecognitionServiceImpl service = createService(false);
+
+        RecognitionEvidence evidence = service.recognize(image);
+
+        assertThat(evidence.getImageMatches()).hasSize(1);
+        assertThat(evidence.getImageMatches().get(0).getThumbnailUrl())
+                .isEqualTo("https://www.knoxnews.com/gcdn/presto/2020/01/21/PKNS/299ff7bf-607e-4340-ba2b-f7e663a1d486-KNS-REGALTUX_BP.jpg?crop=1928,2571,x1440,y0");
+        assertThat(evidence.getImageMatches().get(0).getSimilarityScore()).isEqualTo(32.4D);
+        verify(imageSimilarityService).score(
+                any(),
+                org.mockito.ArgumentMatchers.eq("https://www.knoxnews.com/gcdn/presto/2020/01/21/PKNS/299ff7bf-607e-4340-ba2b-f7e663a1d486-KNS-REGALTUX_BP.jpg?crop=1928,2571,x1440,y0"),
+                anyDouble()
+        );
+    }
+
+    @Test
     void shouldContinueWhenYandexFailsButLensProvidesEvidence() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
@@ -508,6 +555,8 @@ class FaceRecognitionServiceImplTest {
         assertThat(evidence.getWebEvidences()).extracting(WebEvidence::getUrl).contains("https://example.com/ada");
         assertThat(evidence.getSeedQueries()).contains("Ada Lovelace");
         assertThat(evidence.getVisionModelSummaries()).hasSize(1);
+        assertThat(evidence.getVisionModelResults()).hasSize(1);
+        assertThat(evidence.getVisionModelResults().get(0).getCandidateName()).isEqualTo("Ada Lovelace");
         assertThat(evidence.getVisionModelSummaries().get(0).getSummary()).contains("Ada Lovelace");
     }
 }

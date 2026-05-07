@@ -10,9 +10,11 @@ import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.SelectedFaceCrop;
+import com.example.face2info.entity.internal.VisionModelSearchResult;
 import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
 import com.example.face2info.entity.response.ImageMatch;
+import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
 import com.example.face2info.service.EnhancedImagePreparationService;
@@ -329,6 +331,42 @@ class Face2InfoServiceImplTest {
         assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getText()).isEqualTo("第一段家庭背景。[2]");
         assertThat(response.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getSources().get(0).getUrl())
                 .isEqualTo("https://example.com/family");
+    }
+
+    @Test
+    void shouldExposeVisionModelPortraitsInFinalResponse() {
+        ServiceFixture fixture = createFixture();
+        RecognitionEvidence evidence = new RecognitionEvidence()
+                .setVisionModelResults(List.of(new VisionModelSearchResult()
+                        .setProvider("sophnet_vision")
+                        .setModel("gemini-3.1-pro-preview")
+                        .setCandidateName("Ada Lovelace")
+                        .setConfidence(0.91)
+                        .setSummary("Ada Lovelace 是公开资料中的人物。")
+                        .setCompany("Analytical Engine")
+                        .setPosition("Mathematician")
+                        .setSocialAccounts(List.of(new SocialAccount()
+                                .setPlatform("X")
+                                .setUsername("ada")
+                                .setUrl("https://x.com/ada")
+                                .setSource("sophnet_vision")
+                                .setSuspected(true)
+                                .setConfidence("suspected")))
+                        .setEvidenceUrls(List.of("https://example.com/ada"))
+                        .setSourceNotes(List.of("public source"))
+                        .setTags(List.of("mathematician"))));
+        when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
+        when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
+        when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate().setName("Ada Lovelace")));
+
+        FaceInfoResponse response = fixture.service.process(fixture.image);
+
+        assertThat(response.getVisionModelPortraits()).hasSize(1);
+        assertThat(response.getVisionModelPortraits().get(0).getModel()).isEqualTo("gemini-3.1-pro-preview");
+        assertThat(response.getVisionModelPortraits().get(0).getCompany()).isEqualTo("Analytical Engine");
+        assertThat(response.getVisionModelPortraits().get(0).getSocialAccounts()).hasSize(1);
+        assertThat(response.getVisionModelPortraits().get(0).getEvidenceUrls()).containsExactly("https://example.com/ada");
     }
 
     @Test

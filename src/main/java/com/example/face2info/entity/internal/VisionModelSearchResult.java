@@ -1,5 +1,7 @@
 package com.example.face2info.entity.internal;
 
+import com.example.face2info.entity.response.SocialAccount;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,9 +15,12 @@ public class VisionModelSearchResult {
     private String candidateName;
     private Double confidence;
     private String summary;
+    private String company;
+    private String position;
     private List<String> evidenceUrls = new ArrayList<>();
     private List<String> tags = new ArrayList<>();
     private List<String> sourceNotes = new ArrayList<>();
+    private List<SocialAccount> socialAccounts = new ArrayList<>();
 
     public String getProvider() {
         return provider;
@@ -62,6 +67,24 @@ public class VisionModelSearchResult {
         return this;
     }
 
+    public String getCompany() {
+        return company;
+    }
+
+    public VisionModelSearchResult setCompany(String company) {
+        this.company = company;
+        return this;
+    }
+
+    public String getPosition() {
+        return position;
+    }
+
+    public VisionModelSearchResult setPosition(String position) {
+        this.position = position;
+        return this;
+    }
+
     public List<String> getEvidenceUrls() {
         return evidenceUrls;
     }
@@ -86,6 +109,15 @@ public class VisionModelSearchResult {
 
     public VisionModelSearchResult setSourceNotes(List<String> sourceNotes) {
         this.sourceNotes = sourceNotes == null ? new ArrayList<>() : new ArrayList<>(sourceNotes);
+        return this;
+    }
+
+    public List<SocialAccount> getSocialAccounts() {
+        return socialAccounts;
+    }
+
+    public VisionModelSearchResult setSocialAccounts(List<SocialAccount> socialAccounts) {
+        this.socialAccounts = socialAccounts == null ? new ArrayList<>() : new ArrayList<>(socialAccounts);
         return this;
     }
 }

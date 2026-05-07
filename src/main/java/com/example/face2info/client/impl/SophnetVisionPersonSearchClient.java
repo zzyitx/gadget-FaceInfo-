@@ -4,6 +4,7 @@ import com.example.face2info.client.VisionPersonSearchClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.SophnetVisionApiProperties;
 import com.example.face2info.entity.internal.VisionModelSearchResult;
+import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
@@ -124,6 +125,9 @@ public class SophnetVisionPersonSearchClient implements VisionPersonSearchClient
                 .setCandidateName(trimToNull(payload.path("candidateName").asText(null)))
                 .setConfidence(payload.path("confidence").isNumber() ? payload.path("confidence").asDouble() : null)
                 .setSummary(trimToNull(payload.path("summary").asText(null)))
+                .setCompany(trimToNull(payload.path("company").asText(null)))
+                .setPosition(trimToNull(payload.path("position").asText(null)))
+                .setSocialAccounts(readSocialAccounts(payload.path("socialAccounts")))
                 .setEvidenceUrls(readStringArray(payload.path("evidenceUrls"), maxEvidenceUrls))
                 .setTags(readStringArray(payload.path("tags"), 10))
                 .setSourceNotes(readStringArray(payload.path("sourceNotes"), 10));
@@ -175,11 +179,35 @@ public class SophnetVisionPersonSearchClient implements VisionPersonSearchClient
         return new ArrayList<>(values);
     }
 
+    private List<SocialAccount> readSocialAccounts(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return List.of();
+        }
+        List<SocialAccount> accounts = new ArrayList<>();
+        for (JsonNode item : node) {
+            String platform = trimToNull(item.path("platform").asText(null));
+            String url = trimToNull(item.path("url").asText(null));
+            String username = trimToNull(item.path("username").asText(null));
+            if (!StringUtils.hasText(platform) && !StringUtils.hasText(url) && !StringUtils.hasText(username)) {
+                continue;
+            }
+            accounts.add(new SocialAccount()
+                    .setPlatform(platform)
+                    .setUrl(url)
+                    .setUsername(username)
+                    .setSource(PROVIDER)
+                    .setSuspected(true)
+                    .setConfidence(trimToNull(item.path("confidence").asText(null))));
+        }
+        return accounts;
+    }
+
     private boolean hasUsableResult(VisionModelSearchResult result) {
         return result != null
                 && (StringUtils.hasText(result.getCandidateName())
                 || StringUtils.hasText(result.getSummary())
-                || !result.getEvidenceUrls().isEmpty());
+                || !result.getEvidenceUrls().isEmpty()
+                || !result.getSocialAccounts().isEmpty());
     }
 
     private void validateConfig(SophnetVisionApiProperties config, String imageUrl) {

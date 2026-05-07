@@ -47,6 +47,11 @@ class SophnetVisionPersonSearchClientTest {
         assertThat(results).extracting(VisionModelSearchResult::getCandidateName)
                 .containsExactly("Ada Lovelace", "Ada Lovelace");
         assertThat(results.get(0).getEvidenceUrls()).containsExactly("https://example.com/ada");
+        assertThat(results.get(0).getCompany()).isEqualTo("Analytical Engine");
+        assertThat(results.get(0).getPosition()).isEqualTo("Mathematician");
+        assertThat(results.get(0).getSocialAccounts()).hasSize(1);
+        assertThat(results.get(0).getSocialAccounts().get(0).getPlatform()).isEqualTo("X");
+        assertThat(results.get(0).getSocialAccounts().get(0).getSource()).isEqualTo("sophnet_vision");
         server.verify();
     }
 
@@ -63,14 +68,35 @@ class SophnetVisionPersonSearchClientTest {
     }
 
     private String response(String name, String url) {
+        String content = """
+                {
+                  "candidateName": "%s",
+                  "confidence": 0.91,
+                  "summary": "%s 是公开资料中的人物。",
+                  "company": "Analytical Engine",
+                  "position": "Mathematician",
+                  "socialAccounts": [{
+                    "platform": "X",
+                    "username": "ada",
+                    "url": "https://x.com/ada",
+                    "confidence": "suspected"
+                  }],
+                  "evidenceUrls": ["%s"],
+                  "tags": ["public"],
+                  "sourceNotes": ["web"]
+                }
+                """.formatted(name, name, url)
+                .replace("\"", "\\\"")
+                .replace("\r", "")
+                .replace("\n", "");
         return """
                 {
                   "choices": [{
                     "message": {
-                      "content": "{\\"candidateName\\":\\"%s\\",\\"confidence\\":0.91,\\"summary\\":\\"%s 是公开资料中的人物。\\",\\"evidenceUrls\\":[\\"%s\\"],\\"tags\\":[\\"public\\"],\\"sourceNotes\\":[\\"web\\"]}"
+                      "content": "%s"
                     }
                   }]
                 }
-                """.formatted(name, name, url);
+                """.formatted(content);
     }
 }

@@ -20,6 +20,10 @@ public class FaceInfoResponse {
     @Schema(description = "供文章来源区完整展示的图片匹配列表，不受主图聚合折叠影响")
     private List<ImageMatch> articleImageMatches = new ArrayList<>();
 
+    @JsonProperty("vision_model_portraits")
+    @Schema(description = "视觉大模型作为独立数据源生成的人物画像")
+    private List<VisionModelPortrait> visionModelPortraits = new ArrayList<>();
+
     @Schema(description = "聚合过程中产生的非阻塞告警信息")
     private List<String> warnings = new ArrayList<>();
 
@@ -68,6 +72,15 @@ public class FaceInfoResponse {
 
     public FaceInfoResponse setArticleImageMatches(List<ImageMatch> articleImageMatches) {
         this.articleImageMatches = articleImageMatches == null ? new ArrayList<>() : articleImageMatches;
+        return this;
+    }
+
+    public List<VisionModelPortrait> getVisionModelPortraits() {
+        return visionModelPortraits;
+    }
+
+    public FaceInfoResponse setVisionModelPortraits(List<VisionModelPortrait> visionModelPortraits) {
+        this.visionModelPortraits = visionModelPortraits == null ? new ArrayList<>() : visionModelPortraits;
         return this;
     }
 

@@ -24,6 +24,9 @@ public class RecognitionEvidence {
     @Schema(description = "视觉大模型自行检索后生成的直接摘要")
     private List<PageSummary> visionModelSummaries = new ArrayList<>();
 
+    @Schema(description = "视觉大模型直接推断的人物画像原始结构化结果")
+    private List<VisionModelSearchResult> visionModelResults = new ArrayList<>();
+
     @Schema(description = "用于搜索扩展的种子查询")
     private List<String> seedQueries = new ArrayList<>();
 
@@ -63,6 +66,15 @@ public class RecognitionEvidence {
 
     public RecognitionEvidence setVisionModelSummaries(List<PageSummary> visionModelSummaries) {
         this.visionModelSummaries = visionModelSummaries == null ? new ArrayList<>() : new ArrayList<>(visionModelSummaries);
+        return this;
+    }
+
+    public List<VisionModelSearchResult> getVisionModelResults() {
+        return visionModelResults;
+    }
+
+    public RecognitionEvidence setVisionModelResults(List<VisionModelSearchResult> visionModelResults) {
+        this.visionModelResults = visionModelResults == null ? new ArrayList<>() : new ArrayList<>(visionModelResults);
         return this;
     }
 
