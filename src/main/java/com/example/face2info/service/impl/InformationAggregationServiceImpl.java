@@ -49,6 +49,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.net.URI;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -81,7 +82,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String SECONDARY_SEARCH_WARNING = "secondary_profile_search_unavailable";
     private static final String SECONDARY_SEARCH_SOURCE = "serper_google_search";
     private static final String EDUCATION_SECTION = "education";
-    private static final String FAMILY_SECTION = "family";
     private static final String CAREER_SECTION = "career";
     private static final String CHINA_RELATED_STATEMENTS_SECTION = "china_related_statements";
     private static final String POLITICAL_VIEW_SECTION = "political_view";
@@ -111,6 +111,24 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             "youku.com",
             "ixigua.com"
     );
+    private static final Set<String> SOCIAL_PROFILE_HOSTS = Set.of(
+            "facebook.com",
+            "instagram.com",
+            "twitter.com",
+            "x.com",
+            "tiktok.com",
+            "linkedin.com",
+            "github.com",
+            "reddit.com",
+            "pinterest.com",
+            "threads.net",
+            "bsky.app",
+            "weibo.com",
+            "zhihu.com",
+            "bilibili.com",
+            "youtube.com",
+            "youtu.be"
+    );
     private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
     private static final Pattern HANDLE_PATTERN = Pattern.compile("(?<![\\w.])@([A-Za-z0-9._-]{2,64})");
     private static final Pattern PARENTHETICAL_NAME_PATTERN = Pattern.compile("^(.+?)\\s*[（(]\\s*([^()（）]+?)\\s*[）)]\\s*$");
@@ -124,6 +142,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final int CONTACT_INFORMATION_QUERY_LIMIT = 10;
     private static final int SOCIAL_ACCOUNT_QUERY_LIMIT = 12;
     private static final int SOCIAL_USERNAME_QUERY_LIMIT = 6;
+    private static final int OSINT_RECURSION_DEPTH = 2;
+    private static final int OSINT_ACCOUNT_PAGE_READ_LIMIT = 3;
     private static final int SECTION_TOPIC_MAX_PAGE_READS = 20;
     private static final int LOCAL_PROFILE_FALLBACK_MAX_SUMMARY_CHARS = 900;
     private static final int LOCAL_PROFILE_FALLBACK_PARAGRAPH_COUNT = 3;
@@ -352,7 +372,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 languageProfile,
                 result.getWarnings()
         );
-        profile = enrichProfileSectionsByResolvedName(profile, resolvedName, languageProfile);
+        profile = enrichedProfile.profile();
         sanitizeProfileForDisplay(profile);
         appendArticleMatchSources(profile, evidence.getArticleImageMatches());
         resolvedName = resolveNameOrFallback(profile, evidence);
@@ -789,23 +809,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
     }
 
-    @FunctionalInterface
-    private interface SectionEnrichmentSupplier {
-
-        SectionEnrichmentResult get();
-    }
-
-    private SectionEnrichmentResult joinSectionEnrichmentFuture(CompletableFuture<SectionEnrichmentResult> future) {
-        try {
-            SectionEnrichmentResult result = future.join();
-            return result == null ? SectionEnrichmentResult.empty() : result;
-        } catch (CompletionException ex) {
-            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
-            log.warn("section enrichment future failed error={}", cause.getMessage(), cause);
-            return SectionEnrichmentResult.empty();
-        }
-    }
-
     private List<PageSummary> collectPageSummaries(String fallbackName, List<PageContent> pages) {
         if (pages == null || pages.isEmpty()) {
             return List.of();
@@ -823,7 +826,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 continue;
             }
             try {
-                PageSummary pageSummary = summarizePageWithRouting(fallbackName, page);
+                PageSummary pageSummary = summarizePageWithFallback(fallbackName, page);
                 if (pageSummary == null || !StringUtils.hasText(pageSummary.getSummary())) {
                     continue;
                 }
@@ -879,51 +882,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 warnings
         );
         return new EnrichedProfile(mergedProfile, imageUrl);
-    }
-
-    private ResolvedPersonProfile enrichProfileSectionsByResolvedName(ResolvedPersonProfile profile,
-                                                                      String resolvedName,
-                                                                      SearchLanguageProfile languageProfile) {
-        if (profile == null || !StringUtils.hasText(resolvedName) || !StringUtils.hasText(profile.getSummary())) {
-            return profile;
-        }
-
-        CompletableFuture<SectionEnrichmentResult> familyFuture = submitSectionEnrichmentTask(
-                () -> summarizeSectionEnrichment(resolvedName, languageProfile, profile, FAMILY_SECTION, resolvedName + "的家庭背景"));
-
-        ResolvedPersonProfile enriched = copyProfile(profile);
-        SectionEnrichmentResult familyResult = joinSectionEnrichmentFuture(familyFuture);
-        enriched.setFamilyBackgroundSummary(firstNonBlankText(familyResult.summary(), profile.getFamilyBackgroundSummary()));
-        enriched.setFamilyBackgroundSummaryParagraphs(pickParagraphs(familyResult.paragraphs(), profile.getFamilyBackgroundSummaryParagraphs()));
-        return enriched;
-    }
-
-    private SectionEnrichmentResult summarizeSectionEnrichment(String resolvedName,
-                                                              SearchLanguageProfile languageProfile,
-                                                              @Nullable ResolvedPersonProfile profile,
-                                                              String sectionType,
-                                                              String fallbackQuery) {
-        try {
-            SectionSearchBundle bundle = collectSectionSearchBundle(resolvedName, languageProfile, profile, sectionType, fallbackQuery);
-            if (bundle.pageSummaries() == null || bundle.pageSummaries().isEmpty()) {
-                return SectionEnrichmentResult.empty();
-            }
-            String summary = null;
-            if (isDerivedSectionedTopic(sectionType)) {
-                summary = summarizeSectionedTopic(resolvedName, sectionType, bundle.pageSummaries());
-            }
-            if (!StringUtils.hasText(summary)) {
-                summary = summarizeSectionWithFallback(resolvedName, sectionType, bundle.pageSummaries());
-            }
-            return new SectionEnrichmentResult(
-                    summary,
-                    summarizeSectionParagraphsWithFallback(resolvedName, sectionType, bundle.pageSummaries())
-            );
-        } catch (RuntimeException ex) {
-            log.warn("section enrichment failed resolvedName={} sectionType={} query={} error={}",
-                    resolvedName, sectionType, fallbackQuery, ex.getMessage(), ex);
-            return SectionEnrichmentResult.empty();
-        }
     }
 
     private boolean shouldRunSecondarySearch(ResolvedPersonProfile profile, String resolvedName) {
@@ -1306,16 +1264,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             log.warn("multilingual search failed in sync fallback round={} language={} query={} error={}",
                     task.getSourceReason(), task.getLanguageCode(), task.getQueryText(), ex.getMessage(), ex);
             return null;
-        }
-    }
-
-    private CompletableFuture<SectionEnrichmentResult> submitSectionEnrichmentTask(SectionEnrichmentSupplier supplier) {
-        try {
-            return CompletableFuture.supplyAsync(supplier::get, executor);
-        } catch (TaskRejectedException ex) {
-            // 富化摘要属于降级可接受链路，线程池打满时同步执行比直接丢弃分段结果更稳妥。
-            log.warn("section enrichment executor saturated, fallback to sync error={}", ex.getMessage());
-            return CompletableFuture.completedFuture(supplier.get());
         }
     }
 
@@ -1860,13 +1808,6 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private record SectionSearchBundle(List<PageSummary> pageSummaries) {
-    }
-
-    private record SectionEnrichmentResult(String summary, List<ParagraphSummaryItem> paragraphs) {
-
-        private static SectionEnrichmentResult empty() {
-            return new SectionEnrichmentResult(null, List.of());
-        }
     }
 
     private int searchEvidencePriority(WebEvidence evidence) {
@@ -2514,14 +2455,33 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (!properties.getApi().getMaigret().isEnabled()) {
             return List.of();
         }
-        List<String> usernames = buildOsintUsernameCandidates(name);
-        if (usernames.isEmpty()) {
+        List<String> initialUsernames = buildOsintUsernameCandidates(name);
+        if (initialUsernames.isEmpty()) {
             return List.of();
         }
         List<SocialAccount> accounts = new ArrayList<>();
-        for (String username : usernames) {
+        ArrayDeque<String> pendingUsernames = new ArrayDeque<>(initialUsernames);
+        Set<String> queuedUsernames = new LinkedHashSet<>(initialUsernames);
+        Set<String> searchedUsernames = new LinkedHashSet<>();
+        int maxUsernames = Math.max(1, properties.getApi().getMaigret().getMaxUsernames());
+        int searchBudget = maxUsernames + OSINT_RECURSION_DEPTH;
+        while (!pendingUsernames.isEmpty() && searchedUsernames.size() < searchBudget) {
+            String username = pendingUsernames.removeFirst();
+            if (!searchedUsernames.add(username)) {
+                continue;
+            }
             try {
-                accounts.addAll(osintSocialAccountClient.findSuspectedAccounts(username));
+                List<SocialAccount> foundAccounts = osintSocialAccountClient.findSuspectedAccounts(username);
+                if (foundAccounts == null) {
+                    foundAccounts = List.of();
+                }
+                accounts.addAll(foundAccounts);
+                if (searchedUsernames.size() <= OSINT_RECURSION_DEPTH) {
+                    enqueueOsintUsernames(pendingUsernames, queuedUsernames, true,
+                            discoverOsintUsernamesFromAccounts(foundAccounts));
+                    enqueueOsintUsernames(pendingUsernames, queuedUsernames, true,
+                            discoverOsintUsernamesFromPages(foundAccounts));
+                }
             } catch (RuntimeException ex) {
                 log.warn("OSINT suspected account search failed username={} error={}", username, ex.getMessage(), ex);
             }
@@ -2542,26 +2502,35 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return;
         }
         String normalized = name.trim();
+        if (isUnknownOsintName(normalized)) {
+            return;
+        }
         Matcher matcher = PARENTHETICAL_NAME_PATTERN.matcher(normalized);
         if (!matcher.matches()) {
-            addOsintUsernameCandidate(usernames, normalized, false);
+            addOsintUsernameVariants(usernames, normalized);
             return;
         }
         String outside = matcher.group(1);
         String inside = matcher.group(2);
         String latinName = containsLatin(inside) ? inside : outside;
         String nativeName = containsHan(outside) ? outside : inside;
-        addOsintUsernameCandidate(usernames, latinName, false);
-        addCompactLatinUsernameCandidate(usernames, latinName);
-        addOsintUsernameCandidate(usernames, nativeName, false);
+        addOsintUsernameVariants(usernames, latinName);
+        addOsintUsernameVariants(usernames, nativeName);
     }
 
-    private void addCompactLatinUsernameCandidate(Set<String> usernames, String name) {
-        if (!StringUtils.hasText(name) || !containsLatin(name)) {
+    private void addOsintUsernameVariants(Set<String> usernames, String name) {
+        if (!StringUtils.hasText(name)) {
             return;
         }
-        String compact = name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
-        addOsintUsernameCandidate(usernames, compact, true);
+        addOsintUsernameCandidate(usernames, name, false);
+        if (containsLatin(name)) {
+            String compactOriginalCase = name.replaceAll("[^A-Za-z0-9]", "");
+            String compactLowerCase = compactOriginalCase.toLowerCase(Locale.ROOT);
+            String lowerSpaced = name.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+            addOsintUsernameCandidate(usernames, compactOriginalCase, true);
+            addOsintUsernameCandidate(usernames, compactLowerCase, true);
+            addOsintUsernameCandidate(usernames, lowerSpaced, false);
+        }
     }
 
     private void addOsintUsernameCandidate(Set<String> usernames, String username, boolean strictHandle) {
@@ -2576,6 +2545,87 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return;
         }
         usernames.add(normalized);
+    }
+
+    private boolean isUnknownOsintName(String name) {
+        if (!StringUtils.hasText(name)) {
+            return true;
+        }
+        String normalized = name.trim().toLowerCase(Locale.ROOT);
+        return "unknown".equals(normalized)
+                || "unknown person".equals(normalized)
+                || "\u672a\u77e5".equals(normalized)
+                || "\u672a\u77e5\u4eba\u7269".equals(normalized)
+                || "\u672a\u8bc6\u522b\u4eba\u7269".equals(normalized);
+    }
+
+    private List<String> discoverOsintUsernamesFromAccounts(List<SocialAccount> accounts) {
+        LinkedHashSet<String> usernames = new LinkedHashSet<>();
+        for (SocialAccount account : accounts == null ? List.<SocialAccount>of() : accounts) {
+            addOsintUsernameCandidate(usernames, account.getUsername(), true);
+            addOsintUsernameCandidate(usernames, extractSocialUsername(account.getUrl(), null), true);
+        }
+        return new ArrayList<>(usernames);
+    }
+
+    private List<String> discoverOsintUsernamesFromPages(List<SocialAccount> accounts) {
+        LinkedHashSet<String> usernames = new LinkedHashSet<>();
+        List<String> urls = (accounts == null ? List.<SocialAccount>of() : accounts).stream()
+                .map(SocialAccount::getUrl)
+                .filter(this::isReadableOsintAccountPage)
+                .distinct()
+                .limit(OSINT_ACCOUNT_PAGE_READ_LIMIT)
+                .toList();
+        if (urls.isEmpty()) {
+            return List.of();
+        }
+        try {
+            for (PageContent page : jinaReaderClient.readPages(urls)) {
+                extractHandleCandidates(cleanText(page == null ? null : page.getContent()))
+                        .forEach(handle -> addOsintUsernameCandidate(usernames, handle, true));
+            }
+        } catch (RuntimeException ex) {
+            log.warn("OSINT account page handle extraction failed urls={} error={}", urls, ex.getMessage(), ex);
+        }
+        return new ArrayList<>(usernames);
+    }
+
+    private void enqueueOsintUsernames(ArrayDeque<String> pendingUsernames,
+                                       Set<String> queuedUsernames,
+                                       boolean prioritize,
+                                       List<String> usernames) {
+        for (String username : usernames == null ? List.<String>of() : usernames) {
+            if (!StringUtils.hasText(username) || !queuedUsernames.add(username)) {
+                continue;
+            }
+            if (prioritize) {
+                pendingUsernames.addFirst(username);
+            } else {
+                pendingUsernames.addLast(username);
+            }
+        }
+    }
+
+    private boolean isReadableOsintAccountPage(String url) {
+        if (!StringUtils.hasText(url)) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(url.trim());
+            String host = uri.getHost();
+            if (!StringUtils.hasText(host)) {
+                return false;
+            }
+            String normalizedHost = host.toLowerCase(Locale.ROOT);
+            if (normalizedHost.startsWith("www.")) {
+                normalizedHost = normalizedHost.substring(4);
+            }
+            String hostForMatch = normalizedHost;
+            return SOCIAL_PROFILE_HOSTS.stream()
+                    .noneMatch(platform -> hostForMatch.equals(platform) || hostForMatch.endsWith("." + platform));
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private boolean isLikelyDisplayNameUsername(String username) {
@@ -2655,6 +2705,21 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             Matcher matcher = HANDLE_PATTERN.matcher(text);
             while (matcher.find()) {
                 usernames.add(matcher.group(1));
+            }
+        }
+        return usernames.stream().limit(5).toList();
+    }
+
+    private List<String> extractHandleCandidates(String text) {
+        if (!StringUtils.hasText(text)) {
+            return List.of();
+        }
+        LinkedHashSet<String> usernames = new LinkedHashSet<>();
+        Matcher matcher = HANDLE_PATTERN.matcher(text);
+        while (matcher.find()) {
+            String username = matcher.group(1).replaceFirst("[._-]+$", "");
+            if (StringUtils.hasText(username)) {
+                usernames.add(username);
             }
         }
         return usernames.stream().limit(5).toList();
@@ -2789,9 +2854,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return content + suffix;
     }
 
-    private PageSummary summarizePageWithRouting(String fallbackName, PageContent page) {
-        boolean preferDeepSeek = shouldUseDeepSeekForPage(page);
-        if (preferDeepSeek && deepSeekSummaryGenerationClient != null) {
+    private PageSummary summarizePageWithFallback(String fallbackName, PageContent page) {
+        if (deepSeekSummaryGenerationClient != null) {
             try {
                 return deepSeekSummaryGenerationClient.summarizePage(fallbackName, page);
             } catch (RuntimeException deepSeekEx) {
@@ -2804,48 +2868,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 return summaryGenerationClient.summarizePage(fallbackName, page);
             }
         }
-        try {
-            return summaryGenerationClient.summarizePage(fallbackName, page);
-        } catch (RuntimeException kimiEx) {
-            if (deepSeekSummaryGenerationClient == null) {
-                throw kimiEx;
-            }
-            log.warn("页面摘要Kimi失败 fallbackName={} url={} category={} error={}",
-                    fallbackName,
-                    page == null ? null : page.getUrl(),
-                    classifySummaryFailure(kimiEx),
-                    kimiEx.getMessage(),
-                    kimiEx);
-            return deepSeekSummaryGenerationClient.summarizePage(fallbackName, page);
-        }
-    }
-
-    private boolean shouldUseDeepSeekForPage(PageContent page) {
-        if (deepSeekSummaryGenerationClient == null || !properties.getApi().getSummary().isPageRoutingEnabled()) {
-            return false;
-        }
-        String title = page == null ? null : page.getTitle();
-        String content = page == null ? null : page.getContent();
-        if (isStructuredPage(title, content)) {
-            return false;
-        }
-        return !StringUtils.hasText(content)
-                || content.length() >= properties.getApi().getSummary().getLongContentThreshold()
-                || !isStructuredPage(title, content);
-    }
-
-    private boolean isStructuredPage(String title, String content) {
-        List<String> keywords = properties.getApi().getSummary().getStructuredPageKeywords();
-        if (keywords == null || keywords.isEmpty()) {
-            return false;
-        }
-        String normalized = (title == null ? "" : title) + "\n" + (content == null ? "" : content);
-        for (String keyword : keywords) {
-            if (StringUtils.hasText(keyword) && normalized.contains(keyword)) {
-                return true;
-            }
-        }
-        return false;
+        return summaryGenerationClient.summarizePage(fallbackName, page);
     }
 
     private String summarizeSectionWithFallback(String resolvedName, String sectionType, List<PageSummary> pageSummaries) {

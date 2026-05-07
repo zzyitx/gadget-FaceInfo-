@@ -32,15 +32,15 @@ class PrimarySearchQueryBuilderImplTest {
 
         assertThat(queries).containsExactly(
                 "Nicholas Burns",
-                "Nicholas Burns biography",
                 "Nicholas Burns official profile",
-                "尼古拉斯·伯恩斯 人物简介"
+                "Nicholas Burns company position",
+                "尼古拉斯·伯恩斯 工作单位 职位"
         );
         verifyNoInteractions(deepSeek, kimi);
     }
 
     @Test
-    void shouldReturnFamilySectionQueriesFromConfiguredTemplatesWithoutCallingModels() {
+    void shouldSuppressFamilySectionQueriesWithoutCallingModels() {
         DeepSeekSummaryGenerationClient deepSeek = mock(DeepSeekSummaryGenerationClient.class);
         SummaryGenerationClient kimi = mock(SummaryGenerationClient.class);
 
@@ -51,12 +51,7 @@ class PrimarySearchQueryBuilderImplTest {
                 "family"
         );
 
-        assertThat(queries).containsExactly(
-                "Nicholas Burns family background",
-                "Nicholas Burns upbringing",
-                "尼古拉斯·伯恩斯 家庭背景",
-                "尼古拉斯·伯恩斯 成长经历"
-        );
+        assertThat(queries).isEmpty();
         verifyNoInteractions(deepSeek, kimi);
     }
 

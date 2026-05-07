@@ -98,6 +98,8 @@ class DeepSeekSummaryGenerationClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(request -> {
                     String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("\"model\":\"DeepSeek-V3.2-Fast\"");
+                    assertThat(body).doesNotContain("\"model\":\"DeepSeek-V4-Pro\"");
                     assertThat(body).contains("\"tools\"");
                     assertThat(body).contains("submit_page_summary");
                     assertThat(body).doesNotContain("tool_choice");
@@ -240,6 +242,64 @@ class DeepSeekSummaryGenerationClientTest {
                 .setTitle("A")
                 .setContent("1234567890ABCDEFGHIJ"));
 
+        server.verify();
+    }
+
+    @Test
+    void shouldUseFinalProfileModelForFinalProfileRequest() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("\"model\":\"DeepSeek-V4-Pro\"");
+                    assertThat(body).contains("submit_person_profile");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Jay Chou\\",\\"summary\\":\\"Mandopop singer-songwriter\\"}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        ApiProperties properties = createProperties("test-key");
+        properties.getApi().getDeepseek().setModel("DeepSeek-V3.2-Fast");
+        properties.getApi().getDeepseek().setFinalProfileModel("DeepSeek-V4-Pro");
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, properties, new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        ));
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        server.verify();
+    }
+
+    @Test
+    void shouldUseFinalProfileModelForComprehensiveJudgementRequest() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("\"model\":\"DeepSeek-V4-Pro\"");
+                    assertThat(body).contains("submit_profile_judgement");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Jay Chou\\",\\"summary\\":\\"Final judged profile\\"}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        ApiProperties properties = createProperties("test-key");
+        properties.getApi().getDeepseek().setModel("DeepSeek-V3.2-Fast");
+        properties.getApi().getDeepseek().setFinalProfileModel("DeepSeek-V4-Pro");
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, properties, new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.applyComprehensiveJudgement("Jay Chou", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        ), new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("Draft"));
+
+        assertThat(profile.getSummary()).isEqualTo("Final judged profile");
         server.verify();
     }
 

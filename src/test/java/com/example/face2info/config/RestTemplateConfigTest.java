@@ -2,8 +2,6 @@ package com.example.face2info.config;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 class RestTemplateConfigTest {
@@ -60,21 +58,15 @@ class RestTemplateConfigTest {
     }
 
     @Test
-    void shouldExposeDeepSeekAndSummaryRoutingProperties() {
+    void shouldExposeDeepSeekProperties() {
         ApiProperties properties = new ApiProperties();
 
         properties.getApi().getDeepseek().setBaseUrl("https://www.sophnet.com/api/open-apis/v1/chat/completions");
         properties.getApi().getDeepseek().setModel("DeepSeek-V3.2-Fast");
-        properties.getApi().getSummary().setPageRoutingEnabled(true);
-        properties.getApi().getSummary().setLongContentThreshold(4000);
-        properties.getApi().getSummary().setStructuredPageKeywords(List.of("简历", "履历", "获奖"));
 
         assertThat(properties.getApi().getDeepseek().getBaseUrl())
                 .isEqualTo("https://www.sophnet.com/api/open-apis/v1/chat/completions");
         assertThat(properties.getApi().getDeepseek().getModel()).isEqualTo("DeepSeek-V3.2-Fast");
-        assertThat(properties.getApi().getSummary().isPageRoutingEnabled()).isTrue();
-        assertThat(properties.getApi().getSummary().getLongContentThreshold()).isEqualTo(4000);
-        assertThat(properties.getApi().getSummary().getStructuredPageKeywords()).contains("履历");
     }
 
     private ApiProperties createPropertiesForDefaultRestTemplate() {

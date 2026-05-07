@@ -524,8 +524,6 @@ class InformationAggregationServiceImplTest {
         SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
         DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
         ApiProperties properties = createApiProperties(null);
-        properties.getApi().getSummary().setPageRoutingEnabled(true);
-        properties.getApi().getSummary().setLongContentThreshold(20);
 
         PageContent longPage = new PageContent()
                 .setUrl("https://example.com/a")
@@ -849,8 +847,6 @@ class InformationAggregationServiceImplTest {
         SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
         DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
         ApiProperties properties = createApiProperties(null);
-        properties.getApi().getSummary().setPageRoutingEnabled(true);
-        properties.getApi().getSummary().setLongContentThreshold(20);
 
         PageContent page = new PageContent()
                 .setUrl("https://example.com/a")
@@ -1181,7 +1177,6 @@ class InformationAggregationServiceImplTest {
         DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
 
         ApiProperties properties = createApiProperties(null);
-        properties.getApi().getSummary().setPageRoutingEnabled(false);
 
         PageContent basePage = new PageContent()
                 .setUrl("https://example.com/political-base")
@@ -1217,8 +1212,7 @@ class InformationAggregationServiceImplTest {
                         """)));
         when(jinaReaderClient.readPages(List.of("https://example.com/political-base"))).thenReturn(List.of(basePage));
         when(jinaReaderClient.readPages(List.of("https://example.com/political-expanded"))).thenReturn(List.of(expandedPage));
-        when(summaryGenerationClient.summarizePage("Jay Chou", basePage)).thenReturn(baseSummary);
-        when(summaryGenerationClient.summarizePage("Jay Chou", expandedPage)).thenReturn(expandedSummary);
+        when(deepSeekClient.summarizePage("Jay Chou", basePage)).thenReturn(baseSummary);
         when(deepSeekClient.expandTopicQueriesFromPageSummaries(
                 "Jay Chou",
                 "political_view",
@@ -1257,7 +1251,6 @@ class InformationAggregationServiceImplTest {
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
 
         ApiProperties properties = createApiProperties(null);
-        properties.getApi().getSummary().setPageRoutingEnabled(false);
         properties.getSearch().getQueryTemplates().put("family", List.of("{name}的家庭背景"));
         List<String> expandEnabledTopics = new ArrayList<>(properties.getSearch().getExpandEnabledTopics());
         expandEnabledTopics.add("family");
@@ -1900,7 +1893,7 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldEnrichSummaryWithSectionQueriesByResolvedName() throws Exception {
+    void shouldKeepProfileFocusedWithoutFamilyBackgroundEnrichment() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
@@ -2086,7 +2079,7 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getDescription()).isEqualTo("short intro (由大模型总结)");
         assertThat(result.getPerson().getSummary()).isEqualTo("base summary (由大模型总结)");
         assertThat(result.getPerson().getEducationSummary()).isNull();
-        assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
+        assertThat(result.getPerson().getFamilyBackgroundSummary()).isNull();
         assertThat(result.getPerson().getCareerSummary()).isNull();
         assertThat(result.getPerson().getChinaRelatedStatementsSummary()).isNull();
         assertThat(result.getPerson().getPoliticalTendencySummary()).isNull();
@@ -2094,9 +2087,9 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getFamilyMemberSituationSummary()).isNull();
         assertThat(result.getPerson().getMisconductSummary()).isNull();
         assertThat(result.getPerson().getEducationSummaryParagraphs()).isEmpty();
-        assertThat(result.getPerson().getFamilyBackgroundSummaryParagraphs()).hasSize(1);
-        assertThat(result.getPerson().getFamilyBackgroundSummaryParagraphs().get(0).getSources().get(0).getTitle())
-                .isEqualTo("Family");
+        assertThat(result.getPerson().getFamilyBackgroundSummaryParagraphs()).isEmpty();
+        verify(googleSearchClient, never()).googleSearch("Jay Chou 家庭背景");
+        verify(googleSearchClient, never()).googleSearch("Jay Chou family background");
     }
 
     @Test
@@ -2181,7 +2174,6 @@ class InformationAggregationServiceImplTest {
         SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
         DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
         ApiProperties properties = createApiProperties(null);
-        properties.getApi().getSummary().setPageRoutingEnabled(false);
 
         PageContent seedPage = new PageContent().setUrl("https://example.com/seed").setTitle("Nvidia").setContent("seed body");
         PageSummary seedSummary = new PageSummary().setSourceUrl("https://example.com/seed").setTitle("Nvidia").setSummary("seed summary");
@@ -2191,7 +2183,7 @@ class InformationAggregationServiceImplTest {
                 .setEvidenceUrls(List.of("https://example.com/seed"));
 
         when(jinaReaderClient.readPages(List.of("https://example.com/seed"))).thenReturn(List.of(seedPage));
-        when(kimiClient.summarizePage("Nvidia", seedPage)).thenReturn(seedSummary);
+        when(deepSeekClient.summarizePage("Nvidia", seedPage)).thenReturn(seedSummary);
         when(deepSeekClient.summarizePersonFromPageSummaries("Nvidia", List.of(seedSummary)))
                 .thenThrow(new ApiCallException("EMPTY_RESPONSE: DeepSeek 返回内容为空"));
         when(kimiClient.summarizePersonFromPageSummaries("Nvidia", List.of(seedSummary))).thenReturn(kimiProfile);
@@ -2319,8 +2311,8 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/seed"))));
 
         assertThat(result.getPerson().getImageUrl()).isEqualTo("https://img.example.com/lei-jun.jpg");
-        assertThat(result.getPerson().getDescription()).isEqualTo("initial summary (由大模型总结)");
-        assertThat(result.getPerson().getSummary()).isEqualTo("initial summary (由大模型总结)");
+        assertThat(result.getPerson().getDescription()).isEqualTo("secondary short description (由大模型总结)");
+        assertThat(result.getPerson().getSummary()).isEqualTo("secondary detailed summary (由大模型总结)");
         assertThat(result.getPerson().getEvidenceUrls()).contains("https://example.com/seed");
         assertThat(result.getWarnings()).doesNotContain("secondary_profile_search_unavailable");
     }
@@ -2755,16 +2747,95 @@ class InformationAggregationServiceImplTest {
                 properties,
                 osintSocialAccountClient
         ).aggregate(new RecognitionEvidence()
-                .setSeedQueries(List.of("成龙"))
+                .setSeedQueries(List.of("\u6210\u9f99"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/jackie"))));
 
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(osintSocialAccountClient);
         inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("Jackie Chan");
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("JackieChan");
         inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("jackiechan");
-        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("成龙");
-        verify(osintSocialAccountClient, times(3)).findSuspectedAccounts(anyString());
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("jackie chan");
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("\u6210\u9f99");
+        verify(osintSocialAccountClient, times(5)).findSuspectedAccounts(anyString());
         verify(googleSearchClient, never()).googleSearch(contains("Twitter username"));
         verify(googleSearchClient, never()).googleSearch(contains("official social account"));
+    }
+
+    @Test
+    void shouldRecursivelySearchOsintHandlesDiscoveredFromAccountPages() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+        OsintSocialAccountClient osintSocialAccountClient = mock(OsintSocialAccountClient.class);
+
+        List<PageContent> seedPages = List.of(new PageContent()
+                .setUrl("https://example.com/jackie")
+                .setTitle("Jackie Chan")
+                .setContent("Jackie Chan is an actor."));
+        when(jinaReaderClient.readPages(anyList())).thenAnswer(invocation -> {
+            List<String> urls = invocation.getArgument(0);
+            if (urls.contains("https://example.com/jackie")) {
+                return seedPages;
+            }
+            if (urls.contains("https://jackiechan.com")) {
+                return List.of(new PageContent()
+                        .setUrl("https://jackiechan.com")
+                        .setTitle("Official Jackie Chan")
+                        .setContent("Official social links include @EyeOfJackieChan."));
+            }
+            return List.of();
+        });
+        mockSummaryPipeline(summaryGenerationClient, "Jackie Chan", seedPages, new ResolvedPersonProfile()
+                .setResolvedName("Jackie Chan")
+                .setSummary("Jackie Chan is an actor."));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setRecommendedLanguages(List.of("en"))
+                        .setLocalizedNames(Map.of("en", "Jackie Chan"))
+                        .setConfidence(0.9));
+        when(queryBuilder.build(eq("Jackie Chan"), any())).thenReturn(List.of());
+        when(googleSearchClient.googleSearch(anyString()))
+                .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("{\"organic\":[]}")));
+        when(osintSocialAccountClient.findSuspectedAccounts(anyString())).thenReturn(List.of());
+        when(osintSocialAccountClient.findSuspectedAccounts("Jackie Chan")).thenReturn(List.of(
+                new SocialAccount()
+                        .setPlatform("website")
+                        .setUrl("https://jackiechan.com")
+                        .setUsername("JackieChan")
+                        .setSource("sherlock")
+                        .setSuspected(true)
+                        .setConfidence("suspected")
+        ));
+        when(osintSocialAccountClient.findSuspectedAccounts("EyeOfJackieChan")).thenReturn(List.of(
+                new SocialAccount()
+                        .setPlatform("x")
+                        .setUrl("https://x.com/EyeOfJackieChan")
+                        .setUsername("EyeOfJackieChan")
+                        .setSource("maigret")
+                        .setSuspected(true)
+                        .setConfidence("suspected")
+        ));
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getMaigret().setEnabled(true);
+
+        AggregationResult result = serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                properties,
+                osintSocialAccountClient
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jackie Chan"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/jackie"))));
+
+        assertThat(result.getSocialAccounts())
+                .extracting(SocialAccount::getUrl)
+                .contains("https://jackiechan.com", "https://x.com/EyeOfJackieChan");
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(osintSocialAccountClient);
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("Jackie Chan");
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("EyeOfJackieChan");
     }
 
     @Test

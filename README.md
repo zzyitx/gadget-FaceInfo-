@@ -50,6 +50,7 @@
 
 - `Serper`：用于 Google Lens 反向搜图和 Google 搜索
 - `SerpAPI`：当前用于 Yandex 和 Bing 图片搜索
+- `Sophnet Gemini 视觉模型`：作为图像直连大模型数据源，按模板化英文提示词输出中文结构化人物画像、社交账号、工作单位、职位和来源引用
 - `RocketReach`：用于按人物姓名补充职业资料与公开社交主页候选
 - `Jina Reader`：用于抓取网页正文
 - `Kimi`：用于正文篇级总结和最终人物总结
@@ -207,12 +208,13 @@ mvn clean verify
 - 当前聚合链路采用 `DeepSeek + Kimi` 双模型分流
 - 长文和普通网页优先由 `DeepSeek-V3.2-Fast` 处理
 - 结构化特征明显的页面可分流给 `Kimi`
-- 家庭背景主题摘要采用 `DeepSeek -> Kimi` 的降级顺序；新流程不再主动扩展教育、职业、涉华、政治倾向、地址、家族成员情况和负面信息等派生主题
-- 最终人物总结与综合判断采用 `DeepSeek -> Kimi` 的降级顺序
+- 人物画像摘要采用 `DeepSeek -> Kimi` 的降级顺序；检索重点收敛到姓名、公开身份、工作单位、工作职位等高置信信息，不再主动查询家庭背景或成长经历
+- 最终人物总结与综合判断采用 `DeepSeek-V4-Pro -> Kimi` 的降级顺序，可通过 `DEEPSEEK_FINAL_PROFILE_MODEL` 覆盖
 - 两个模型都失败时，接口返回 `大模型提取人物信息失败`
 - 需要配置环境变量：
   - `SOPHNET_API_KEY`
   - `DEEPSEEK_MODEL`
+  - `DEEPSEEK_FINAL_PROFILE_MODEL`
   - `KIMI_API_KEY`
   - 如有必要可额外配置 `DEEPSEEK_API_BASE_URL`、`DEEPSEEK_SYSTEM_PROMPT`、`KIMI_API_BASE_URL`、`KIMI_MODEL` 和 `KIMI_SYSTEM_PROMPT`
 - 大模型处理成功时，接口会补充：
@@ -221,8 +223,8 @@ mvn clean verify
   - `person.wikipedia`
   - `person.official_website`
   - `person.basic_info`
-  - `person.family_background_summary`
-  - `person.family_background_summary_paragraphs`
+  - `person.family_background_summary`（兼容字段，仅在证据中已有明确内容时可能返回）
+  - `person.family_background_summary_paragraphs`（兼容字段，仅在证据中已有明确内容时可能返回）
 - `person.basic_info` 包含：
   - `birth_date`
   - `education`

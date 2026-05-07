@@ -55,7 +55,7 @@ class SearchTemplateQueryBuilderImplTest {
     }
 
     @Test
-    void shouldUseFamilyDefaultTemplatesWhenConfigurationIsEmpty() {
+    void shouldNotUseFamilyDefaultTemplatesWhenConfigurationIsEmpty() {
         List<String> queries = new SearchTemplateQueryBuilderImpl(new ApiProperties()).build(
                 "family",
                 "黄仁勋",
@@ -64,7 +64,7 @@ class SearchTemplateQueryBuilderImplTest {
                 Map.of()
         );
 
-        assertThat(queries).contains("Jensen Huang family background", "黄仁勋 家庭背景");
+        assertThat(queries).isEmpty();
     }
 
     @Test

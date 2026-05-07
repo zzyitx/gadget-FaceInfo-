@@ -19,12 +19,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Service
 public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder {
 
     private static final int REQUIRED_QUERY_COUNT = 7;
     private static final int MIN_IDENTITY_OCCURRENCES = 5;
+    private static final Set<String> SUPPRESSED_SECTION_TYPES = Set.of("family");
     private static final Map<String, SectionPromptMetadata> SECTION_METADATA = Map.ofEntries(
             Map.entry("secondary_profile", new SectionPromptMetadata(
                     "人物背景",
@@ -120,6 +122,9 @@ public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder 
                                        SearchLanguageProfile languageProfile,
                                        @Nullable ResolvedPersonProfile profile,
                                        String sectionType) {
+        if (SUPPRESSED_SECTION_TYPES.contains(sectionType)) {
+            return List.of();
+        }
         List<String> templateQueries = searchTemplateQueryBuilder.build(
                 sectionType,
                 resolvedName,

@@ -108,7 +108,9 @@ public class LocalOsintSocialAccountClientImpl implements OsintSocialAccountClie
                     maigret.getProcessTimeoutMs(), username)) {
                 return List.of();
             }
-            return readMaigretAccounts(toolOutput, username, maigret.getMaxAccountsPerUsername());
+            List<SocialAccount> accounts = readMaigretAccounts(toolOutput, username, maigret.getMaxAccountsPerUsername());
+            log.info("maigret query succeeded username={} matchedAccounts={}", username, accounts.size());
+            return accounts;
         } catch (IOException | InterruptedException ex) {
             return handleToolFailure(MAIGRET_SOURCE, username, ex);
         }
@@ -150,7 +152,9 @@ public class LocalOsintSocialAccountClientImpl implements OsintSocialAccountClie
                     maigret.getProcessTimeoutMs(), username)) {
                 return List.of();
             }
-            return readSherlockAccounts(toolOutput, username, maigret.getMaxAccountsPerUsername());
+            List<SocialAccount> accounts = readSherlockAccounts(toolOutput, username, maigret.getMaxAccountsPerUsername());
+            log.info("sherlock query succeeded username={} matchedAccounts={}", username, accounts.size());
+            return accounts;
         } catch (IOException | InterruptedException ex) {
             return handleToolFailure(SHERLOCK_SOURCE, username, ex);
         }
@@ -181,7 +185,9 @@ public class LocalOsintSocialAccountClientImpl implements OsintSocialAccountClie
             if (!runProcess(TOOKIE_SOURCE, command, limitedProject, maigret.getProcessTimeoutMs(), username)) {
                 return List.of();
             }
-            return readTookieAccounts(limitedProject, username, maigret.getMaxAccountsPerUsername());
+            List<SocialAccount> accounts = readTookieAccounts(limitedProject, username, maigret.getMaxAccountsPerUsername());
+            log.info("tookie-osint query succeeded username={} matchedAccounts={}", username, accounts.size());
+            return accounts;
         } catch (IOException | InterruptedException ex) {
             return handleToolFailure(TOOKIE_SOURCE, username, ex);
         }

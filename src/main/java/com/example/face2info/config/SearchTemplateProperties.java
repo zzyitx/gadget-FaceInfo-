@@ -20,16 +20,10 @@ public class SearchTemplateProperties {
     private static final Map<String, List<String>> DEFAULT_QUERY_TEMPLATES = Map.ofEntries(
             Map.entry("secondary_profile", List.of(
                     "{name}",
-                    "{name} biography",
                     "{name} official profile",
-                    "{english_name} biography",
-                    "{native_name} 人物简介"
-            )),
-            Map.entry("family", List.of(
-                    "{name} family background",
-                    "{name} upbringing",
-                    "{native_name} 家庭背景",
-                    "{native_name} 成长经历"
+                    "{name} company position",
+                    "{english_name} official profile",
+                    "{native_name} 工作单位 职位"
             ))
     );
 

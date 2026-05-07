@@ -13,6 +13,7 @@ public class DeepSeekApiProperties {
     private String baseUrl;
     private String apiKey;
     private String model = "DeepSeek-V3.2-Fast";
+    private String finalProfileModel = "DeepSeek-V4-Pro";
     private int connectTimeoutMs = 5000;
     private int readTimeoutMs = 90000;
     private int maxRetries = 2;

@@ -32,17 +32,16 @@ class ApiPropertiesYamlBindingTest {
 
         assertThat(properties).isNotNull();
         assertThat(properties.getProperty("face2info.search.query-templates.secondary_profile[0]")).isEqualTo("{name}");
-        assertThat(properties.getProperty("face2info.search.query-templates.family[0]")).isEqualTo("{name} family background");
+        assertThat(properties.getProperty("face2info.search.query-templates.secondary_profile[2]")).isEqualTo("{name} company position");
+        assertThat(properties.containsKey("face2info.search.query-templates.family[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.query-templates.education[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.query-templates.family_member_situation[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.query-templates.contact_information[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.query-templates.china_related_statements[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.query-templates.political_view[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.query-templates.misconduct[0]")).isFalse();
-        assertThat(properties.getProperty("face2info.search.derived-section-titles.china_related_statements[0]"))
-                .isEqualTo("涉华言论");
-        assertThat(properties.getProperty("face2info.search.derived-section-titles.contact_information[4]"))
-                .isEqualTo("其他联系方式");
+        assertThat(properties.containsKey("face2info.search.derived-section-titles.china_related_statements[0]")).isFalse();
+        assertThat(properties.containsKey("face2info.search.derived-section-titles.contact_information[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.expand-enabled-topics[0]")).isFalse();
         assertThat(properties.containsKey("face2info.search.expand-max-query-count")).isFalse();
         assertThat(properties.containsKey("face2info.search.expand-max-term-length")).isFalse();
@@ -109,6 +108,8 @@ class ApiPropertiesYamlBindingTest {
 
         assertThat(properties).isNotNull();
         assertThat(properties.getProperty("face2info.api.deepseek.read-timeout-ms")).isEqualTo("90000");
+        assertThat(properties.getProperty("face2info.api.deepseek.final-profile-model"))
+                .isEqualTo("${DEEPSEEK_FINAL_PROFILE_MODEL:DeepSeek-V4-Pro}");
     }
 
     @Test
@@ -122,6 +123,9 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.containsKey("face2info.api.summary.model")).isTrue();
         assertThat(properties.getProperty("face2info.api.summary.profile-summary-batch-size"))
                 .isEqualTo("${PROFILE_SUMMARY_BATCH_SIZE:8}");
+        assertThat(properties.containsKey("face2info.api.summary.page-routing-enabled")).isFalse();
+        assertThat(properties.containsKey("face2info.api.summary.long-content-threshold")).isFalse();
+        assertThat(properties.containsKey("face2info.api.summary.structured-page-keywords[0]")).isFalse();
     }
 
     @Test
@@ -139,6 +143,9 @@ class ApiPropertiesYamlBindingTest {
                 .isEqualTo("${SOPHNET_VISION_GEMINI_MODEL:gemini-3.1-pro-preview}");
         assertThat(properties.containsKey("face2info.api.sophnet-vision.models[1]")).isFalse();
         assertThat(properties.getProperty("face2info.api.sophnet-vision.max-evidence-urls")).isEqualTo("8");
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.user-prompt"))
+                .contains("public social media accounts")
+                .contains("\"socialAccounts\"");
     }
 
     private Properties loadApplicationGitProperties() {
