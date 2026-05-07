@@ -29,6 +29,13 @@ public interface SummaryGenerationClient {
     ResolvedPersonProfile summarizePersonFromPageSummaries(String fallbackName, List<PageSummary> pageSummaries);
 
     /**
+     * 基于分组子摘要集合生成最终人物总结。
+     */
+    default ResolvedPersonProfile summarizePersonFromBatchSummaries(String fallbackName, List<PageSummary> batchSummaries) {
+        return summarizePersonFromPageSummaries(fallbackName, batchSummaries);
+    }
+
+    /**
      * 基于图床 URL 对人脸图像做高清化处理。
      */
     MultipartFile enhanceFaceImageByUrl(String imageUrl, String filename, String contentType);

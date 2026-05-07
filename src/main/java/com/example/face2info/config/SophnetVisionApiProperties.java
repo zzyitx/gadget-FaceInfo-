@@ -17,7 +17,6 @@ public class SophnetVisionApiProperties {
     private String baseUrl = "https://www.sophnet.com/api/open-apis/v1/chat/completions";
     private String apiKey;
     private List<String> models = new ArrayList<>(List.of(
-            "grok-4-1-fast-non-reasoning",
             "gemini-3.1-pro-preview"
     ));
     private int connectTimeoutMs = 5000;

@@ -26,6 +26,10 @@ public class SummaryApiProperties {
      * 单页正文送入大模型前的最大字符数，避免超长网页直接打满上下文。
      */
     private int pageContentMaxLength = 12000;
+    /**
+     * 最终人物画像分层汇总时每组包含的篇级摘要数量，允许范围 5-10。
+     */
+    private int profileSummaryBatchSize = 8;
     private List<String> structuredPageKeywords = new ArrayList<>(List.of(
             "简历",
             "履历",

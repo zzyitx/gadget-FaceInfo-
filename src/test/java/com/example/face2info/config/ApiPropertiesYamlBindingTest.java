@@ -74,10 +74,33 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.getProperty("face2info.api.maigret.executable"))
                 .isEqualTo("${MAIGRET_EXECUTABLE:D:/ideaProject/maigret/.venv/Scripts/maigret.exe}");
         assertThat(properties.containsKey("face2info.api.maigret.command-prefix[0]")).isFalse();
-        assertThat(properties.getProperty("face2info.api.maigret.top-sites")).isEqualTo("${MAIGRET_TOP_SITES:200}");
+        assertThat(properties.getProperty("face2info.api.maigret.top-sites")).isEqualTo("${OSINT_SOCIAL_SITE_LIMIT:50}");
         assertThat(properties.getProperty("face2info.api.maigret.max-usernames")).isEqualTo("${MAIGRET_MAX_USERNAMES:5}");
         assertThat(properties.getProperty("face2info.api.maigret.max-accounts-per-username"))
                 .isEqualTo("${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}");
+        assertThat(properties.getProperty("face2info.api.maigret.sherlock.project-path"))
+                .isEqualTo("${SHERLOCK_PROJECT_PATH:D:/ideaProject/sherlock}");
+        assertThat(properties.getProperty("face2info.api.maigret.tookie.project-path"))
+                .isEqualTo("${TOOKIE_PROJECT_PATH:D:/ideaProject/tookie-osint}");
+        assertThat(properties.getProperty("face2info.api.maigret.social-sites[49]")).isEqualTo("Last.fm");
+        assertThat(properties.containsKey("face2info.api.maigret.social-sites[50]")).isFalse();
+    }
+
+    @Test
+    void shouldExposeRocketReachStructureInApplicationGitYaml() {
+        Properties properties = loadApplicationGitProperties();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("face2info.api.rocketreach.enabled"))
+                .isEqualTo("${ROCKETREACH_ENABLED:false}");
+        assertThat(properties.getProperty("face2info.api.rocketreach.base-url"))
+                .isEqualTo("${ROCKETREACH_API_BASE_URL:https://api.rocketreach.co/api/v2}");
+        assertThat(properties.getProperty("face2info.api.rocketreach.person-search-path"))
+                .isEqualTo("${ROCKETREACH_PERSON_SEARCH_PATH:/person/search}");
+        assertThat(properties.getProperty("face2info.api.rocketreach.api-key"))
+                .isEqualTo("${ROCKETREACH_API_KEY:}");
+        assertThat(properties.getProperty("face2info.api.rocketreach.max-results"))
+                .isEqualTo("${ROCKETREACH_MAX_RESULTS:5}");
     }
 
     @Test
@@ -97,6 +120,8 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.containsKey("face2info.api.summary.base-url")).isTrue();
         assertThat(properties.containsKey("face2info.api.summary.api-key")).isTrue();
         assertThat(properties.containsKey("face2info.api.summary.model")).isTrue();
+        assertThat(properties.getProperty("face2info.api.summary.profile-summary-batch-size"))
+                .isEqualTo("${PROFILE_SUMMARY_BATCH_SIZE:8}");
     }
 
     @Test
@@ -111,9 +136,8 @@ class ApiPropertiesYamlBindingTest {
         assertThat(properties.getProperty("face2info.api.sophnet-vision.api-key"))
                 .isEqualTo("${SOPHNET_API_KEY:}");
         assertThat(properties.getProperty("face2info.api.sophnet-vision.models[0]"))
-                .isEqualTo("${SOPHNET_VISION_GROK_MODEL:grok-4-1-fast-non-reasoning}");
-        assertThat(properties.getProperty("face2info.api.sophnet-vision.models[1]"))
                 .isEqualTo("${SOPHNET_VISION_GEMINI_MODEL:gemini-3.1-pro-preview}");
+        assertThat(properties.containsKey("face2info.api.sophnet-vision.models[1]")).isFalse();
         assertThat(properties.getProperty("face2info.api.sophnet-vision.max-evidence-urls")).isEqualTo("8");
     }
 

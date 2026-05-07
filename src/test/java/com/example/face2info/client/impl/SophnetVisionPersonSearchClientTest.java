@@ -29,13 +29,13 @@ class SophnetVisionPersonSearchClientTest {
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer test-key"))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("grok-4-1-fast-non-reasoning")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("vision-model-a")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("https://example.com/face.jpg")))
                 .andRespond(withSuccess(response("Ada Lovelace", "https://example.com/ada"), MediaType.APPLICATION_JSON));
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer test-key"))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("gemini-3.1-pro-preview")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("vision-model-b")))
                 .andRespond(withSuccess(response("Ada Lovelace", "https://example.com/wiki"), MediaType.APPLICATION_JSON));
 
         SophnetVisionPersonSearchClient client = new SophnetVisionPersonSearchClient(
@@ -56,8 +56,8 @@ class SophnetVisionPersonSearchClientTest {
         properties.getApi().getSophnetVision().setApiKey("test-key");
         properties.getApi().getSophnetVision().setMaxRetries(1);
         properties.getApi().getSophnetVision().setModels(List.of(
-                "grok-4-1-fast-non-reasoning",
-                "gemini-3.1-pro-preview"
+                "vision-model-a",
+                "vision-model-b"
         ));
         return properties;
     }

@@ -5,9 +5,9 @@ import com.example.face2info.entity.response.SocialAccount;
 import java.util.List;
 
 /**
- * 基于用户名调用 Maigret 查找疑似社交账号。
+ * 基于用户名调用本地 OSINT 工具查找疑似社交账号。
  */
-public interface MaigretClient {
+public interface OsintSocialAccountClient {
 
     List<SocialAccount> findSuspectedAccounts(String username);
 }

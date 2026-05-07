@@ -51,6 +51,7 @@ public class RestTemplateConfig {
                 properties.getApi().getSummary().getConnectTimeoutMs(),
                 properties.getApi().getFaceDetection().getConnectTimeoutMs(),
                 properties.getApi().getFaceEnhance().getConnectTimeoutMs(),
+                properties.getApi().getRocketreach().getConnectTimeoutMs(),
                 properties.getApi().getSophnetVision().getConnectTimeoutMs()
         );
     }
@@ -66,6 +67,7 @@ public class RestTemplateConfig {
                 properties.getApi().getSummary().getReadTimeoutMs(),
                 properties.getApi().getFaceDetection().getReadTimeoutMs(),
                 properties.getApi().getFaceEnhance().getReadTimeoutMs(),
+                properties.getApi().getRocketreach().getReadTimeoutMs(),
                 properties.getApi().getSophnetVision().getReadTimeoutMs()
         );
     }

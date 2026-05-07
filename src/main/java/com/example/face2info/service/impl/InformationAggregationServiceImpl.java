@@ -2,12 +2,14 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
-import com.example.face2info.client.MaigretClient;
+import com.example.face2info.client.OsintSocialAccountClient;
 import com.example.face2info.client.RealtimeTranslationClient;
+import com.example.face2info.client.RocketReachClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
-import com.example.face2info.client.impl.NoopMaigretClient;
+import com.example.face2info.client.impl.NoopOsintSocialAccountClient;
+import com.example.face2info.client.impl.NoopRocketReachClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
@@ -59,6 +61,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -113,6 +116,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final Pattern PARENTHETICAL_NAME_PATTERN = Pattern.compile("^(.+?)\\s*[（(]\\s*([^()（）]+?)\\s*[）)]\\s*$");
     private static final Pattern LATIN_TEXT_PATTERN = Pattern.compile("[A-Za-z]");
     private static final Pattern HAN_TEXT_PATTERN = Pattern.compile("\\p{IsHan}");
+    private static final Pattern SENTENCE_PATTERN = Pattern.compile("[^。！？!?]+[。！？!?]?(?:\\[\\d+])*");
+    private static final Pattern CITATION_ONLY_SENTENCE_PATTERN = Pattern.compile("^(?:\\[\\d+])+[。！？!?]?$");
+    private static final Pattern ARTICLE_VIEW_PREFIX_PATTERN = Pattern.compile(
+            "^(本文|文章|该文|报道|报道称|资料)(主要)?(盘点了|盘点|以|回顾了|回顾|介绍了|指出|称|提到|总结了|梳理了)?[，,：:\\s]*"
+    );
     private static final int CONTACT_INFORMATION_QUERY_LIMIT = 10;
     private static final int SOCIAL_ACCOUNT_QUERY_LIMIT = 12;
     private static final int SOCIAL_USERNAME_QUERY_LIMIT = 6;
@@ -121,6 +129,16 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final int LOCAL_PROFILE_FALLBACK_PARAGRAPH_COUNT = 3;
     private static final int LOCAL_PROFILE_FALLBACK_PARAGRAPH_MAX_CHARS = 260;
     private static final int LOCAL_PROFILE_FALLBACK_FACT_COUNT = 8;
+    private static final int PROFILE_SUMMARY_BATCH_SIZE_MIN = 5;
+    private static final int PROFILE_SUMMARY_BATCH_SIZE_MAX = 10;
+    private static final int PROFILE_BATCH_FIELD_MAX_CHARS = 700;
+    private static final List<String> UNWANTED_RELATIONSHIP_TERMS = List.of(
+            "情感经历", "绯闻", "绯闻女友", "恋情", "相恋", "激吻", "亲密", "分手", "前女友", "女友"
+    );
+    private static final List<String> UNWANTED_ARTICLE_THEME_TERMS = List.of(
+            "国产功夫电影现状", "功夫电影现状", "电影现状", "行业现状", "辉煌历史", "电影类型",
+            "最受欢迎的电影类型", "涌现了", "功夫片曾经", "以国产功夫电影"
+    );
 
     @SuppressWarnings("unused")
     private final GoogleSearchClient googleSearchClient;
@@ -136,7 +154,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final MultilingualQueryPlanningService multilingualQueryPlanningService;
     private final DigitalFootprintQueryBuilder digitalFootprintQueryBuilder;
     private final PrimarySearchQueryBuilder primarySearchQueryBuilder;
-    private final MaigretClient maigretClient;
+    private final OsintSocialAccountClient osintSocialAccountClient;
+    private final RocketReachClient rocketReachClient;
 
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -151,7 +170,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              MultilingualQueryPlanningService multilingualQueryPlanningService,
                                              DigitalFootprintQueryBuilder digitalFootprintQueryBuilder,
                                              PrimarySearchQueryBuilder primarySearchQueryBuilder,
-                                             @Nullable MaigretClient maigretClient) {
+                                             @Nullable OsintSocialAccountClient osintSocialAccountClient,
+                                             @Nullable RocketReachClient rocketReachClient) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.jinaReaderClient = jinaReaderClient;
@@ -164,7 +184,27 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.multilingualQueryPlanningService = multilingualQueryPlanningService;
         this.digitalFootprintQueryBuilder = digitalFootprintQueryBuilder;
         this.primarySearchQueryBuilder = primarySearchQueryBuilder;
-        this.maigretClient = maigretClient == null ? new NoopMaigretClient() : maigretClient;
+        this.osintSocialAccountClient = osintSocialAccountClient == null ? new NoopOsintSocialAccountClient() : osintSocialAccountClient;
+        this.rocketReachClient = rocketReachClient == null ? new NoopRocketReachClient() : rocketReachClient;
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor,
+                                      ApiProperties properties,
+                                      DerivedTopicQueryService derivedTopicQueryService,
+                                      SearchLanguageProfileService searchLanguageProfileService,
+                                      MultilingualQueryPlanningService multilingualQueryPlanningService,
+                                      DigitalFootprintQueryBuilder digitalFootprintQueryBuilder,
+                                      PrimarySearchQueryBuilder primarySearchQueryBuilder,
+                                      @Nullable OsintSocialAccountClient osintSocialAccountClient) {
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
+                deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
+                searchLanguageProfileService, multilingualQueryPlanningService, digitalFootprintQueryBuilder,
+                primarySearchQueryBuilder, osintSocialAccountClient, new NoopRocketReachClient());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -182,7 +222,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
                 searchLanguageProfileService, multilingualQueryPlanningService, digitalFootprintQueryBuilder,
-                primarySearchQueryBuilder, new NoopMaigretClient());
+                primarySearchQueryBuilder, new NoopOsintSocialAccountClient());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -313,6 +353,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 result.getWarnings()
         );
         profile = enrichProfileSectionsByResolvedName(profile, resolvedName, languageProfile);
+        sanitizeProfileForDisplay(profile);
         appendArticleMatchSources(profile, evidence.getArticleImageMatches());
         resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
@@ -390,6 +431,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         List<PageSummary> pageSummaries = new ArrayList<>(modelPageSummaries);
         pageSummaries.addAll(collectPageSummaries(fallbackName, pages));
+        pageSummaries = filterProfileRelevantPageSummaries(pageSummaries);
         if (pageSummaries.isEmpty()) {
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
@@ -425,6 +467,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         ResolvedPersonProfile judgedProfile = applyComprehensiveJudgement(resolvedNameForModelCall(fallbackName, profile),
                 pageSummaries, profile, warnings);
         enrichProfileParagraphSources(judgedProfile, pageSummaries);
+        sanitizeProfileForDisplay(judgedProfile);
         return judgedProfile;
     }
 
@@ -506,6 +549,160 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
         // summary 只承载人物主体画像，教育/家庭/职业改由独立字段输出，避免正文和分区内容重复。
         return cleanText(profile.getSummary());
+    }
+
+    private List<PageSummary> filterProfileRelevantPageSummaries(List<PageSummary> pageSummaries) {
+        if (pageSummaries == null || pageSummaries.isEmpty()) {
+            return List.of();
+        }
+        List<PageSummary> filtered = new ArrayList<>();
+        for (PageSummary pageSummary : pageSummaries) {
+            if (!isProfileRelevantPageSummary(pageSummary)) {
+                log.info("过滤非人物画像篇级摘要 title={} url={}",
+                        pageSummary == null ? null : pageSummary.getTitle(),
+                        pageSummary == null ? null : pageSummary.getSourceUrl());
+                continue;
+            }
+            pageSummary.setSummary(sanitizeProfileText(pageSummary.getSummary()));
+            if (!StringUtils.hasText(pageSummary.getSummary())) {
+                continue;
+            }
+            pageSummary.setKeyFacts(sanitizeProfileTextList(pageSummary.getKeyFacts()));
+            pageSummary.setSummaryParagraphs(sanitizeProfileParagraphs(pageSummary.getSummaryParagraphs()));
+            filtered.add(pageSummary);
+        }
+        attachArticleCitations(filtered);
+        return filtered;
+    }
+
+    private boolean isProfileRelevantPageSummary(PageSummary pageSummary) {
+        if (pageSummary == null || !StringUtils.hasText(pageSummary.getSummary())) {
+            return false;
+        }
+        String summary = pageSummary.getSummary().trim();
+        if (summary.startsWith("[不采纳]")) {
+            return false;
+        }
+        String joined = String.join(" ",
+                firstNonBlankText(pageSummary.getTitle(), ""),
+                summary,
+                pageSummary.getTags() == null ? "" : String.join(" ", pageSummary.getTags()));
+        return !isUnwantedProfileText(joined);
+    }
+
+    private void sanitizeProfileForDisplay(ResolvedPersonProfile profile) {
+        if (profile == null) {
+            return;
+        }
+        profile.setDescription(sanitizeProfileText(profile.getDescription()));
+        profile.setSummary(sanitizeProfileText(profile.getSummary()));
+        profile.setEducationSummary(sanitizeProfileText(profile.getEducationSummary()));
+        profile.setFamilyBackgroundSummary(sanitizeProfileText(profile.getFamilyBackgroundSummary()));
+        profile.setCareerSummary(sanitizeProfileText(profile.getCareerSummary()));
+        profile.setChinaRelatedStatementsSummary(sanitizeProfileText(profile.getChinaRelatedStatementsSummary()));
+        profile.setPoliticalTendencySummary(sanitizeProfileText(profile.getPoliticalTendencySummary()));
+        profile.setContactInformationSummary(sanitizeProfileText(profile.getContactInformationSummary()));
+        profile.setFamilyMemberSituationSummary(sanitizeProfileText(profile.getFamilyMemberSituationSummary()));
+        profile.setMisconductSummary(sanitizeProfileText(profile.getMisconductSummary()));
+        profile.setSummaryParagraphs(sanitizeProfileParagraphs(profile.getSummaryParagraphs()));
+        profile.setEducationSummaryParagraphs(sanitizeProfileParagraphs(profile.getEducationSummaryParagraphs()));
+        profile.setFamilyBackgroundSummaryParagraphs(sanitizeProfileParagraphs(profile.getFamilyBackgroundSummaryParagraphs()));
+        profile.setCareerSummaryParagraphs(sanitizeProfileParagraphs(profile.getCareerSummaryParagraphs()));
+        profile.setChinaRelatedStatementsSummaryParagraphs(sanitizeProfileParagraphs(profile.getChinaRelatedStatementsSummaryParagraphs()));
+        profile.setPoliticalTendencySummaryParagraphs(sanitizeProfileParagraphs(profile.getPoliticalTendencySummaryParagraphs()));
+        profile.setContactInformationSummaryParagraphs(sanitizeProfileParagraphs(profile.getContactInformationSummaryParagraphs()));
+        profile.setFamilyMemberSituationSummaryParagraphs(sanitizeProfileParagraphs(profile.getFamilyMemberSituationSummaryParagraphs()));
+        profile.setMisconductSummaryParagraphs(sanitizeProfileParagraphs(profile.getMisconductSummaryParagraphs()));
+        profile.setKeyFacts(sanitizeProfileTextList(profile.getKeyFacts()));
+    }
+
+    private List<String> sanitizeProfileTextList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream()
+                .map(this::sanitizeProfileText)
+                .filter(StringUtils::hasText)
+                .toList();
+    }
+
+    private List<ParagraphSummaryItem> sanitizeProfileParagraphs(List<ParagraphSummaryItem> paragraphs) {
+        if (paragraphs == null || paragraphs.isEmpty()) {
+            return List.of();
+        }
+        List<ParagraphSummaryItem> sanitized = new ArrayList<>();
+        for (ParagraphSummaryItem paragraph : paragraphs) {
+            if (paragraph == null) {
+                continue;
+            }
+            String text = sanitizeProfileText(paragraph.getText());
+            if (!StringUtils.hasText(text)) {
+                continue;
+            }
+            sanitized.add(new ParagraphSummaryItem()
+                    .setText(text)
+                    .setSourceIds(paragraph.getSourceIds())
+                    .setSourceUrls(paragraph.getSourceUrls())
+                    .setSources(paragraph.getSources()));
+        }
+        return sanitized;
+    }
+
+    private String sanitizeProfileText(String value) {
+        String normalized = cleanText(value);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        List<String> sentences = splitSentences(normalized);
+        if (sentences.isEmpty()) {
+            String stripped = stripArticleViewPrefix(normalized);
+            return isUnwantedProfileText(stripped) ? null : cleanText(stripped);
+        }
+        String cleaned = sentences.stream()
+                .map(this::stripArticleViewPrefix)
+                .map(this::cleanText)
+                .filter(StringUtils::hasText)
+                .filter(sentence -> !CITATION_ONLY_SENTENCE_PATTERN.matcher(sentence).matches())
+                .filter(sentence -> !isUnwantedProfileText(sentence))
+                .collect(Collectors.joining(""));
+        return cleanText(cleaned);
+    }
+
+    private List<String> splitSentences(String text) {
+        if (!StringUtils.hasText(text)) {
+            return List.of();
+        }
+        String normalizedText = text.replaceAll("\\s+(?=(本文|文章|该文|报道|报道称|资料))", "。");
+        List<String> sentences = new ArrayList<>();
+        Matcher matcher = SENTENCE_PATTERN.matcher(normalizedText);
+        while (matcher.find()) {
+            String sentence = matcher.group();
+            if (StringUtils.hasText(sentence)) {
+                sentences.add(sentence.trim());
+            }
+        }
+        return sentences;
+    }
+
+    private String stripArticleViewPrefix(String text) {
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        return ARTICLE_VIEW_PREFIX_PATTERN.matcher(text.trim()).replaceFirst("");
+    }
+
+    private boolean isUnwantedProfileText(String text) {
+        if (!StringUtils.hasText(text)) {
+            return false;
+        }
+        String normalized = text.toLowerCase(Locale.ROOT);
+        if (UNWANTED_RELATIONSHIP_TERMS.stream().anyMatch(normalized::contains)) {
+            return true;
+        }
+        if (UNWANTED_ARTICLE_THEME_TERMS.stream().anyMatch(normalized::contains)) {
+            return true;
+        }
+        return normalized.contains("盘点") && (normalized.contains("功夫") || normalized.contains("电影类型"));
     }
 
     private ResolvedPersonProfile copyProfile(ResolvedPersonProfile profile) {
@@ -1247,7 +1444,41 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private String normalizeDedupUrl(String url) {
-        return StringUtils.hasText(url) ? url.trim() : "";
+        if (!StringUtils.hasText(url)) {
+            return "";
+        }
+        String trimmed = url.trim();
+        try {
+            URI uri = URI.create(trimmed);
+            String host = uri.getHost();
+            if (!StringUtils.hasText(host)) {
+                return cleanUrlTail(trimmed);
+            }
+            String normalizedHost = host.toLowerCase(Locale.ROOT);
+            if (normalizedHost.startsWith("www.")) {
+                normalizedHost = normalizedHost.substring(4);
+            }
+            String path = cleanUrlTail(uri.getPath());
+            String query = StringUtils.hasText(uri.getQuery()) ? "?" + uri.getQuery() : "";
+            return normalizedHost + path + query;
+        } catch (IllegalArgumentException ex) {
+            return cleanUrlTail(trimmed);
+        }
+    }
+
+    private String cleanUrlTail(String url) {
+        if (!StringUtils.hasText(url)) {
+            return "";
+        }
+        String normalized = url;
+        int fragmentIndex = normalized.indexOf('#');
+        if (fragmentIndex >= 0) {
+            normalized = normalized.substring(0, fragmentIndex);
+        }
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private static RealtimeTranslationClient noopTranslationClient() {
@@ -2262,54 +2493,67 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (!StringUtils.hasText(name)) {
             return List.of();
         }
-        List<SocialAccount> accounts = new ArrayList<>(collectMaigretSuspectedAccounts(name));
+        List<SocialAccount> accounts = new ArrayList<>(collectRocketReachProfileAccounts(name));
+        accounts.addAll(collectOsintSuspectedAccounts(name));
         return accounts.isEmpty() ? List.of() : deduplicateSocialAccounts(accounts);
     }
 
-    private List<SocialAccount> collectMaigretSuspectedAccounts(String name) {
+    private List<SocialAccount> collectRocketReachProfileAccounts(String name) {
+        if (!properties.getApi().getRocketreach().isEnabled()) {
+            return List.of();
+        }
+        try {
+            return rocketReachClient.findProfileAccounts(name);
+        } catch (RuntimeException ex) {
+            log.warn("RocketReach profile account search failed name={} error={}", name, ex.getMessage(), ex);
+            return List.of();
+        }
+    }
+
+    private List<SocialAccount> collectOsintSuspectedAccounts(String name) {
         if (!properties.getApi().getMaigret().isEnabled()) {
             return List.of();
         }
-        List<String> usernames = buildMaigretUsernameCandidates(name);
+        List<String> usernames = buildOsintUsernameCandidates(name);
         if (usernames.isEmpty()) {
             return List.of();
         }
         List<SocialAccount> accounts = new ArrayList<>();
         for (String username : usernames) {
             try {
-                accounts.addAll(maigretClient.findSuspectedAccounts(username));
+                accounts.addAll(osintSocialAccountClient.findSuspectedAccounts(username));
             } catch (RuntimeException ex) {
-                log.warn("Maigret suspected account search failed username={} error={}", username, ex.getMessage(), ex);
+                log.warn("OSINT suspected account search failed username={} error={}", username, ex.getMessage(), ex);
             }
         }
         return accounts;
     }
 
-    private List<String> buildMaigretUsernameCandidates(String name) {
+    private List<String> buildOsintUsernameCandidates(String name) {
         LinkedHashSet<String> usernames = new LinkedHashSet<>();
-        addMaigretNameCandidates(usernames, name);
+        addOsintNameCandidates(usernames, name);
         return usernames.stream()
                 .limit(properties.getApi().getMaigret().getMaxUsernames())
                 .toList();
     }
 
-    private void addMaigretNameCandidates(Set<String> usernames, String name) {
+    private void addOsintNameCandidates(Set<String> usernames, String name) {
         if (!StringUtils.hasText(name)) {
             return;
         }
         String normalized = name.trim();
         Matcher matcher = PARENTHETICAL_NAME_PATTERN.matcher(normalized);
         if (!matcher.matches()) {
-            addMaigretUsernameCandidate(usernames, normalized, false);
+            addOsintUsernameCandidate(usernames, normalized, false);
             return;
         }
         String outside = matcher.group(1);
         String inside = matcher.group(2);
         String latinName = containsLatin(inside) ? inside : outside;
         String nativeName = containsHan(outside) ? outside : inside;
-        addMaigretUsernameCandidate(usernames, latinName, false);
+        addOsintUsernameCandidate(usernames, latinName, false);
         addCompactLatinUsernameCandidate(usernames, latinName);
-        addMaigretUsernameCandidate(usernames, nativeName, false);
+        addOsintUsernameCandidate(usernames, nativeName, false);
     }
 
     private void addCompactLatinUsernameCandidate(Set<String> usernames, String name) {
@@ -2317,10 +2561,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return;
         }
         String compact = name.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
-        addMaigretUsernameCandidate(usernames, compact, true);
+        addOsintUsernameCandidate(usernames, compact, true);
     }
 
-    private void addMaigretUsernameCandidate(Set<String> usernames, String username, boolean strictHandle) {
+    private void addOsintUsernameCandidate(Set<String> usernames, String username, boolean strictHandle) {
         if (!StringUtils.hasText(username)) {
             return;
         }
@@ -2627,10 +2871,41 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                                                                List<PageSummary> pageSummaries,
                                                                                boolean failHard) {
         if (deepSeekSummaryGenerationClient == null) {
-            return summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+            try {
+                return summarizePersonWithHierarchicalBatches(
+                        "Kimi",
+                        fallbackName,
+                        pageSummaries,
+                        summaries -> summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, summaries),
+                        summaries -> summaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
+                );
+            } catch (RuntimeException kimiEx) {
+                log.error("最终画像Kimi失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                        fallbackName,
+                        pageSummaries == null ? 0 : pageSummaries.size(),
+                        classifySummaryFailure(kimiEx),
+                        kimiEx.getMessage(),
+                        kimiEx);
+                ResolvedPersonProfile localFallback = buildLocalProfileFallback(fallbackName, pageSummaries);
+                if (localFallback != null) {
+                    log.warn("最终画像使用本地摘要兜底 fallbackName={} pageSummaryCount={}",
+                            fallbackName, pageSummaries == null ? 0 : pageSummaries.size());
+                    return localFallback;
+                }
+                if (failHard) {
+                    throw new ApiCallException("LLM_PROFILE_FAILED: " + LLM_FAILURE_MESSAGE, kimiEx);
+                }
+                throw kimiEx;
+            }
         }
         try {
-            return deepSeekSummaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+            return summarizePersonWithHierarchicalBatches(
+                    "DeepSeek",
+                    fallbackName,
+                    pageSummaries,
+                    summaries -> deepSeekSummaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, summaries),
+                    summaries -> deepSeekSummaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
+            );
         } catch (RuntimeException deepSeekEx) {
             log.error("最终画像DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
                     fallbackName,
@@ -2639,7 +2914,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     deepSeekEx.getMessage(),
                     deepSeekEx);
             try {
-                return summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, pageSummaries);
+                return summarizePersonWithHierarchicalBatches(
+                        "Kimi",
+                        fallbackName,
+                        pageSummaries,
+                        summaries -> summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, summaries),
+                        summaries -> summaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
+                );
             } catch (RuntimeException kimiEx) {
                 log.error("最终画像Kimi兜底失败 fallbackName={} pageSummaryCount={} category={} error={}",
                         fallbackName,
@@ -2659,6 +2940,119 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 throw kimiEx;
             }
         }
+    }
+
+    private ResolvedPersonProfile summarizePersonWithHierarchicalBatches(String providerName,
+                                                                          String fallbackName,
+                                                                          List<PageSummary> pageSummaries,
+                                                                          Function<List<PageSummary>, ResolvedPersonProfile> batchSummarizer,
+                                                                          Function<List<PageSummary>, ResolvedPersonProfile> finalSummarizer) {
+        List<PageSummary> validSummaries = pageSummaries == null
+                ? List.of()
+                : pageSummaries.stream().filter(Objects::nonNull).toList();
+        int batchSize = resolveProfileSummaryBatchSize();
+        if (validSummaries.size() <= batchSize) {
+            return batchSummarizer.apply(validSummaries);
+        }
+        List<PageSummary> batchSummaries = new ArrayList<>();
+        int failedBatchCount = 0;
+        for (int start = 0; start < validSummaries.size(); start += batchSize) {
+            List<PageSummary> batch = validSummaries.subList(start, Math.min(start + batchSize, validSummaries.size()));
+            int batchIndex = start / batchSize + 1;
+            log.info("{} profile summary batch start fallbackName={} batchIndex={} batchSize={} totalCount={}",
+                    providerName, fallbackName, batchIndex, batch.size(), validSummaries.size());
+            try {
+                ResolvedPersonProfile batchProfile = batchSummarizer.apply(batch);
+                if (batchProfile == null) {
+                    failedBatchCount++;
+                    log.warn("{} 分组摘要失败 fallbackName={} batchIndex={} batchSize={} category=null_profile error=模型返回空画像",
+                            providerName, fallbackName, batchIndex, batch.size());
+                    continue;
+                }
+                batchSummaries.add(toProfileBatchSummary(batch, batchProfile));
+            } catch (RuntimeException ex) {
+                failedBatchCount++;
+                log.warn("{} 分组摘要失败 fallbackName={} batchIndex={} batchSize={} category={} error={}",
+                        providerName, fallbackName, batchIndex, batch.size(),
+                        classifySummaryFailure(ex), ex.getMessage(), ex);
+            }
+        }
+        if (batchSummaries.isEmpty()) {
+            throw new ApiCallException(providerName + " 分组摘要全部失败", null);
+        }
+        log.info("{} profile summary final merge start fallbackName={} batchCount={} sourceCount={}",
+                providerName, fallbackName, batchSummaries.size(), validSummaries.size());
+        try {
+            return finalSummarizer.apply(batchSummaries);
+        } catch (RuntimeException ex) {
+            log.error("{} 最终汇总失败 fallbackName={} batchCount={} failedBatchCount={} sourceCount={} category={} error={}",
+                    providerName, fallbackName, batchSummaries.size(), failedBatchCount, validSummaries.size(),
+                    classifySummaryFailure(ex), ex.getMessage(), ex);
+            throw ex;
+        }
+    }
+
+    private int resolveProfileSummaryBatchSize() {
+        int configured = properties == null || properties.getApi() == null || properties.getApi().getSummary() == null
+                ? 8
+                : properties.getApi().getSummary().getProfileSummaryBatchSize();
+        return Math.max(PROFILE_SUMMARY_BATCH_SIZE_MIN, Math.min(PROFILE_SUMMARY_BATCH_SIZE_MAX, configured));
+    }
+
+    private PageSummary toProfileBatchSummary(List<PageSummary> sourceSummaries,
+                                              ResolvedPersonProfile batchProfile) {
+        PageSummary first = sourceSummaries == null || sourceSummaries.isEmpty() ? null : sourceSummaries.get(0);
+        List<String> summaryParts = new ArrayList<>();
+        if (batchProfile != null) {
+            addBatchPromptPart(summaryParts, batchProfile.getDescription());
+            addBatchPromptPart(summaryParts, batchProfile.getSummary());
+        }
+        if (summaryParts.isEmpty() && sourceSummaries != null) {
+            sourceSummaries.stream()
+                    .map(PageSummary::getSummary)
+                    .forEach(value -> addBatchPromptPart(summaryParts, value));
+        }
+        List<String> evidenceUrls = collectBatchEvidenceUrls(sourceSummaries, batchProfile);
+        return new PageSummary()
+                .setSourceId(first == null ? null : first.getSourceId())
+                .setSourceUrl(evidenceUrls.isEmpty() ? first == null ? null : first.getSourceUrl() : evidenceUrls.get(0))
+                .setTitle(first == null ? null : first.getTitle())
+                .setSummary(String.join(" ", summaryParts))
+                .setKeyFacts(batchProfile == null || batchProfile.getKeyFacts() == null
+                        ? List.of()
+                        : batchProfile.getKeyFacts().stream()
+                        .map(value -> truncateText(value, PROFILE_BATCH_FIELD_MAX_CHARS))
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .toList())
+                .setTags(batchProfile == null || batchProfile.getTags() == null
+                        ? List.of()
+                        : batchProfile.getTags())
+                .setArticleSources(sourceSummaries == null ? List.of() : buildArticleCitations(sourceSummaries));
+    }
+
+    private void addBatchPromptPart(List<String> parts, String value) {
+        String normalized = truncateText(value, PROFILE_BATCH_FIELD_MAX_CHARS);
+        if (StringUtils.hasText(normalized) && !parts.contains(normalized)) {
+            parts.add(normalized);
+        }
+    }
+
+    private List<String> collectBatchEvidenceUrls(List<PageSummary> sourceSummaries,
+                                                  ResolvedPersonProfile batchProfile) {
+        LinkedHashSet<String> urls = new LinkedHashSet<>();
+        if (batchProfile != null && batchProfile.getEvidenceUrls() != null) {
+            batchProfile.getEvidenceUrls().stream()
+                    .filter(StringUtils::hasText)
+                    .forEach(urls::add);
+        }
+        if (sourceSummaries != null) {
+            sourceSummaries.stream()
+                    .map(PageSummary::getSourceUrl)
+                    .filter(StringUtils::hasText)
+                    .forEach(urls::add);
+        }
+        return List.copyOf(urls);
     }
 
     private ResolvedPersonProfile buildLocalProfileFallback(String fallbackName, List<PageSummary> pageSummaries) {

@@ -118,6 +118,7 @@ face2info:
       read-timeout-ms: 15000
       page-routing-enabled: true
       long-content-threshold: 4000
+      profile-summary-batch-size: ${PROFILE_SUMMARY_BATCH_SIZE:8}
       structured-page-keywords:
         - 简历
         - 履历
@@ -140,19 +141,91 @@ face2info:
       project-path: ${MAIGRET_PROJECT_PATH:D:/ideaProject/maigret}
       executable: ${MAIGRET_EXECUTABLE:D:/ideaProject/maigret/.venv/Scripts/maigret.exe}
       command-prefix: []
-      top-sites: ${MAIGRET_TOP_SITES:200}
+      top-sites: ${OSINT_SOCIAL_SITE_LIMIT:50}
       site-timeout-seconds: ${MAIGRET_SITE_TIMEOUT_SECONDS:10}
       process-timeout-ms: ${MAIGRET_PROCESS_TIMEOUT_MS:60000}
       max-usernames: ${MAIGRET_MAX_USERNAMES:5}
       max-accounts-per-username: ${MAIGRET_MAX_ACCOUNTS_PER_USERNAME:30}
       no-recursion: true
       no-autoupdate: true
+      sherlock:
+        enabled: ${SHERLOCK_ENABLED:true}
+        project-path: ${SHERLOCK_PROJECT_PATH:D:/ideaProject/sherlock}
+        executable: ${SHERLOCK_EXECUTABLE:D:/ideaProject/sherlock/.venv/Scripts/sherlock.exe}
+        script-path: sherlock
+        command-prefix: []
+      tookie:
+        enabled: ${TOOKIE_ENABLED:true}
+        project-path: ${TOOKIE_PROJECT_PATH:D:/ideaProject/tookie-osint}
+        executable: ${TOOKIE_PYTHON:D:/ideaProject/tookie-osint/.venv/Scripts/python.exe}
+        script-path: brib.py
+        command-prefix: []
+      social-sites:
+        - Facebook
+        - YouTube
+        - Instagram
+        - Twitter
+        - X
+        - TikTok
+        - LinkedIn
+        - GitHub
+        - Reddit
+        - Pinterest
+        - Tumblr
+        - Twitch
+        - Flickr
+        - Vimeo
+        - SoundCloud
+        - Spotify
+        - Medium
+        - Quora
+        - VK
+        - Telegram
+        - Snapchat
+        - Mastodon
+        - Threads
+        - Bluesky
+        - Discord
+        - Steam
+        - StackOverflow
+        - GitLab
+        - BitBucket
+        - Behance
+        - Dribbble
+        - DeviantArt
+        - ArtStation
+        - Goodreads
+        - Kaggle
+        - HackerNews
+        - ProductHunt
+        - Keybase
+        - Patreon
+        - BuyMeACoffee
+        - Linktree
+        - AskFM
+        - Weibo
+        - Zhihu
+        - Douban
+        - Bilibili
+        - Gitee
+        - Myspace
+        - About.me
+        - Last.fm
+    rocketreach:
+      enabled: ${ROCKETREACH_ENABLED:false}
+      base-url: ${ROCKETREACH_API_BASE_URL:https://api.rocketreach.co/api/v2}
+      person-search-path: ${ROCKETREACH_PERSON_SEARCH_PATH:/person/search}
+      api-key: ${ROCKETREACH_API_KEY:}
+      max-results: ${ROCKETREACH_MAX_RESULTS:5}
+      connect-timeout-ms: 5000
+      read-timeout-ms: 15000
+      max-retries: 2
+      backoff-initial-ms: 500
     sophnet-vision:
       enabled: ${SOPHNET_VISION_ENABLED:true}
       base-url: ${SOPHNET_VISION_API_BASE_URL:https://www.sophnet.com/api/open-apis/v1/chat/completions}
       api-key: ${SOPHNET_API_KEY:}
       models:
-        - ${SOPHNET_VISION_GROK_MODEL:grok-4-1-fast-non-reasoning}
         - ${SOPHNET_VISION_GEMINI_MODEL:gemini-3.1-pro-preview}
       connect-timeout-ms: 5000
       read-timeout-ms: 75000

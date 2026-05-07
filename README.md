@@ -50,6 +50,7 @@
 
 - `Serper`：用于 Google Lens 反向搜图和 Google 搜索
 - `SerpAPI`：当前用于 Yandex 和 Bing 图片搜索
+- `RocketReach`：用于按人物姓名补充职业资料与公开社交主页候选
 - `Jina Reader`：用于抓取网页正文
 - `Kimi`：用于正文篇级总结和最终人物总结
 - `GFPGAN` 本地仓库：用于人脸图像高清化（修复老照片/低清人脸）
@@ -74,6 +75,7 @@
 - `FACECHECK_API_KEY`
 - `SOPHNET_API_KEY`
 - `DEEPSEEK_MODEL`
+- `ROCKETREACH_API_KEY`
 
 本地调试时，可通过以下方式注入敏感配置：
 
@@ -227,6 +229,18 @@ mvn clean verify
   - `occupations`
   - `biographies`
 - 页面级模型失败会在服务内部自动做分流回退，不直接中断总流程
+
+## 用户名 OSINT 疑似账号查询
+
+- 聚合链路会在解析出人物名称后，基于候选用户名调用本地 `Maigret`、`Sherlock` 和 `Tookie-osint` 项目查询疑似社交账号
+- 相关配置位于 `face2info.api.maigret`；保留原 `maigret` 配置节点是为了兼容现有服务注入和开关逻辑
+- 默认本地项目路径：
+  - `D:/ideaProject/maigret`
+  - `D:/ideaProject/sherlock`
+  - `D:/ideaProject/tookie-osint`
+- `top-sites` 默认使用 `${OSINT_SOCIAL_SITE_LIMIT:50}`，并配合 `social-sites` 白名单，只查询 50 个社交媒体站点
+- `Maigret` 和 `Sherlock` 使用各自 CLI 的 `--site` 参数精确限站；`Tookie-osint` 没有原生限站参数，服务会在临时目录生成只包含白名单站点的 `sites.json` 后运行，不修改外部项目原文件
+- 任一工具命令不可用、超时或解析失败时只降级跳过该工具，已有搜索和聚合流程继续返回可用结果
 
 ## GFPGAN 本地人脸高清化
 

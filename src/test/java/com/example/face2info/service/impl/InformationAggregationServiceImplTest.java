@@ -2,12 +2,14 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
 import com.example.face2info.client.JinaReaderClient;
-import com.example.face2info.client.MaigretClient;
+import com.example.face2info.client.OsintSocialAccountClient;
 import com.example.face2info.client.RealtimeTranslationClient;
+import com.example.face2info.client.RocketReachClient;
 import com.example.face2info.client.SerpApiClient;
 import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
-import com.example.face2info.client.impl.NoopMaigretClient;
+import com.example.face2info.client.impl.NoopOsintSocialAccountClient;
+import com.example.face2info.client.impl.NoopRocketReachClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
@@ -110,7 +112,7 @@ class InformationAggregationServiceImplTest {
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
                 mock(GoogleSearchClient.class), mock(SerpApiClient.class),
-                jinaReaderClient, summaryGenerationClient, executor
+                jinaReaderClient, summaryGenerationClient, executor, createApiProperties(11)
         );
 
         ResolvedPersonProfile profile = service.resolveProfileFromEvidence(List.of(
@@ -124,6 +126,180 @@ class InformationAggregationServiceImplTest {
         verify(summaryGenerationClient).summarizePage("unknown", pageA);
         verify(summaryGenerationClient).summarizePage("unknown", pageB);
         verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", List.of(summaryA, summaryB));
+    }
+
+    @Test
+    void shouldSummarizeFinalProfileWithIndependentBatchesWhenEvidenceIsLarge() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        List<PageContent> pages = new ArrayList<>();
+        List<PageSummary> pageSummaries = new ArrayList<>();
+        for (int index = 1; index <= 11; index++) {
+            PageContent page = new PageContent()
+                    .setUrl("https://example.com/" + index)
+                    .setTitle("Article " + index)
+                    .setContent("Page " + index);
+            PageSummary summary = new PageSummary()
+                    .setSourceId(index)
+                    .setSourceUrl(page.getUrl())
+                    .setTitle(page.getTitle())
+                    .setSummary("Summary " + index);
+            pages.add(page);
+            pageSummaries.add(summary);
+            when(summaryGenerationClient.summarizePage("unknown", page)).thenReturn(summary);
+        }
+        when(jinaReaderClient.readPages(pageSummaries.stream().map(PageSummary::getSourceUrl).toList())).thenReturn(pages);
+
+        List<PageSummary> firstBatch = pageSummaries.subList(0, 8);
+        List<PageSummary> secondBatch = pageSummaries.subList(8, 11);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<PageSummary> summaries = invocation.getArgument(1);
+            if (summaries.size() == 8) {
+                return new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("first batch profile")
+                        .setEvidenceUrls(summaries.stream().map(PageSummary::getSourceUrl).toList());
+            }
+            if (summaries.size() == 3) {
+                return new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("second batch profile")
+                        .setEvidenceUrls(summaries.stream().map(PageSummary::getSourceUrl).toList());
+            }
+            return null;
+        }).when(summaryGenerationClient).summarizePersonFromPageSummaries(eq("unknown"), anyList());
+        when(summaryGenerationClient.summarizePersonFromBatchSummaries(eq("unknown"), argThat(summaries ->
+                summaries != null
+                        && summaries.size() == 2
+                        && summaries.stream().allMatch(summary -> summary.getSummary().contains("batch profile")))))
+                .thenReturn(new ResolvedPersonProfile()
+                        .setResolvedName("Jay Chou")
+                        .setSummary("final merged profile")
+                        .setEvidenceUrls(pageSummaries.stream().map(PageSummary::getSourceUrl).toList()));
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor, createApiProperties(11)
+        );
+
+        ResolvedPersonProfile profile = service.resolveProfileFromEvidence(pageSummaries.stream()
+                .map(summary -> new WebEvidence().setUrl(summary.getSourceUrl()))
+                .toList(), "unknown");
+
+        assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        assertThat(profile.getSummary()).isEqualTo("final merged profile");
+        verify(summaryGenerationClient, never()).summarizePersonFromPageSummaries("unknown", pageSummaries);
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", firstBatch);
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", secondBatch);
+        verify(summaryGenerationClient).summarizePersonFromBatchSummaries(eq("unknown"), argThat(summaries ->
+                summaries != null
+                        && summaries.size() == 2
+                        && summaries.stream().allMatch(summary -> summary.getSummary().contains("batch profile"))));
+    }
+
+    @Test
+    void shouldRespectConfiguredBatchSizeAndSkipTimedOutBatchWhenMergingFinalProfile() {
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setProfileSummaryBatchSize(5);
+        List<PageSummary> pageSummaries = new ArrayList<>();
+        for (int index = 1; index <= 12; index++) {
+            pageSummaries.add(new PageSummary()
+                    .setSourceId(index)
+                    .setSourceUrl("https://example.com/" + index)
+                    .setTitle("Article " + index)
+                    .setSummary("Summary " + index));
+        }
+        List<PageSummary> firstBatch = pageSummaries.subList(0, 5);
+        List<PageSummary> secondBatch = pageSummaries.subList(5, 10);
+        List<PageSummary> thirdBatch = pageSummaries.subList(10, 12);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", firstBatch))
+                .thenThrow(new ApiCallException("TIMEOUT: batch timeout"));
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", secondBatch))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("second batch profile"));
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("unknown", thirdBatch))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("third batch profile"));
+        when(summaryGenerationClient.summarizePersonFromBatchSummaries(eq("unknown"), argThat(summaries ->
+                summaries != null && summaries.size() == 2)))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("merged after timeout"));
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
+                mock(JinaReaderClient.class), summaryGenerationClient, executor, properties
+        ).resolveProfileFromEvidence(List.of(), "unknown", new ArrayList<>(), pageSummaries);
+
+        assertThat(profile.getSummary()).isEqualTo("merged after timeout");
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", firstBatch);
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", secondBatch);
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("unknown", thirdBatch);
+        verify(summaryGenerationClient).summarizePersonFromBatchSummaries(eq("unknown"), argThat(summaries ->
+                summaries != null && summaries.size() == 2));
+    }
+
+    @Test
+    void shouldFallbackToKimiWhenDeepSeekHierarchicalFinalMergeTimesOut() {
+        SummaryGenerationClient kimiClient = mock(SummaryGenerationClient.class);
+        DeepSeekSummaryGenerationClient deepSeekClient = mock(DeepSeekSummaryGenerationClient.class);
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setProfileSummaryBatchSize(5);
+        List<PageSummary> pageSummaries = new ArrayList<>();
+        for (int index = 1; index <= 11; index++) {
+            pageSummaries.add(new PageSummary()
+                    .setSourceId(index)
+                    .setSourceUrl("https://example.com/" + index)
+                    .setTitle("Article " + index)
+                    .setSummary("Summary " + index));
+        }
+        when(deepSeekClient.summarizePersonFromPageSummaries(eq("unknown"), anyList()))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("deepseek batch profile"));
+        when(deepSeekClient.summarizePersonFromBatchSummaries(eq("unknown"), anyList()))
+                .thenThrow(new ApiCallException("TIMEOUT: deepseek final merge timeout"));
+        when(kimiClient.summarizePersonFromPageSummaries(eq("unknown"), anyList()))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("kimi batch profile"));
+        when(kimiClient.summarizePersonFromBatchSummaries(eq("unknown"), anyList()))
+                .thenReturn(new ResolvedPersonProfile().setResolvedName("Jay Chou").setSummary("kimi final merge"));
+        when(deepSeekClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
+                mock(JinaReaderClient.class), kimiClient, deepSeekClient, executor, properties
+        ).resolveProfileFromEvidence(List.of(), "unknown", new ArrayList<>(), pageSummaries);
+
+        assertThat(profile.getSummary()).isEqualTo("kimi final merge");
+        verify(deepSeekClient).summarizePersonFromBatchSummaries(eq("unknown"), anyList());
+        verify(kimiClient).summarizePersonFromBatchSummaries(eq("unknown"), anyList());
+    }
+
+    @Test
+    void shouldUseLocalProfileFallbackWhenAllHierarchicalBatchesFail() {
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getSummary().setProfileSummaryBatchSize(5);
+        List<PageSummary> pageSummaries = new ArrayList<>();
+        for (int index = 1; index <= 11; index++) {
+            pageSummaries.add(new PageSummary()
+                    .setSourceId(index)
+                    .setSourceUrl("https://example.com/" + index)
+                    .setTitle("Article " + index)
+                    .setSummary("local summary " + index));
+        }
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(eq("unknown"), anyList()))
+                .thenThrow(new ApiCallException("TIMEOUT: all batches timeout"));
+
+        ResolvedPersonProfile profile = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class), mock(SerpApiClient.class),
+                mock(JinaReaderClient.class), summaryGenerationClient, executor, properties
+        ).resolveProfileFromEvidence(List.of(), "unknown", new ArrayList<>(), pageSummaries);
+
+        assertThat(profile.getResolvedName()).isEqualTo("unknown");
+        assertThat(profile.getSummary()).contains("local summary 1");
+        assertThat(profile.getEvidenceUrls()).contains("https://example.com/1");
+        verify(summaryGenerationClient, never()).summarizePersonFromBatchSummaries(anyString(), anyList());
     }
 
     @Test
@@ -186,6 +362,80 @@ class InformationAggregationServiceImplTest {
         assertThat(profile.getSummaryParagraphs().get(0).getSources()).hasSize(1);
         assertThat(profile.getSummaryParagraphs().get(0).getSources().get(0).getUrl()).isEqualTo("https://example.com/b");
         assertThat(profile.getSummaryParagraphs().get(0).getSources().get(0).getTitle()).isEqualTo("Article B");
+    }
+
+    @Test
+    void shouldFilterIrrelevantThemeAndRelationshipSummariesFromProfileAggregation() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent profilePage = new PageContent()
+                .setUrl("https://example.com/profile")
+                .setTitle("成龙人物资料")
+                .setContent("profile");
+        PageContent relationshipPage = new PageContent()
+                .setUrl("https://example.com/romance")
+                .setTitle("成龙绯闻女友盘点")
+                .setContent("romance");
+        PageContent kungfuPage = new PageContent()
+                .setUrl("https://example.com/kungfu")
+                .setTitle("国产功夫电影现状")
+                .setContent("kungfu");
+        PageSummary profileSummary = new PageSummary()
+                .setSourceUrl("https://example.com/profile")
+                .setTitle("成龙人物资料")
+                .setSummary("本文介绍了成龙出生于香港，是演员和导演。[1]")
+                .setKeyFacts(List.of("本文介绍了成龙的职业身份。[1]"));
+        PageSummary relationshipSummary = new PageSummary()
+                .setSourceUrl("https://example.com/romance")
+                .setTitle("成龙绯闻女友盘点")
+                .setSummary("本文盘点了成龙的多位绯闻女友及情感经历。[2]");
+        PageSummary kungfuSummary = new PageSummary()
+                .setSourceUrl("https://example.com/kungfu")
+                .setTitle("国产功夫电影现状")
+                .setSummary("本文以国产功夫电影现状为引，回顾了功夫片曾经的辉煌历史。[3]");
+        ResolvedPersonProfile profile = new ResolvedPersonProfile()
+                .setResolvedName("成龙")
+                .setSummary("本文介绍了成龙出生于香港，是演员和导演。[1] 本文盘点了成龙的多位绯闻女友及情感经历。[2]")
+                .setSummaryParagraphs(List.of(
+                        new ParagraphSummaryItem().setText("本文介绍了成龙出生于香港，是演员和导演。[1]").setSourceIds(List.of(1)),
+                        new ParagraphSummaryItem().setText("本文盘点了成龙的多位绯闻女友及情感经历。[2]").setSourceIds(List.of(2))
+                ));
+
+        when(jinaReaderClient.readPages(List.of(
+                "https://example.com/profile",
+                "https://example.com/romance",
+                "https://example.com/kungfu"
+        ))).thenReturn(List.of(profilePage, relationshipPage, kungfuPage));
+        when(summaryGenerationClient.summarizePage("成龙", profilePage)).thenReturn(profileSummary);
+        when(summaryGenerationClient.summarizePage("成龙", relationshipPage)).thenReturn(relationshipSummary);
+        when(summaryGenerationClient.summarizePage("成龙", kungfuPage)).thenReturn(kungfuSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(eq("成龙"), argThat(summaries ->
+                summaries.size() == 1 && "https://example.com/profile".equals(summaries.get(0).getSourceUrl())
+        ))).thenReturn(profile);
+        when(summaryGenerationClient.applyComprehensiveJudgement(eq("成龙"), anyList(), eq(profile))).thenReturn(profile);
+
+        ResolvedPersonProfile result = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class),
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor
+        ).resolveProfileFromEvidence(List.of(
+                new WebEvidence().setUrl("https://example.com/profile"),
+                new WebEvidence().setUrl("https://example.com/romance"),
+                new WebEvidence().setUrl("https://example.com/kungfu")
+        ), "成龙");
+
+        assertThat(result.getSummary()).isEqualTo("成龙出生于香港，是演员和导演。[1]");
+        assertThat(result.getSummary()).doesNotContain("本文", "绯闻", "情感经历", "功夫电影现状");
+        assertThat(result.getSummaryParagraphs()).hasSize(1);
+        assertThat(result.getSummaryParagraphs().get(0).getText()).isEqualTo("成龙出生于香港，是演员和导演。[1]");
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries(eq("成龙"), argThat(summaries ->
+                summaries.size() == 1
+                        && "https://example.com/profile".equals(summaries.get(0).getSourceUrl())
+                        && "成龙出生于香港，是演员和导演。[1]".equals(summaries.get(0).getSummary())
+        ));
     }
 
     @Test
@@ -2239,12 +2489,12 @@ class InformationAggregationServiceImplTest {
     }
 
     @Test
-    void shouldSkipMaigretSuspectedAccountsWhenStandaloneDigitalFootprintDisabled() throws Exception {
+    void shouldSkipOsintSuspectedAccountsWhenStandaloneDigitalFootprintDisabled() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
         DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
-        MaigretClient maigretClient = mock(MaigretClient.class);
+        OsintSocialAccountClient osintSocialAccountClient = mock(OsintSocialAccountClient.class);
 
         List<PageContent> pages = List.of(new PageContent()
                 .setUrl("https://example.com/a")
@@ -2268,7 +2518,7 @@ class InformationAggregationServiceImplTest {
                 .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
                         {"organic":[{"title":"Jensen Huang (@nvidia)","link":"https://x.com/nvidia","snippet":"official account username @nvidia"}]}
                         """)));
-        when(maigretClient.findSuspectedAccounts("nvidia")).thenReturn(List.of(
+        when(osintSocialAccountClient.findSuspectedAccounts("nvidia")).thenReturn(List.of(
                 new SocialAccount()
                         .setPlatform("github")
                         .setUrl("https://github.com/nvidia")
@@ -2284,22 +2534,22 @@ class InformationAggregationServiceImplTest {
                 summaryGenerationClient,
                 queryBuilder,
                 createApiProperties(null),
-                maigretClient
+                osintSocialAccountClient
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jensen Huang"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
         assertThat(result.getSocialAccounts()).isEmpty();
-        verifyNoInteractions(maigretClient);
+        verifyNoInteractions(osintSocialAccountClient);
     }
 
     @Test
-    void shouldSearchMaigretWithResolvedPersonNameAfterAggregation() throws Exception {
+    void shouldSearchOsintWithResolvedPersonNameAfterAggregation() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
         DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
-        MaigretClient maigretClient = mock(MaigretClient.class);
+        OsintSocialAccountClient osintSocialAccountClient = mock(OsintSocialAccountClient.class);
 
         List<PageContent> pages = List.of(new PageContent()
                 .setUrl("https://example.com/a")
@@ -2317,7 +2567,7 @@ class InformationAggregationServiceImplTest {
         when(queryBuilder.build(eq("Jensen Huang"), any())).thenReturn(List.of());
         when(googleSearchClient.googleSearch(anyString()))
                 .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("{\"organic\":[]}")));
-        when(maigretClient.findSuspectedAccounts("Jensen Huang")).thenReturn(List.of(
+        when(osintSocialAccountClient.findSuspectedAccounts("Jensen Huang")).thenReturn(List.of(
                 new SocialAccount()
                         .setPlatform("github")
                         .setUrl("https://github.com/jensenhuang")
@@ -2335,7 +2585,7 @@ class InformationAggregationServiceImplTest {
                 summaryGenerationClient,
                 queryBuilder,
                 properties,
-                maigretClient
+                osintSocialAccountClient
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("Jensen Huang"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
@@ -2343,16 +2593,137 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getSocialAccounts())
                 .extracting(SocialAccount::getSource, SocialAccount::getPlatform, SocialAccount::getUsername)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("maigret", "github", "Jensen Huang"));
-        verify(maigretClient).findSuspectedAccounts("Jensen Huang");
+        verify(osintSocialAccountClient).findSuspectedAccounts("Jensen Huang");
     }
 
     @Test
-    void shouldExpandMaigretUsernameCandidatesForBilingualResolvedName() throws Exception {
+    void shouldDeduplicateOsintAccountsAcrossUsernameCandidatesAndSources() throws Exception {
         GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
         JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
         SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
         DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
-        MaigretClient maigretClient = mock(MaigretClient.class);
+        OsintSocialAccountClient osintSocialAccountClient = mock(OsintSocialAccountClient.class);
+
+        List<PageContent> pages = List.of(new PageContent()
+                .setUrl("https://example.com/jackie")
+                .setTitle("Jackie Chan")
+                .setContent("成龙 is also known as Jackie Chan."));
+        when(jinaReaderClient.readPages(List.of("https://example.com/jackie"))).thenReturn(pages);
+        mockSummaryPipeline(summaryGenerationClient, "成龙", pages, new ResolvedPersonProfile()
+                .setResolvedName("成龙（Jackie Chan）")
+                .setSummary("成龙是演员。"));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setRecommendedLanguages(List.of("zh", "en"))
+                        .setLocalizedNames(Map.of("zh", "成龙", "en", "Jackie Chan"))
+                        .setConfidence(0.9));
+        when(queryBuilder.build(eq("成龙（Jackie Chan）"), any())).thenReturn(List.of());
+        when(googleSearchClient.googleSearch(anyString()))
+                .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("{\"organic\":[]}")));
+        when(osintSocialAccountClient.findSuspectedAccounts("Jackie Chan")).thenReturn(List.of(
+                new SocialAccount()
+                        .setPlatform("github")
+                        .setUrl("https://www.github.com/jackiechan/")
+                        .setUsername("jackiechan")
+                        .setSource("sherlock")
+                        .setSuspected(true)
+                        .setConfidence("suspected")
+        ));
+        when(osintSocialAccountClient.findSuspectedAccounts("jackiechan")).thenReturn(List.of(
+                new SocialAccount()
+                        .setPlatform("github")
+                        .setUrl("https://github.com/jackiechan#profile")
+                        .setUsername("jackiechan")
+                        .setSource("maigret")
+                        .setSuspected(true)
+                        .setConfidence("suspected")
+        ));
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getMaigret().setEnabled(true);
+
+        AggregationResult result = serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                properties,
+                osintSocialAccountClient
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("成龙"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/jackie"))));
+
+        assertThat(result.getSocialAccounts())
+                .extracting(SocialAccount::getUrl)
+                .containsExactly("https://www.github.com/jackiechan/");
+        verify(osintSocialAccountClient).findSuspectedAccounts("Jackie Chan");
+        verify(osintSocialAccountClient).findSuspectedAccounts("jackiechan");
+    }
+
+    @Test
+    void shouldMergeRocketReachProfilesAsSocialSearchSource() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+        RocketReachClient rocketReachClient = mock(RocketReachClient.class);
+
+        List<PageContent> pages = List.of(new PageContent()
+                .setUrl("https://example.com/a")
+                .setTitle("A")
+                .setContent("Jensen Huang is a tech executive"));
+        when(jinaReaderClient.readPages(List.of("https://example.com/a"))).thenReturn(pages);
+        mockSummaryPipeline(summaryGenerationClient, "Jensen Huang", pages, new ResolvedPersonProfile()
+                .setResolvedName("Jensen Huang")
+                .setSummary("Jensen Huang is a tech executive."));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setRecommendedLanguages(List.of("en"))
+                        .setLocalizedNames(Map.of("en", "Jensen Huang"))
+                        .setConfidence(0.9));
+        when(queryBuilder.build(eq("Jensen Huang"), any())).thenReturn(List.of());
+        when(googleSearchClient.googleSearch(anyString()))
+                .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("{\"organic\":[]}")));
+        when(rocketReachClient.findProfileAccounts("Jensen Huang")).thenReturn(List.of(
+                new SocialAccount()
+                        .setPlatform("linkedin")
+                        .setUrl("https://www.linkedin.com/in/jenhsunhuang")
+                        .setUsername("jenhsunhuang")
+                        .setSource("rocketreach")
+                        .setSuspected(true)
+                        .setConfidence("profile_search")
+        ));
+        ApiProperties properties = createApiProperties(null);
+        properties.getApi().getRocketreach().setEnabled(true);
+
+        AggregationResult result = serviceWithBuilder(
+                googleSearchClient,
+                jinaReaderClient,
+                summaryGenerationClient,
+                queryBuilder,
+                properties,
+                new NoopOsintSocialAccountClient(),
+                rocketReachClient
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Jensen Huang"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
+
+        assertThat(result.getSocialAccounts())
+                .extracting(SocialAccount::getSource, SocialAccount::getPlatform, SocialAccount::getUrl)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(
+                        "rocketreach",
+                        "linkedin",
+                        "https://www.linkedin.com/in/jenhsunhuang"
+                ));
+        verify(rocketReachClient).findProfileAccounts("Jensen Huang");
+    }
+
+    @Test
+    void shouldExpandOsintUsernameCandidatesForBilingualResolvedName() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        DigitalFootprintQueryBuilder queryBuilder = mock(DigitalFootprintQueryBuilder.class);
+        OsintSocialAccountClient osintSocialAccountClient = mock(OsintSocialAccountClient.class);
 
         List<PageContent> pages = List.of(new PageContent()
                 .setUrl("https://example.com/jackie")
@@ -2372,7 +2743,7 @@ class InformationAggregationServiceImplTest {
                 .thenReturn(new SerpApiResponse().setRoot(new ObjectMapper().readTree("""
                         {"organic":[{"title":"Jackie Chan (@EyeOfJackieChan)","link":"https://x.com/EyeOfJackieChan","snippet":"official account @EyeOfJackieChan"}]}
                         """)));
-        when(maigretClient.findSuspectedAccounts(anyString())).thenReturn(List.of());
+        when(osintSocialAccountClient.findSuspectedAccounts(anyString())).thenReturn(List.of());
         ApiProperties properties = createApiProperties(null);
         properties.getApi().getMaigret().setEnabled(true);
 
@@ -2382,16 +2753,16 @@ class InformationAggregationServiceImplTest {
                 summaryGenerationClient,
                 queryBuilder,
                 properties,
-                maigretClient
+                osintSocialAccountClient
         ).aggregate(new RecognitionEvidence()
                 .setSeedQueries(List.of("成龙"))
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/jackie"))));
 
-        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(maigretClient);
-        inOrder.verify(maigretClient).findSuspectedAccounts("Jackie Chan");
-        inOrder.verify(maigretClient).findSuspectedAccounts("jackiechan");
-        inOrder.verify(maigretClient).findSuspectedAccounts("成龙");
-        verify(maigretClient, times(3)).findSuspectedAccounts(anyString());
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(osintSocialAccountClient);
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("Jackie Chan");
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("jackiechan");
+        inOrder.verify(osintSocialAccountClient).findSuspectedAccounts("成龙");
+        verify(osintSocialAccountClient, times(3)).findSuspectedAccounts(anyString());
         verify(googleSearchClient, never()).googleSearch(contains("Twitter username"));
         verify(googleSearchClient, never()).googleSearch(contains("official social account"));
     }
@@ -2550,7 +2921,17 @@ class InformationAggregationServiceImplTest {
                                                                  DigitalFootprintQueryBuilder queryBuilder,
                                                                  ApiProperties properties) {
         return serviceWithBuilder(googleSearchClient, jinaReaderClient, summaryGenerationClient, queryBuilder,
-                properties, new NoopMaigretClient());
+                properties, new NoopOsintSocialAccountClient(), new NoopRocketReachClient());
+    }
+
+    private InformationAggregationServiceImpl serviceWithBuilder(GoogleSearchClient googleSearchClient,
+                                                                 JinaReaderClient jinaReaderClient,
+                                                                 SummaryGenerationClient summaryGenerationClient,
+                                                                  DigitalFootprintQueryBuilder queryBuilder,
+                                                                  ApiProperties properties,
+                                                                  OsintSocialAccountClient osintSocialAccountClient) {
+        return serviceWithBuilder(googleSearchClient, jinaReaderClient, summaryGenerationClient, queryBuilder,
+                properties, osintSocialAccountClient, new NoopRocketReachClient());
     }
 
     private InformationAggregationServiceImpl serviceWithBuilder(GoogleSearchClient googleSearchClient,
@@ -2558,7 +2939,8 @@ class InformationAggregationServiceImplTest {
                                                                  SummaryGenerationClient summaryGenerationClient,
                                                                  DigitalFootprintQueryBuilder queryBuilder,
                                                                  ApiProperties properties,
-                                                                 MaigretClient maigretClient) {
+                                                                 OsintSocialAccountClient osintSocialAccountClient,
+                                                                 RocketReachClient rocketReachClient) {
         return new InformationAggregationServiceImpl(
                 googleSearchClient,
                 mock(SerpApiClient.class),
@@ -2579,7 +2961,8 @@ class InformationAggregationServiceImplTest {
                 new MultilingualQueryPlanningServiceImpl((query, targetLanguageCode) -> null),
                 queryBuilder,
                 mock(PrimarySearchQueryBuilder.class),
-                maigretClient
+                osintSocialAccountClient,
+                rocketReachClient
         );
     }
 
