@@ -35,6 +35,24 @@ class GfpganFaceEnhancementClientTest {
     }
 
     @Test
+    void shouldUseAsciiTempInputFilenameForNonAsciiOriginalFilename() throws IOException {
+        Path projectDir = Files.createTempDirectory("gfpgan-project-");
+        Files.writeString(projectDir.resolve("inference_gfpgan.py"), "print('stub')");
+
+        ApiProperties properties = createProperties(projectDir);
+        GfpganFaceEnhancementClient client = new GfpganFaceEnhancementClient(properties, new SuccessExecutor());
+        MockMultipartFile image = new MockMultipartFile(
+                "image",
+                "\u53cc\u4eba\u6d4b\u8bd5\u56fe.png",
+                "image/png",
+                new byte[]{1, 2, 3});
+
+        MultipartFile enhanced = client.enhanceFaceImage(image);
+
+        assertThat(enhanced.getOriginalFilename()).isEqualTo("\u53cc\u4eba\u6d4b\u8bd5\u56fe-enhanced.jpg");
+    }
+
+    @Test
     void shouldFailWhenGfpganCommandReturnsNonZeroExitCode() throws IOException {
         Path projectDir = Files.createTempDirectory("gfpgan-project-");
         Files.writeString(projectDir.resolve("inference_gfpgan.py"), "print('stub')");
@@ -50,6 +68,25 @@ class GfpganFaceEnhancementClientTest {
                 .isInstanceOf(ApiCallException.class)
                 .hasMessageContaining("exitCode=1")
                 .hasMessageContaining("python error");
+    }
+
+    @Test
+    void shouldKeepTailOfLongGfpganErrorOutput() throws IOException {
+        Path projectDir = Files.createTempDirectory("gfpgan-project-");
+        Files.writeString(projectDir.resolve("inference_gfpgan.py"), "print('stub')");
+
+        ApiProperties properties = createProperties(projectDir);
+        String output = "warning ".repeat(200) + "real error: image read failed";
+        GfpganFaceEnhancementClient client = new GfpganFaceEnhancementClient(
+                properties,
+                (command, workingDirectory, timeout) -> new GfpganFaceEnhancementClient.CommandResult(1, output));
+
+        MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        assertThatThrownBy(() -> client.enhanceFaceImage(image))
+                .isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("output truncated")
+                .hasMessageContaining("real error: image read failed");
     }
 
     @Test
@@ -96,6 +133,7 @@ class GfpganFaceEnhancementClientTest {
             Path outputDir = Path.of(command.get(outputIndex + 1));
             Path inputFile = Path.of(command.get(inputIndex + 1));
             String inputFilename = inputFile.getFileName().toString();
+            assertThat(inputFilename).startsWith("source.");
             String basename = inputFilename.substring(0, inputFilename.lastIndexOf('.'));
             try {
                 Path restoredDir = Files.createDirectories(outputDir.resolve("restored_imgs"));

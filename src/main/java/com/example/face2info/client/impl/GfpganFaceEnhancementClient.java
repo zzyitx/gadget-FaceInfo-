@@ -196,10 +196,18 @@ public class GfpganFaceEnhancementClient implements FaceEnhancementClient {
 
     private String buildInputFilename(MultipartFile originalImage) {
         String originalFilename = originalImage.getOriginalFilename();
-        if (!StringUtils.hasText(originalFilename)) {
-            return "source.jpg";
+        String extension = ".jpg";
+        if (StringUtils.hasText(originalFilename)) {
+            String safeOriginalFilename = Path.of(originalFilename).getFileName().toString();
+            int dotIndex = safeOriginalFilename.lastIndexOf('.');
+            if (dotIndex >= 0 && dotIndex < safeOriginalFilename.length() - 1) {
+                extension = safeOriginalFilename.substring(dotIndex).toLowerCase(Locale.ROOT);
+            }
+        } else if ("image/png".equalsIgnoreCase(originalImage.getContentType())) {
+            extension = ".png";
         }
-        return Path.of(originalFilename).getFileName().toString();
+        // Windows 上 GFPGAN/OpenCV 读取中文路径容易失败，临时输入统一改成 ASCII 文件名。
+        return "source" + extension;
     }
 
     private String buildEnhancedFilename(String originalFilename, Path restoredFile) {
@@ -224,7 +232,14 @@ public class GfpganFaceEnhancementClient implements FaceEnhancementClient {
             return "";
         }
         String normalized = text.replace(System.lineSeparator(), " ").trim();
-        return normalized.length() <= 300 ? normalized : normalized.substring(0, 300) + "...";
+        int maxLength = 1200;
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        int segmentLength = 550;
+        return normalized.substring(0, segmentLength)
+                + " ...[output truncated]... "
+                + normalized.substring(normalized.length() - segmentLength);
     }
 
     private String defaultIfBlank(String value, String fallback) {
