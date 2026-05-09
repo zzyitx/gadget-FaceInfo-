@@ -30,6 +30,9 @@ public class RecognitionEvidence {
     @Schema(description = "用于搜索扩展的种子查询")
     private List<String> seedQueries = new ArrayList<>();
 
+    @Schema(description = "识别阶段使用的目标图像 URL，用于后续图文实体关联")
+    private String targetImageUrl;
+
     @Schema(description = "识别阶段产生的错误信息")
     private List<String> errors = new ArrayList<>();
 
@@ -84,6 +87,15 @@ public class RecognitionEvidence {
 
     public RecognitionEvidence setSeedQueries(List<String> seedQueries) {
         this.seedQueries = seedQueries;
+        return this;
+    }
+
+    public String getTargetImageUrl() {
+        return targetImageUrl;
+    }
+
+    public RecognitionEvidence setTargetImageUrl(String targetImageUrl) {
+        this.targetImageUrl = targetImageUrl;
         return this;
     }
 

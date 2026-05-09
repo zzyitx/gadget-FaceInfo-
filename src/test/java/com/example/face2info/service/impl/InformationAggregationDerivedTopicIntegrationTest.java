@@ -42,21 +42,21 @@ class InformationAggregationDerivedTopicIntegrationTest {
                 request != null
                         && request.getTopicType() != null
                         && "Jay Chou".equals(request.getResolvedName())
-                        && "Jay Chou 教育经历".equals(request.getRawQuery())
-        ))).thenReturn(new TopicQueryDecision().setFinalQuery("Jay Chou 的教育经历"));
+                        && "Jay Chou 工作职业".equals(request.getRawQuery())
+        ))).thenReturn(new TopicQueryDecision().setFinalQuery("Jay Chou 工作职业"));
 
         ObjectMapper mapper = new ObjectMapper();
-        when(googleSearchClient.googleSearch("Jay Chou 的教育经历"))
+        when(googleSearchClient.googleSearch("Jay Chou 工作职业"))
                 .thenReturn(new SerpApiResponse().setRoot(mapper.readTree("""
-                        {"organic":[{"title":"Education","link":"https://example.com/education","snippet":"education snippet"}]}
+                        {"organic":[{"title":"Career","link":"https://example.com/career","snippet":"career snippet"}]}
                         """)));
 
-        PageContent page = new PageContent().setUrl("https://example.com/education").setTitle("Education").setContent("education body");
-        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/education").setTitle("Education").setSummary("education summary");
-        when(jinaReaderClient.readPages(List.of("https://example.com/education"))).thenReturn(List.of(page));
+        PageContent page = new PageContent().setUrl("https://example.com/career").setTitle("Career").setContent("career body");
+        PageSummary pageSummary = new PageSummary().setSourceUrl("https://example.com/career").setTitle("Career").setSummary("career summary");
+        when(jinaReaderClient.readPages(List.of("https://example.com/career"))).thenReturn(List.of(page));
         when(summaryGenerationClient.summarizePage("Jay Chou", page)).thenReturn(pageSummary);
-        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "education", List.of(pageSummary)))
-                .thenReturn("education summary");
+        when(summaryGenerationClient.summarizeSectionFromPageSummaries("Jay Chou", "career", List.of(pageSummary)))
+                .thenReturn("career summary");
 
         InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
                 googleSearchClient,
@@ -69,16 +69,16 @@ class InformationAggregationDerivedTopicIntegrationTest {
                 derivedTopicQueryService
         );
 
-        String summary = service.summarizeSection("Jay Chou", "education", "Jay Chou的教育经历");
+        String summary = service.summarizeSection("Jay Chou", "career", "Jay Chou工作职业");
 
-        assertThat(summary).isEqualTo("education summary");
+        assertThat(summary).isEqualTo("career summary");
         verify(derivedTopicQueryService).resolveQuery(argThat(request ->
                 request != null
                         && request.getTopicType() != null
                         && "Jay Chou".equals(request.getResolvedName())
-                        && "Jay Chou 教育经历".equals(request.getRawQuery())
+                        && "Jay Chou 工作职业".equals(request.getRawQuery())
         ));
-        verify(googleSearchClient).googleSearch("Jay Chou 的教育经历");
+        verify(googleSearchClient).googleSearch("Jay Chou 工作职业");
     }
 
     private ThreadPoolTaskExecutor executor() {

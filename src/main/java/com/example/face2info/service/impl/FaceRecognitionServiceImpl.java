@@ -45,6 +45,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
     private static final int MAX_IMAGE_MATCHES = 10;
     private static final int MAX_SEED_QUERIES = 3;
     private static final double AGGREGATED_PRIMARY_THRESHOLD = 60.0;
+    private static final double SOFT_REVIEW_THRESHOLD = 70.0;
     private static final double MIN_SIMILARITY_SCORE = 65.0;
     private static final double MAX_SIMILARITY_SCORE = 99.0;
     private static final List<String> TEMP_IMAGE_HOST_KEYWORDS = List.of("tmpfiles", "tempfile");
@@ -86,6 +87,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                     image.getOriginalFilename(),
                     cachedEvidence.getSeedQueries() == null ? 0 : cachedEvidence.getSeedQueries().size(),
                     cachedEvidence.getWebEvidences() == null ? 0 : cachedEvidence.getWebEvidences().size());
+            logClassifiedReturnedPageLinks(cachedEvidence.getWebEvidences(), cachedEvidence.getVisionModelResults());
             return cachedEvidence;
         }
         String imageUrl = tmpfilesClient.uploadImage(image);
@@ -101,6 +103,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                     image.getOriginalFilename(),
                     cachedEvidence.getSeedQueries() == null ? 0 : cachedEvidence.getSeedQueries().size(),
                     cachedEvidence.getWebEvidences() == null ? 0 : cachedEvidence.getWebEvidences().size());
+            logClassifiedReturnedPageLinks(cachedEvidence.getWebEvidences(), cachedEvidence.getVisionModelResults());
             return cachedEvidence;
         }
         // 复用预处理阶段已经上传好的图床地址，避免高清图再次上传并破坏链路一致性。
@@ -169,7 +172,9 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
         evidence.setVisionModelSummaries(visionOutcome.pageSummaries());
         evidence.setVisionModelResults(visionOutcome.results());
+        evidence.setTargetImageUrl(imageUrl);
         evidence.setSeedQueries(extractSeedQueries(lensOutcome.root(), evidence.getWebEvidences(), evidence.getImageMatches()));
+        logClassifiedReturnedPageLinks(evidence.getWebEvidences(), evidence.getVisionModelResults());
         log.info("识别证据去重完成 before={} after={}", webEvidences.size(), evidence.getWebEvidences().size());
         return evidence;
     }
@@ -389,6 +394,105 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         return deduplicated;
     }
 
+    private void logClassifiedReturnedPageLinks(List<WebEvidence> webEvidences,
+                                                List<VisionModelSearchResult> visionResults) {
+        Map<String, List<String>> searchEngineLinks = collectSearchEnginePageLinks(webEvidences);
+        Map<String, List<String>> visionModelLinks = collectVisionModelPageLinks(webEvidences, visionResults);
+        if (searchEngineLinks.isEmpty() && visionModelLinks.isEmpty()) {
+            log.info("网页链接清单：各数据源未返回可记录的网页链接");
+            return;
+        }
+
+        StringBuilder builder = new StringBuilder("网页链接清单（按数据源分类）");
+        appendLinkGroups(builder, "搜索引擎来源", searchEngineLinks);
+        appendLinkGroups(builder, "视觉大模型", visionModelLinks);
+        log.info("{}", builder);
+    }
+
+    private Map<String, List<String>> collectSearchEnginePageLinks(List<WebEvidence> webEvidences) {
+        Map<String, LinkedHashSet<String>> grouped = new LinkedHashMap<>();
+        if (webEvidences == null) {
+            return Map.of();
+        }
+        for (WebEvidence evidence : webEvidences) {
+            if (evidence == null || !StringUtils.hasText(evidence.getUrl())
+                    || "sophnet_vision".equals(evidence.getSourceEngine())) {
+                continue;
+            }
+            grouped.computeIfAbsent(sourceLabel(evidence.getSourceEngine()), ignored -> new LinkedHashSet<>())
+                    .add(evidence.getUrl());
+        }
+        return freezeLinkGroups(grouped);
+    }
+
+    private Map<String, List<String>> collectVisionModelPageLinks(List<WebEvidence> webEvidences,
+                                                                  List<VisionModelSearchResult> visionResults) {
+        Map<String, LinkedHashSet<String>> grouped = new LinkedHashMap<>();
+        if (webEvidences != null) {
+            for (WebEvidence evidence : webEvidences) {
+                if (evidence == null || !"sophnet_vision".equals(evidence.getSourceEngine())
+                        || !StringUtils.hasText(evidence.getUrl())) {
+                    continue;
+                }
+                grouped.computeIfAbsent(sourceLabel(firstText(evidence.getSource(), evidence.getSourceEngine())),
+                        ignored -> new LinkedHashSet<>()).add(evidence.getUrl());
+            }
+        }
+        if (visionResults == null) {
+            return freezeLinkGroups(grouped);
+        }
+        for (VisionModelSearchResult result : visionResults) {
+            if (result == null || result.getEvidenceUrls() == null) {
+                continue;
+            }
+            String label = sourceLabel(firstText(result.getProvider(), result.getModel(), "sophnet_vision"));
+            for (String url : result.getEvidenceUrls()) {
+                if (!StringUtils.hasText(url)) {
+                    continue;
+                }
+                grouped.computeIfAbsent(label, ignored -> new LinkedHashSet<>()).add(url);
+            }
+        }
+        return freezeLinkGroups(grouped);
+    }
+
+    private Map<String, List<String>> freezeLinkGroups(Map<String, LinkedHashSet<String>> grouped) {
+        if (grouped.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, List<String>> frozen = new LinkedHashMap<>();
+        grouped.forEach((source, links) -> frozen.put(source, new ArrayList<>(links)));
+        return frozen;
+    }
+
+    private void appendLinkGroups(StringBuilder builder, String category, Map<String, List<String>> groupedLinks) {
+        builder.append(System.lineSeparator()).append("【").append(category).append("】");
+        if (groupedLinks.isEmpty()) {
+            builder.append(System.lineSeparator()).append("- 未返回网页链接");
+            return;
+        }
+        groupedLinks.forEach((source, links) -> {
+            builder.append(System.lineSeparator()).append("- ").append(source).append("：");
+            for (int i = 0; i < links.size(); i++) {
+                builder.append(System.lineSeparator())
+                        .append("  ").append(i + 1).append(". ").append(links.get(i));
+            }
+        });
+    }
+
+    private String sourceLabel(String source) {
+        return StringUtils.hasText(source) ? source : "unknown";
+    }
+
+    private String firstText(String... values) {
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     /**
      * 从搜图证据里提取稳定的回退搜索词，避免再次调用大模型去猜人名。
      */
@@ -451,6 +555,9 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             matches.add(future.join());
         }
         matches.sort(Comparator.comparingDouble(ImageMatch::getSimilarityScore).reversed());
+        matches = matches.stream()
+                .filter(match -> match != null && match.getSimilarityScore() >= SOFT_REVIEW_THRESHOLD)
+                .toList();
         // 保留聚合前的完整排序结果，供文章来源区按原始候选逐条展示，避免主图折叠后丢失来源入口。
         List<ImageMatch> articleMatches = copyImageMatches(matches);
         matches = collapseSameFaceMatches(matches);
@@ -506,6 +613,9 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                                        int rawIndex,
                                        List<String> seedHints) {
         double fallbackScore = calculateSimilarityScore(rawIndex, candidate.title, candidate.source, candidate.link, candidate.imageUrl, seedHints);
+        if (candidate.pageCandidate) {
+            fallbackScore = Math.min(fallbackScore, SOFT_REVIEW_THRESHOLD - 1.0D);
+        }
         double similarityScore = imageSimilarityService.score(originalImage, candidate.imageUrl, fallbackScore);
         return new ImageMatch()
                 .setPosition(candidate.position)
@@ -607,9 +717,15 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
             String title = firstNonBlank(node, "title", "snippet");
             String link = firstNonBlank(node, "link", "source", "serpapi_link");
             String source = firstNonBlank(node, "source", "domain", "displayed_link");
+            boolean pageCandidate = false;
             if (!StringUtils.hasText(imageUrl)) {
-                index++;
-                continue;
+                if (isHttpUrl(link)) {
+                    imageUrl = link;
+                    pageCandidate = true;
+                } else {
+                    index++;
+                    continue;
+                }
             }
             if (!StringUtils.hasText(title) && !StringUtils.hasText(link)) {
                 index++;
@@ -619,7 +735,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 index++;
                 continue;
             }
-            collected.add(new ImageCandidate(sourceEngine, title, link, source, imageUrl, node.path("position").asInt(index + 1)));
+            collected.add(new ImageCandidate(sourceEngine, title, link, source, imageUrl, node.path("position").asInt(index + 1), pageCandidate));
             index++;
         }
     }
@@ -761,6 +877,19 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         }
     }
 
+    private boolean isHttpUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(url.trim());
+            String scheme = uri.getScheme();
+            return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
     private double roundScore(double value) {
         return Math.round(value * 100.0) / 100.0;
     }
@@ -776,14 +905,20 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         private final String source;
         private final String imageUrl;
         private final int position;
+        private final boolean pageCandidate;
 
         private ImageCandidate(String sourceEngine, String title, String link, String source, String imageUrl, int position) {
+            this(sourceEngine, title, link, source, imageUrl, position, false);
+        }
+
+        private ImageCandidate(String sourceEngine, String title, String link, String source, String imageUrl, int position, boolean pageCandidate) {
             this.sourceEngine = sourceEngine;
             this.title = title;
             this.link = link;
             this.source = source;
             this.imageUrl = imageUrl;
             this.position = position;
+            this.pageCandidate = pageCandidate;
         }
     }
 

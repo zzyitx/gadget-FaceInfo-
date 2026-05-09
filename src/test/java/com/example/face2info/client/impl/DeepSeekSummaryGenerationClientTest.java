@@ -3,6 +3,8 @@ package com.example.face2info.client.impl;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.config.DeepSeekApiProperties;
 import com.example.face2info.entity.internal.ArticleCitation;
+import com.example.face2info.entity.internal.EntityRelation;
+import com.example.face2info.entity.internal.NamedEntity;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ParagraphSource;
@@ -167,7 +169,7 @@ class DeepSeekSummaryGenerationClientTest {
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("""
-                        {"choices":[{"message":{"content":"{\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\",\\"title\\":\\"A\\",\\"author\\":\\"Author A\\",\\"publishedAt\\":\\"2025-01-02\\",\\"sourcePlatform\\":\\"Example News\\"}"}}]}
+                        {"choices":[{"message":{"content":"{\\"summary\\":\\"Singer\\",\\"keyFacts\\":[\\"Fact A\\"],\\"tags\\":[\\"music\\"],\\"sourceUrl\\":\\"https://example.com/a\\",\\"title\\":\\"A\\",\\"author\\":\\"Author A\\",\\"publishedAt\\":\\"2025-01-02\\",\\"sourcePlatform\\":\\"Example News\\",\\"namedEntities\\":[{\\"type\\":\\"PERSON\\",\\"text\\":\\"Jay Chou\\",\\"normalizedText\\":\\"Jay Chou\\",\\"mentions\\":[\\"Jay Chou\\"],\\"contexts\\":[\\"Jay Chou is a singer\\"]},{\\"type\\":\\"TITLE\\",\\"text\\":\\"Singer\\",\\"normalizedText\\":\\"singer\\",\\"mentions\\":[\\"singer\\"],\\"contexts\\":[\\"Jay Chou is a singer\\"]}],\\"entityRelations\\":[{\\"subject\\":\\"Jay Chou\\",\\"relation\\":\\"HAS_POSITION\\",\\"object\\":\\"Singer\\",\\"confidence\\":91,\\"sourceUrl\\":\\"https://example.com/a\\"}]}"}}]}
                         """, MediaType.APPLICATION_JSON));
 
         DeepSeekSummaryGenerationClient client =
@@ -184,6 +186,15 @@ class DeepSeekSummaryGenerationClientTest {
         assertThat(summary.getAuthor()).isEqualTo("Author A");
         assertThat(summary.getPublishedAt()).isEqualTo("2025-01-02");
         assertThat(summary.getSourcePlatform()).isEqualTo("Example News");
+        assertThat(summary.getNamedEntities())
+                .extracting(NamedEntity::getType, NamedEntity::getText)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("PERSON", "Jay Chou"),
+                        org.assertj.core.groups.Tuple.tuple("OCCUPATION", "Singer")
+                );
+        assertThat(summary.getEntityRelations())
+                .extracting(EntityRelation::getRelation, EntityRelation::getObject)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("HAS_OCCUPATION", "Singer"));
     }
 
     @Test

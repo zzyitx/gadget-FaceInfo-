@@ -72,6 +72,20 @@ class ImageSimilarityServiceImplTest {
         verify(verificationClient, never()).verify(any(), any(), anyString());
     }
 
+    @Test
+    void shouldExtractPageImagesAndContinueWhenFirstCandidateHasNoFace() throws Exception {
+        CompreFaceVerificationClient verificationClient = mock(CompreFaceVerificationClient.class);
+        when(verificationClient.verify(any(), any(), anyString()))
+                .thenThrow(new RuntimeException("No face is found in the given image"))
+                .thenReturn(OptionalDouble.of(0.8642D));
+        ImageSimilarityServiceImpl service = new ImageSimilarityServiceImpl(verificationClient);
+
+        String candidateUrl = startPageServer(createPngBytes());
+        double score = service.score(createImage(), candidateUrl, 12.0D);
+
+        assertThat(score).isEqualTo(86.42D);
+    }
+
     private MockMultipartFile createImage() throws IOException {
         return new MockMultipartFile("image", "origin.png", "image/png", createPngBytes());
     }
@@ -99,5 +113,34 @@ class ImageSimilarityServiceImplTest {
         });
         server.start();
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/candidate.png";
+    }
+
+    private String startPageServer(byte[] payload) throws IOException {
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/profile", exchange -> {
+            byte[] body = """
+                    <html>
+                      <head><meta property="og:image" content="/no-face.png"></head>
+                      <body><img src="/person.png"></body>
+                    </html>
+                    """.getBytes();
+            exchange.getResponseHeaders().add("Content-Type", "text/html; charset=utf-8");
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+                outputStream.write(body);
+            }
+        });
+        server.createContext("/no-face.png", exchange -> writeImage(exchange, payload));
+        server.createContext("/person.png", exchange -> writeImage(exchange, payload));
+        server.start();
+        return "http://127.0.0.1:" + server.getAddress().getPort() + "/profile";
+    }
+
+    private void writeImage(com.sun.net.httpserver.HttpExchange exchange, byte[] payload) throws IOException {
+        exchange.getResponseHeaders().add("Content-Type", "image/png");
+        exchange.sendResponseHeaders(200, payload.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+            outputStream.write(payload);
+        }
     }
 }

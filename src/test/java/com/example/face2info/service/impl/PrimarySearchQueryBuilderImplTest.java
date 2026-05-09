@@ -40,18 +40,27 @@ class PrimarySearchQueryBuilderImplTest {
     }
 
     @Test
-    void shouldSuppressFamilySectionQueriesWithoutCallingModels() {
+    void shouldSuppressRetiredSectionQueriesWithoutCallingModels() {
         DeepSeekSummaryGenerationClient deepSeek = mock(DeepSeekSummaryGenerationClient.class);
         SummaryGenerationClient kimi = mock(SummaryGenerationClient.class);
+        PrimarySearchQueryBuilder queryBuilder = builder(deepSeek, kimi);
 
-        List<String> queries = builder(deepSeek, kimi).buildSectionQueries(
-                "伯恩斯",
-                languageProfile("尼古拉斯·伯恩斯", "Nicholas Burns"),
-                ambassadorProfile(),
-                "family"
-        );
-
-        assertThat(queries).isEmpty();
+        for (String retiredSection : List.of(
+                "education",
+                "family",
+                "china_related_statements",
+                "political_view",
+                "family_member_situation",
+                "misconduct",
+                "controversial_statement")) {
+            List<String> queries = queryBuilder.buildSectionQueries(
+                    "伯恩斯",
+                    languageProfile("尼古拉斯·伯恩斯", "Nicholas Burns"),
+                    ambassadorProfile(),
+                    retiredSection
+            );
+            assertThat(queries).as(retiredSection).isEmpty();
+        }
         verifyNoInteractions(deepSeek, kimi);
     }
 
@@ -64,13 +73,14 @@ class PrimarySearchQueryBuilderImplTest {
                 "伯恩斯",
                 languageProfile("尼古拉斯·伯恩斯", "Nicholas Burns"),
                 ambassadorProfile(),
-                "unknown_section"
+                "career"
         );
 
         assertThat(queries).hasSize(7);
         assertThat(queries.get(0)).isEqualTo("尼古拉斯·伯恩斯 驻华大使");
-        assertThat(queries.get(4)).isEqualTo("Nicholas Burns Ambassador profile");
+        assertThat(queries.get(4)).isEqualTo("Nicholas Burns Ambassador career");
         assertThat(queries.stream().filter(query -> query.contains("驻华大使"))).hasSizeGreaterThanOrEqualTo(5);
+        assertThat(queries).noneMatch(query -> query.contains("争议") || query.contains("涉华") || query.contains("政治"));
         verifyNoInteractions(deepSeek, kimi);
     }
 

@@ -44,6 +44,15 @@ public class PageSummary {
     @Schema(description = "单篇正文对应的全局文章来源表")
     private List<ArticleCitation> articleSources = new ArrayList<>();
 
+    @Schema(description = "文章中抽取出的命名实体")
+    private List<NamedEntity> namedEntities = new ArrayList<>();
+
+    @Schema(description = "文章中抽取出的实体关系")
+    private List<EntityRelation> entityRelations = new ArrayList<>();
+
+    @Schema(description = "目标人脸与文章实体的关联置信度")
+    private List<FaceEntityAssociation> faceEntityAssociations = new ArrayList<>();
+
     public Integer getSourceId() {
         return sourceId;
     }
@@ -140,6 +149,33 @@ public class PageSummary {
 
     public PageSummary setArticleSources(List<ArticleCitation> articleSources) {
         this.articleSources = articleSources == null ? new ArrayList<>() : new ArrayList<>(articleSources);
+        return this;
+    }
+
+    public List<NamedEntity> getNamedEntities() {
+        return namedEntities;
+    }
+
+    public PageSummary setNamedEntities(List<NamedEntity> namedEntities) {
+        this.namedEntities = namedEntities == null ? new ArrayList<>() : new ArrayList<>(namedEntities);
+        return this;
+    }
+
+    public List<EntityRelation> getEntityRelations() {
+        return entityRelations;
+    }
+
+    public PageSummary setEntityRelations(List<EntityRelation> entityRelations) {
+        this.entityRelations = entityRelations == null ? new ArrayList<>() : new ArrayList<>(entityRelations);
+        return this;
+    }
+
+    public List<FaceEntityAssociation> getFaceEntityAssociations() {
+        return faceEntityAssociations;
+    }
+
+    public PageSummary setFaceEntityAssociations(List<FaceEntityAssociation> faceEntityAssociations) {
+        this.faceEntityAssociations = faceEntityAssociations == null ? new ArrayList<>() : new ArrayList<>(faceEntityAssociations);
         return this;
     }
 }

@@ -26,61 +26,29 @@ public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder 
 
     private static final int REQUIRED_QUERY_COUNT = 7;
     private static final int MIN_IDENTITY_OCCURRENCES = 5;
-    private static final Set<String> SUPPRESSED_SECTION_TYPES = Set.of("family");
+    private static final Set<String> ACTIVE_SECTION_TYPES = Set.of(
+            "secondary_profile",
+            "career",
+            "contact_information"
+    );
     private static final Map<String, SectionPromptMetadata> SECTION_METADATA = Map.ofEntries(
             Map.entry("secondary_profile", new SectionPromptMetadata(
-                    "人物背景",
-                    List.of("公开身份信息", "人物履历概览", "近期公开表态"),
+                    "人物公开身份",
+                    List.of("姓名", "工作单位", "工作职位"),
                     "profile",
-                    List.of("background", "biography", "recent statements")
-            )),
-            Map.entry("education", new SectionPromptMetadata(
-                    "教育经历",
-                    List.of("学历背景", "毕业院校", "学术经历"),
-                    "education",
-                    List.of("education background", "alma mater", "academic history")
-            )),
-            Map.entry("family", new SectionPromptMetadata(
-                    "家庭背景",
-                    List.of("家庭出身", "成长背景", "亲属情况"),
-                    "family background",
-                    List.of("family origin", "upbringing", "relatives")
+                    List.of("name", "employer", "occupation")
             )),
             Map.entry("career", new SectionPromptMetadata(
-                    "职业经历",
-                    List.of("任职经历", "关键职位", "职业轨迹"),
+                    "工作职业",
+                    List.of("工作单位", "当前职位", "公开职业身份"),
                     "career",
-                    List.of("positions", "key roles", "career path")
-            )),
-            Map.entry("china_related_statements", new SectionPromptMetadata(
-                    "涉华言论",
-                    List.of("驻华期间政策表态", "对华策略分析", "近期关于新兴威胁的论述"),
-                    "China policy",
-                    List.of("policy statements", "China strategy", "emerging threats")
-            )),
-            Map.entry("political_view", new SectionPromptMetadata(
-                    "政治倾向",
-                    List.of("党派与组织", "政治理念", "政策立场"),
-                    "political stance",
-                    List.of("party ties", "political ideology", "policy stance")
+                    List.of("employer", "position", "occupation")
             )),
             Map.entry("contact_information", new SectionPromptMetadata(
-                    "联系方式",
-                    List.of("公开通讯", "官方邮箱", "认证社交账号"),
-                    "contact information",
-                    List.of("public contact", "official email", "verified social accounts")
-            )),
-            Map.entry("family_member_situation", new SectionPromptMetadata(
-                    "家庭成员情况",
-                    List.of("家庭成员", "经商与投资", "争议与纠纷"),
-                    "family situation",
-                    List.of("family members", "business ties", "disputes")
-            )),
-            Map.entry("misconduct", new SectionPromptMetadata(
-                    "污点劣迹",
-                    List.of("违法记录", "行政处罚", "负面事件"),
-                    "controversies",
-                    List.of("violations", "administrative penalties", "negative incidents")
+                    "公开社交账号",
+                    List.of("认证社交账号", "官方网站", "公开个人主页"),
+                    "public social profiles",
+                    List.of("verified social accounts", "official website", "public profile")
             ))
     );
 
@@ -122,7 +90,7 @@ public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder 
                                        SearchLanguageProfile languageProfile,
                                        @Nullable ResolvedPersonProfile profile,
                                        String sectionType) {
-        if (SUPPRESSED_SECTION_TYPES.contains(sectionType)) {
+        if (!ACTIVE_SECTION_TYPES.contains(sectionType)) {
             return List.of();
         }
         List<String> templateQueries = searchTemplateQueryBuilder.build(
@@ -206,25 +174,14 @@ public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder 
         String englishTopic = firstNonBlank(metadata.englishTitle(), "profile");
 
         if (!identity.hasDisambiguationIdentity()) {
-            if ("china_related_statements".equals(sectionType)) {
-                return List.of(
-                        joinTokens(zhName, "涉华言论"),
-                        joinTokens(zhName, "中国评价"),
-                        joinTokens(zhName, "中美关系"),
-                        joinTokens(zhName, "中欧关系"),
-                        joinTokens(enName, englishTopic),
-                        joinTokens(zhName, "演讲", "PDF"),
-                        joinTokens(zhName, "争议", "采访")
-                );
-            }
             return List.of(
                     joinTokens(zhName),
                     joinTokens(zhName, title),
                     joinTokens(zhName, simplifyTopic(subTopicA)),
                     joinTokens(zhName, simplifyTopic(subTopicB)),
                     joinTokens(enName, englishTopic),
-                    joinTokens(zhName, "演讲", "PDF"),
-                    joinTokens(zhName, "争议", "采访")
+                    joinTokens(zhName, "官方", "资料"),
+                    joinTokens(zhName, "来源", "核验")
             );
         }
 
@@ -234,8 +191,8 @@ public class PrimarySearchQueryBuilderImpl implements PrimarySearchQueryBuilder 
                 joinTokens(zhName, zhIdentity, simplifyTopic(subTopicA)),
                 joinTokens(zhName, zhIdentity, simplifyTopic(subTopicB)),
                 joinTokens(enName, enIdentity, englishTopic),
-                joinTokens(zhName, zhIdentity, "演讲", "PDF"),
-                joinTokens(zhName, zhIdentity, "争议", "采访")
+                joinTokens(zhName, zhIdentity, "官方", "资料"),
+                joinTokens(zhName, zhIdentity, "来源", "核验")
         );
     }
 

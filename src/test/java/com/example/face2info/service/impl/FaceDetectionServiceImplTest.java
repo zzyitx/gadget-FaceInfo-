@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
@@ -84,6 +85,37 @@ class FaceDetectionServiceImplTest {
         assertThat(stored.isEnhancementApplied()).isFalse();
         assertThat(stored.getEnhancementWarning()).contains("高清化失败");
         verify(client).detect(image);
+    }
+
+    @Test
+    void shouldExpandSelectedFaceCropContextWithoutIncludingNearbyFace() throws IOException {
+        CompreFaceDetectionClient client = mock(CompreFaceDetectionClient.class);
+        MockMultipartFile image = createImage("group.jpg", 160, 140);
+        PreparedImageResult preparedImageResult = new PreparedImageResult()
+                .setOriginalImage(image)
+                .setWorkingImage(image)
+                .setUploadedImageUrl("https://tempfile.org/original/preview");
+
+        when(client.detect(image)).thenReturn(List.of(
+                new DetectedFace()
+                        .setConfidence(0.98)
+                        .setFaceBoundingBox(new FaceBoundingBox().setX(40).setY(20).setWidth(20).setHeight(20)),
+                new DetectedFace()
+                        .setConfidence(0.97)
+                        .setFaceBoundingBox(new FaceBoundingBox().setX(70).setY(20).setWidth(20).setHeight(20))
+        ));
+
+        FaceDetectionServiceImpl service = new FaceDetectionServiceImpl(client, createProperties());
+        DetectionSession stored = service.detect(preparedImageResult);
+
+        byte[] cropBytes = service.getSelectedFaceCrop(stored.getDetectionId(), stored.getFaces().get(0).getFaceId())
+                .getBytes();
+        BufferedImage crop = ImageIO.read(new ByteArrayInputStream(cropBytes));
+
+        assertThat(crop.getWidth()).isGreaterThan(20);
+        assertThat(crop.getHeight()).isGreaterThan(20);
+        assertThat(crop.getWidth()).isLessThan(50);
+        assertThat(crop.getHeight()).isGreaterThan(45);
     }
 
     @Test
@@ -163,7 +195,11 @@ class FaceDetectionServiceImplTest {
     }
 
     private MockMultipartFile createImage(String fileName) throws IOException {
-        BufferedImage image = new BufferedImage(80, 80, BufferedImage.TYPE_INT_RGB);
+        return createImage(fileName, 80, 80);
+    }
+
+    private MockMultipartFile createImage(String fileName, int width, int height) throws IOException {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         for (int x = 0; x < image.getWidth(); x++) {
             for (int y = 0; y < image.getHeight(); y++) {
                 image.setRGB(x, y, (x < 40 ? Color.WHITE : Color.GRAY).getRGB());

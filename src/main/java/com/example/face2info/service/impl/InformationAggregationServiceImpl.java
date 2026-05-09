@@ -1,6 +1,7 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.client.GoogleSearchClient;
+import com.example.face2info.client.FaceEntityAssociationClient;
 import com.example.face2info.client.JinaReaderClient;
 import com.example.face2info.client.OsintSocialAccountClient;
 import com.example.face2info.client.RealtimeTranslationClient;
@@ -10,17 +11,23 @@ import com.example.face2info.client.SummaryGenerationClient;
 import com.example.face2info.client.impl.DeepSeekSummaryGenerationClient;
 import com.example.face2info.client.impl.NoopOsintSocialAccountClient;
 import com.example.face2info.client.impl.NoopRocketReachClient;
+import com.example.face2info.client.impl.NoopFaceEntityAssociationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
 import com.example.face2info.entity.internal.DigitalFootprintQuery;
 import com.example.face2info.entity.internal.DerivedTopicRequest;
 import com.example.face2info.entity.internal.DerivedTopicType;
+import com.example.face2info.entity.internal.EntityRelation;
+import com.example.face2info.entity.internal.FaceEntityAssociation;
+import com.example.face2info.entity.internal.IdentityCandidate;
+import com.example.face2info.entity.internal.NamedEntity;
 import com.example.face2info.entity.internal.PageContent;
 import com.example.face2info.entity.internal.PageSummary;
 import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.ParagraphSummaryItem;
 import com.example.face2info.entity.internal.PersonAggregate;
+import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SearchLanguageProfile;
@@ -89,6 +96,15 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String FAMILY_MEMBER_SITUATION_SECTION = "family_member_situation";
     private static final String MISCONDUCT_SECTION = "misconduct";
     private static final String INFERENCE_REASON_PREFIX = "扩展检索依据：";
+    private static final Set<String> ACTIVE_PROFILE_SECTIONS = Set.of(
+            EDUCATION_SECTION,
+            CAREER_SECTION,
+            CHINA_RELATED_STATEMENTS_SECTION,
+            POLITICAL_VIEW_SECTION,
+            CONTACT_INFORMATION_SECTION,
+            FAMILY_MEMBER_SITUATION_SECTION,
+            MISCONDUCT_SECTION
+    );
     private static final List<String> EXPANSION_SOURCE_SITE_TERMS = List.of(
             "wikipedia.org",
             "wikipedia",
@@ -128,6 +144,13 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             "bilibili.com",
             "youtube.com",
             "youtu.be"
+    );
+    private static final Set<String> OSINT_USERNAME_STOP_WORDS = Set.of(
+            "about", "account", "accounts", "activity", "artist", "artists", "artstationhq", "channel", "channels",
+            "company", "companies", "contact", "explore", "feed", "group", "groups", "home", "id", "ids", "in",
+            "login", "media", "page", "pages", "people", "person", "photo", "photos", "post", "posts", "profile",
+            "profiles", "pub", "school", "schools", "search", "share", "signup", "social", "status", "story",
+            "stories", "tag", "tags", "topic", "topics", "user", "username", "users", "video", "videos"
     );
     private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
     private static final Pattern HANDLE_PATTERN = Pattern.compile("(?<![\\w.])@([A-Za-z0-9._-]{2,64})");
@@ -176,6 +199,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final PrimarySearchQueryBuilder primarySearchQueryBuilder;
     private final OsintSocialAccountClient osintSocialAccountClient;
     private final RocketReachClient rocketReachClient;
+    private final FaceEntityAssociationClient faceEntityAssociationClient;
 
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -191,7 +215,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              DigitalFootprintQueryBuilder digitalFootprintQueryBuilder,
                                              PrimarySearchQueryBuilder primarySearchQueryBuilder,
                                              @Nullable OsintSocialAccountClient osintSocialAccountClient,
-                                             @Nullable RocketReachClient rocketReachClient) {
+                                             @Nullable RocketReachClient rocketReachClient,
+                                             @Nullable FaceEntityAssociationClient faceEntityAssociationClient) {
         this.googleSearchClient = googleSearchClient;
         this.serpApiClient = serpApiClient;
         this.jinaReaderClient = jinaReaderClient;
@@ -206,6 +231,27 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.primarySearchQueryBuilder = primarySearchQueryBuilder;
         this.osintSocialAccountClient = osintSocialAccountClient == null ? new NoopOsintSocialAccountClient() : osintSocialAccountClient;
         this.rocketReachClient = rocketReachClient == null ? new NoopRocketReachClient() : rocketReachClient;
+        this.faceEntityAssociationClient = faceEntityAssociationClient == null ? new NoopFaceEntityAssociationClient() : faceEntityAssociationClient;
+    }
+
+    InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
+                                      SerpApiClient serpApiClient,
+                                      JinaReaderClient jinaReaderClient,
+                                      SummaryGenerationClient summaryGenerationClient,
+                                      @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                      ThreadPoolTaskExecutor executor,
+                                      ApiProperties properties,
+                                      DerivedTopicQueryService derivedTopicQueryService,
+                                      SearchLanguageProfileService searchLanguageProfileService,
+                                      MultilingualQueryPlanningService multilingualQueryPlanningService,
+                                      DigitalFootprintQueryBuilder digitalFootprintQueryBuilder,
+                                      PrimarySearchQueryBuilder primarySearchQueryBuilder,
+                                      @Nullable OsintSocialAccountClient osintSocialAccountClient,
+                                      @Nullable RocketReachClient rocketReachClient) {
+        this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
+                deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
+                searchLanguageProfileService, multilingualQueryPlanningService, digitalFootprintQueryBuilder,
+                primarySearchQueryBuilder, osintSocialAccountClient, rocketReachClient, new NoopFaceEntityAssociationClient());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -224,7 +270,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
                 deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
                 searchLanguageProfileService, multilingualQueryPlanningService, digitalFootprintQueryBuilder,
-                primarySearchQueryBuilder, osintSocialAccountClient, new NoopRocketReachClient());
+                primarySearchQueryBuilder, osintSocialAccountClient, new NoopRocketReachClient(), new NoopFaceEntityAssociationClient());
     }
 
     InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -354,7 +400,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     evidence.getWebEvidences(),
                     firstSeedQuery(evidence),
                     result.getWarnings(),
-                    evidence.getVisionModelSummaries()
+                    evidence.getVisionModelSummaries(),
+                    evidence.getTargetImageUrl(),
+                    maxImageSimilarity(evidence)
             );
         } catch (ApiCallException ex) {
             if (isLlmProfileFailure(ex)) {
@@ -427,6 +475,15 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                                      String fallbackName,
                                                      List<String> warnings,
                                                      List<PageSummary> directPageSummaries) {
+        return resolveProfileFromEvidence(evidences, fallbackName, warnings, directPageSummaries, null, 0.0D);
+    }
+
+    ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences,
+                                                     String fallbackName,
+                                                     List<String> warnings,
+                                                     List<PageSummary> directPageSummaries,
+                                                     String targetImageUrl,
+                                                     double maxImageSimilarity) {
         List<String> urls = selectTopUrls(evidences);
         List<PageSummary> modelPageSummaries = normalizeDirectPageSummaries(directPageSummaries);
         if (urls.isEmpty() && modelPageSummaries.isEmpty()) {
@@ -452,15 +509,19 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         List<PageSummary> pageSummaries = new ArrayList<>(modelPageSummaries);
         pageSummaries.addAll(collectPageSummaries(fallbackName, pages));
         pageSummaries = filterProfileRelevantPageSummaries(pageSummaries);
+        pageSummaries = enrichPageSummariesWithFaceEntityAssociations(targetImageUrl, pageSummaries, warnings);
         if (pageSummaries.isEmpty()) {
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
                     .setEvidenceUrls(urls);
         }
 
+        List<IdentityCandidate> identityCandidates = buildIdentityCandidates(pageSummaries, maxImageSimilarity);
+        String rankedFallbackName = firstHighConfidenceCandidateName(identityCandidates, fallbackName);
+
         ResolvedPersonProfile profile;
         try {
-            profile = summarizePersonFromPageSummariesWithFallback(fallbackName, pageSummaries, true);
+            profile = summarizePersonFromPageSummariesWithFallback(rankedFallbackName, pageSummaries, true);
             if (profile == null) {
                 warnings.add(SUMMARY_WARNING);
                 return new ResolvedPersonProfile().setEvidenceUrls(urls);
@@ -472,6 +533,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         .distinct()
                         .toList());
             }
+            applyIdentityCandidatesToProfile(profile, identityCandidates);
             enrichProfileParagraphSources(profile, pageSummaries);
         } catch (RuntimeException ex) {
             if (isLlmProfileFailure(ex)) {
@@ -486,6 +548,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
         ResolvedPersonProfile judgedProfile = applyComprehensiveJudgement(resolvedNameForModelCall(fallbackName, profile),
                 pageSummaries, profile, warnings);
+        applyIdentityCandidatesToProfile(judgedProfile, identityCandidates);
         enrichProfileParagraphSources(judgedProfile, pageSummaries);
         sanitizeProfileForDisplay(judgedProfile);
         return judgedProfile;
@@ -595,6 +658,164 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return filtered;
     }
 
+    private List<PageSummary> enrichPageSummariesWithFaceEntityAssociations(String targetImageUrl,
+                                                                            List<PageSummary> pageSummaries,
+                                                                            List<String> warnings) {
+        if (!StringUtils.hasText(targetImageUrl) || pageSummaries == null || pageSummaries.isEmpty()) {
+            return pageSummaries == null ? List.of() : pageSummaries;
+        }
+        for (PageSummary pageSummary : pageSummaries) {
+            if (pageSummary == null || pageSummary.getNamedEntities() == null || pageSummary.getNamedEntities().isEmpty()) {
+                continue;
+            }
+            try {
+                List<FaceEntityAssociation> associations = faceEntityAssociationClient.associate(targetImageUrl, pageSummary);
+                if (associations != null && !associations.isEmpty()) {
+                    pageSummary.setFaceEntityAssociations(associations);
+                }
+            } catch (RuntimeException ex) {
+                log.warn("人脸实体关联失败 url={} error={}", pageSummary.getSourceUrl(), ex.getMessage(), ex);
+                warnings.add("face_entity_association_unavailable");
+            }
+        }
+        return pageSummaries;
+    }
+
+    private List<IdentityCandidate> buildIdentityCandidates(List<PageSummary> pageSummaries, double maxImageSimilarity) {
+        if (pageSummaries == null || pageSummaries.isEmpty()) {
+            return List.of();
+        }
+        Map<String, CandidateAccumulator> accumulators = new LinkedHashMap<>();
+        for (PageSummary summary : pageSummaries) {
+            if (summary == null || summary.getNamedEntities() == null) {
+                continue;
+            }
+            for (NamedEntity entity : summary.getNamedEntities()) {
+                if (entity == null || !"PERSON".equalsIgnoreCase(entity.getType()) || !StringUtils.hasText(entity.getText())) {
+                    continue;
+                }
+                String key = normalizeIdentityKey(entity.getNormalizedText());
+                if (!StringUtils.hasText(key)) {
+                    key = normalizeIdentityKey(entity.getText());
+                }
+                if (!StringUtils.hasText(key)) {
+                    continue;
+                }
+                CandidateAccumulator accumulator = accumulators.computeIfAbsent(key, ignored -> new CandidateAccumulator(entity.getText()));
+                accumulator.sourceUrls.add(firstNonBlankText(entity.getSourceUrl(), summary.getSourceUrl()));
+                accumulator.associationScores.add(bestAssociationScore(entity.getText(), summary.getFaceEntityAssociations()));
+                accumulator.maxImageSimilarity = Math.max(accumulator.maxImageSimilarity, maxImageSimilarity);
+                collectRelatedEntities(accumulator, entity.getText(), summary);
+            }
+        }
+        return accumulators.values().stream()
+                .map(CandidateAccumulator::toCandidate)
+                .sorted(Comparator.comparingDouble(this::identityCandidateScore).reversed())
+                .toList();
+    }
+
+    private void collectRelatedEntities(CandidateAccumulator accumulator, String personName, PageSummary summary) {
+        if (summary == null || summary.getEntityRelations() == null) {
+            return;
+        }
+        String personKey = normalizeIdentityKey(personName);
+        for (EntityRelation relation : summary.getEntityRelations()) {
+            if (relation == null || !personKey.equals(normalizeIdentityKey(relation.getSubject()))) {
+                continue;
+            }
+            if ("HAS_OCCUPATION".equalsIgnoreCase(relation.getRelation())) {
+                accumulator.occupations.add(relation.getObject());
+            } else if ("AFFILIATED_WITH".equalsIgnoreCase(relation.getRelation())) {
+                accumulator.organizations.add(relation.getObject());
+            }
+        }
+    }
+
+    private double bestAssociationScore(String entityText, List<FaceEntityAssociation> associations) {
+        if (associations == null || associations.isEmpty()) {
+            return 0.0D;
+        }
+        String key = normalizeIdentityKey(entityText);
+        return associations.stream()
+                .filter(association -> association != null && key.equals(normalizeIdentityKey(association.getEntityText())))
+                .mapToDouble(FaceEntityAssociation::getConfidenceScore)
+                .max()
+                .orElse(0.0D);
+    }
+
+    private double identityCandidateScore(IdentityCandidate candidate) {
+        if (candidate == null) {
+            return 0.0D;
+        }
+        return candidate.getAverageEntityAssociation()
+                + Math.min(10.0D, candidate.getSourceCount() * 2.0D)
+                + Math.min(8.0D, candidate.getOccupations().size() * 2.0D)
+                + Math.min(6.0D, candidate.getOrganizations().size() * 1.5D)
+                + Math.max(0.0D, candidate.getMaxImageSimilarity() - 70.0D) * 0.2D;
+    }
+
+    private String firstHighConfidenceCandidateName(List<IdentityCandidate> candidates, String fallbackName) {
+        if (candidates == null || candidates.isEmpty()) {
+            return fallbackName;
+        }
+        IdentityCandidate top = candidates.get(0);
+        if (top.getAverageEntityAssociation() >= 70.0D || top.getSourceCount() >= 2) {
+            return top.getName();
+        }
+        return fallbackName;
+    }
+
+    private void applyIdentityCandidatesToProfile(ResolvedPersonProfile profile, List<IdentityCandidate> candidates) {
+        if (profile == null || candidates == null || candidates.isEmpty()) {
+            return;
+        }
+        IdentityCandidate top = candidates.get(0);
+        if (!StringUtils.hasText(profile.getResolvedName())
+                && ("confirmed".equals(top.getConfidenceLevel()) || "probable".equals(top.getConfidenceLevel()))) {
+            profile.setResolvedName(top.getName());
+        }
+        PersonBasicInfo basicInfo = profile.getBasicInfo() == null ? new PersonBasicInfo() : profile.getBasicInfo();
+        basicInfo.setOccupations(mergeStableStrings(basicInfo.getOccupations(), top.getOccupations()));
+        List<String> biographies = new ArrayList<>(basicInfo.getBiographies() == null ? List.of() : basicInfo.getBiographies());
+        if (StringUtils.hasText(top.getConfidenceLevel()) && !"unknown".equals(top.getConfidenceLevel())) {
+            biographies.add("身份候选置信等级：" + top.getConfidenceLevel());
+        }
+        basicInfo.setBiographies(mergeStableStrings(List.of(), biographies));
+        profile.setBasicInfo(basicInfo);
+        if (profile.getEvidenceUrls() == null || profile.getEvidenceUrls().isEmpty()) {
+            profile.setEvidenceUrls(top.getSourceUrls());
+        }
+    }
+
+    private List<String> mergeStableStrings(List<String> existing, List<String> additions) {
+        LinkedHashSet<String> merged = new LinkedHashSet<>();
+        if (existing != null) {
+            existing.stream().filter(StringUtils::hasText).map(String::trim).forEach(merged::add);
+        }
+        if (additions != null) {
+            additions.stream().filter(StringUtils::hasText).map(String::trim).forEach(merged::add);
+        }
+        return new ArrayList<>(merged);
+    }
+
+    private double maxImageSimilarity(RecognitionEvidence evidence) {
+        if (evidence == null || evidence.getImageMatches() == null) {
+            return 0.0D;
+        }
+        return evidence.getImageMatches().stream()
+                .filter(Objects::nonNull)
+                .mapToDouble(ImageMatch::getSimilarityScore)
+                .max()
+                .orElse(0.0D);
+    }
+
+    private String normalizeIdentityKey(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
     private boolean isProfileRelevantPageSummary(PageSummary pageSummary) {
         if (pageSummary == null || !StringUtils.hasText(pageSummary.getSummary())) {
             return false;
@@ -614,6 +835,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (profile == null) {
             return;
         }
+        clearRetiredProfileSections(profile);
         profile.setDescription(sanitizeProfileText(profile.getDescription()));
         profile.setSummary(sanitizeProfileText(profile.getSummary()));
         profile.setEducationSummary(sanitizeProfileText(profile.getEducationSummary()));
@@ -634,6 +856,26 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         profile.setFamilyMemberSituationSummaryParagraphs(sanitizeProfileParagraphs(profile.getFamilyMemberSituationSummaryParagraphs()));
         profile.setMisconductSummaryParagraphs(sanitizeProfileParagraphs(profile.getMisconductSummaryParagraphs()));
         profile.setKeyFacts(sanitizeProfileTextList(profile.getKeyFacts()));
+    }
+
+    private void clearRetiredProfileSections(ResolvedPersonProfile profile) {
+        profile.setEducationSummary(null);
+        profile.setEducationSummaryParagraphs(List.of());
+        profile.setFamilyBackgroundSummary(null);
+        profile.setFamilyBackgroundSummaryParagraphs(List.of());
+        profile.setChinaRelatedStatementsSummary(null);
+        profile.setChinaRelatedStatementsSummaryParagraphs(List.of());
+        profile.setPoliticalTendencySummary(null);
+        profile.setPoliticalTendencySummaryParagraphs(List.of());
+        profile.setFamilyMemberSituationSummary(null);
+        profile.setFamilyMemberSituationSummaryParagraphs(List.of());
+        profile.setMisconductSummary(null);
+        profile.setMisconductSummaryParagraphs(List.of());
+        PersonBasicInfo basicInfo = profile.getBasicInfo();
+        if (basicInfo != null) {
+            basicInfo.setEducation(List.of());
+            basicInfo.setBiographies(List.of());
+        }
     }
 
     private List<String> sanitizeProfileTextList(List<String> values) {
@@ -760,6 +1002,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     String summarizeSection(String resolvedName, String sectionType, String query) {
+        if (!isActiveProfileSection(sectionType)) {
+            return null;
+        }
         try {
             SearchLanguageProfile languageProfile = searchLanguageProfileService.resolveProfile(
                     resolvedName,
@@ -784,6 +1029,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private List<ParagraphSummaryItem> summarizeSectionParagraphs(String resolvedName, String sectionType, String query) {
+        if (!isActiveProfileSection(sectionType)) {
+            return List.of();
+        }
         try {
             SearchLanguageProfile languageProfile = searchLanguageProfileService.resolveProfile(
                     resolvedName,
@@ -990,6 +1238,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                                            @Nullable ResolvedPersonProfile profile,
                                                            String sectionType,
                                                            String fallbackQuery) {
+        if (!isActiveProfileSection(sectionType)) {
+            return new SectionSearchBundle(List.of());
+        }
         List<String> baseQueries = mergeDistinctQueries(
                 buildBaseQueries(resolvedName, sectionType),
                 primarySearchQueryBuilder.buildSectionQueries(resolvedName, languageProfile, profile, sectionType)
@@ -2430,6 +2681,50 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private record EnrichedProfile(ResolvedPersonProfile profile, String imageUrl) {
     }
 
+    private boolean isActiveProfileSection(String sectionType) {
+        return StringUtils.hasText(sectionType) && ACTIVE_PROFILE_SECTIONS.contains(sectionType);
+    }
+
+    private static final class CandidateAccumulator {
+        private final String name;
+        private final Set<String> sourceUrls = new LinkedHashSet<>();
+        private final Set<String> organizations = new LinkedHashSet<>();
+        private final Set<String> occupations = new LinkedHashSet<>();
+        private final List<Double> associationScores = new ArrayList<>();
+        private double maxImageSimilarity;
+
+        private CandidateAccumulator(String name) {
+            this.name = name;
+        }
+
+        private IdentityCandidate toCandidate() {
+            double averageAssociation = associationScores.stream()
+                    .filter(score -> score != null && score > 0)
+                    .mapToDouble(Double::doubleValue)
+                    .average()
+                    .orElse(0.0D);
+            String level;
+            if (averageAssociation >= 85.0D && sourceUrls.size() >= 2) {
+                level = "confirmed";
+            } else if (averageAssociation >= 70.0D || sourceUrls.size() >= 2) {
+                level = "probable";
+            } else if (averageAssociation > 0.0D) {
+                level = "suspected";
+            } else {
+                level = "unknown";
+            }
+            return new IdentityCandidate()
+                    .setName(name)
+                    .setOrganizations(new ArrayList<>(organizations))
+                    .setOccupations(new ArrayList<>(occupations))
+                    .setSourceUrls(new ArrayList<>(sourceUrls))
+                    .setMaxImageSimilarity(maxImageSimilarity)
+                    .setAverageEntityAssociation(Math.round(averageAssociation * 100.0D) / 100.0D)
+                    .setSourceCount(sourceUrls.size())
+                    .setConfidenceLevel(level);
+        }
+    }
+
     private List<SocialAccount> collectSocialAccounts(String name) {
         if (!StringUtils.hasText(name)) {
             return List.of();
@@ -2467,6 +2762,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         int searchBudget = maxUsernames + OSINT_RECURSION_DEPTH;
         while (!pendingUsernames.isEmpty() && searchedUsernames.size() < searchBudget) {
             String username = pendingUsernames.removeFirst();
+            if (!isAllowedOsintUsernameCandidate(username, isStrictOsintHandleCandidate(username))) {
+                log.debug("skip invalid OSINT username candidate username={}", username);
+                continue;
+            }
             if (!searchedUsernames.add(username)) {
                 continue;
             }
@@ -2537,14 +2836,39 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (!StringUtils.hasText(username)) {
             return;
         }
-        String normalized = username.replaceFirst("^@", "").trim();
-        if (!StringUtils.hasText(normalized) || normalized.length() > 128) {
-            return;
-        }
-        if (strictHandle && !normalized.matches("[A-Za-z0-9._-]{2,64}")) {
+        String normalized = normalizeOsintUsernameCandidate(username);
+        if (!isAllowedOsintUsernameCandidate(normalized, strictHandle)) {
             return;
         }
         usernames.add(normalized);
+    }
+
+    private String normalizeOsintUsernameCandidate(String username) {
+        if (!StringUtils.hasText(username)) {
+            return null;
+        }
+        return username.replaceFirst("^@", "")
+                .trim()
+                .replaceFirst("[\\p{Punct}\\s]+$", "");
+    }
+
+    private boolean isAllowedOsintUsernameCandidate(String username, boolean strictHandle) {
+        if (!StringUtils.hasText(username) || username.length() > 128) {
+            return false;
+        }
+        String normalized = username.trim();
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        if (OSINT_USERNAME_STOP_WORDS.contains(lower)) {
+            return false;
+        }
+        if (strictHandle && !normalized.matches("[A-Za-z0-9._-]{2,64}")) {
+            return false;
+        }
+        if (!strictHandle && !normalized.contains(" ") && !containsHan(normalized)
+                && normalized.matches("[A-Za-z]{1,3}")) {
+            return false;
+        }
+        return true;
     }
 
     private boolean isUnknownOsintName(String name) {
@@ -2595,13 +2919,19 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                        boolean prioritize,
                                        List<String> usernames) {
         for (String username : usernames == null ? List.<String>of() : usernames) {
-            if (!StringUtils.hasText(username) || !queuedUsernames.add(username)) {
+            LinkedHashSet<String> sanitized = new LinkedHashSet<>();
+            addOsintUsernameCandidate(sanitized, username, true);
+            if (sanitized.isEmpty()) {
+                continue;
+            }
+            String normalized = sanitized.iterator().next();
+            if (!queuedUsernames.add(normalized)) {
                 continue;
             }
             if (prioritize) {
-                pendingUsernames.addFirst(username);
+                pendingUsernames.addFirst(normalized);
             } else {
-                pendingUsernames.addLast(username);
+                pendingUsernames.addLast(normalized);
             }
         }
     }
@@ -2632,6 +2962,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         return StringUtils.hasText(username) && username.trim().contains(" ");
     }
 
+    private boolean isStrictOsintHandleCandidate(String username) {
+        return !isLikelyDisplayNameUsername(username) && !containsHan(username);
+    }
+
     private boolean containsLatin(String value) {
         return StringUtils.hasText(value) && LATIN_TEXT_PATTERN.matcher(value).find();
     }
@@ -2650,8 +2984,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             List<String> modelUsernames = deepSeekSummaryGenerationClient == null
                     ? summaryGenerationClient.inferLikelySocialUsernames(name, evidences)
                     : deepSeekSummaryGenerationClient.inferLikelySocialUsernames(name, evidences);
-            if (modelUsernames != null && !modelUsernames.isEmpty()) {
-                return modelUsernames;
+            List<String> sanitizedModelUsernames = sanitizeStrictOsintUsernames(modelUsernames);
+            if (!sanitizedModelUsernames.isEmpty()) {
+                return sanitizedModelUsernames;
             }
         } catch (RuntimeException ex) {
             log.warn("social username model inference failed name={} error={}", name, ex.getMessage(), ex);
@@ -2704,7 +3039,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             // 模型不可用时只做保守兜底：从明确的 @handle 文本中提取候选用户名。
             Matcher matcher = HANDLE_PATTERN.matcher(text);
             while (matcher.find()) {
-                usernames.add(matcher.group(1));
+                addOsintUsernameCandidate(usernames, matcher.group(1), true);
             }
         }
         return usernames.stream().limit(5).toList();
@@ -2717,12 +3052,17 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         LinkedHashSet<String> usernames = new LinkedHashSet<>();
         Matcher matcher = HANDLE_PATTERN.matcher(text);
         while (matcher.find()) {
-            String username = matcher.group(1).replaceFirst("[._-]+$", "");
-            if (StringUtils.hasText(username)) {
-                usernames.add(username);
-            }
+            addOsintUsernameCandidate(usernames, matcher.group(1), true);
         }
         return usernames.stream().limit(5).toList();
+    }
+
+    private List<String> sanitizeStrictOsintUsernames(List<String> usernames) {
+        LinkedHashSet<String> sanitized = new LinkedHashSet<>();
+        for (String username : usernames == null ? List.<String>of() : usernames) {
+            addOsintUsernameCandidate(sanitized, username, true);
+        }
+        return sanitized.stream().limit(5).toList();
     }
 
     private List<SocialAccount> searchSocialAccounts(DigitalFootprintQuery query) {

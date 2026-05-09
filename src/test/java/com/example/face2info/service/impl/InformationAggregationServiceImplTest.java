@@ -37,7 +37,8 @@ import com.example.face2info.service.MultilingualQueryPlanningService;
 import com.example.face2info.service.PrimarySearchQueryBuilder;
 import com.example.face2info.service.SearchLanguageProfileService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -67,10 +68,15 @@ import static org.mockito.Mockito.when;
 
 class InformationAggregationServiceImplTest {
 
-    private final ThreadPoolTaskExecutor executor = executor();
+    private static ThreadPoolTaskExecutor executor;
 
-    @AfterEach
-    void tearDown() {
+    @BeforeAll
+    static void setUpExecutor() {
+        executor = executor();
+    }
+
+    @AfterAll
+    static void tearDownExecutor() {
         executor.shutdown();
     }
 
@@ -1311,7 +1317,7 @@ class InformationAggregationServiceImplTest {
         String summary = service.summarizeSection("Jensen Huang", "family", "Jensen Huang 家庭背景");
 
         assertThat(summary).isNull();
-        verify(googleSearchClient).googleSearch("Jensen Huang 家庭背景");
+        verifyNoInteractions(googleSearchClient);
         verify(googleSearchClient, never()).googleSearch("Jensen Huang 背景信息");
         verify(googleSearchClient, never()).googleSearch("Jensen Huang Wikipedia 背景信息");
     }
@@ -1721,9 +1727,9 @@ class InformationAggregationServiceImplTest {
         String familySummary = service.summarizeSection("黄仁勋", "family", "黄仁勋 家庭背景");
 
         assertThat(chinaSummary).contains("涉华主题读取 20 篇");
-        assertThat(familySummary).isEqualTo("家庭主题读取 20 篇。");
+        assertThat(familySummary).isNull();
         verify(jinaReaderClient).readPages(expectedChinaUrls);
-        verify(jinaReaderClient).readPages(expectedFamilyUrls);
+        verify(jinaReaderClient, never()).readPages(expectedFamilyUrls);
     }
 
     @Test
@@ -1824,8 +1830,8 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
         assertThat(result.getPerson().getSummary()).isEqualTo("base summary (由大模型总结)");
-        assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
-        assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
+        assertThat(result.getPerson().getEducationSummary()).isNull();
+        assertThat(result.getPerson().getFamilyBackgroundSummary()).isNull();
         assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
     }
 
@@ -1859,8 +1865,8 @@ class InformationAggregationServiceImplTest {
                 .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/a"))));
 
         assertThat(result.getErrors()).contains("未能从识别证据中解析人物名称");
-        assertThat(result.getPerson().getEducationSummary()).isEqualTo("education summary");
-        assertThat(result.getPerson().getFamilyBackgroundSummary()).isEqualTo("family summary");
+        assertThat(result.getPerson().getEducationSummary()).isNull();
+        assertThat(result.getPerson().getFamilyBackgroundSummary()).isNull();
         assertThat(result.getPerson().getCareerSummary()).isEqualTo("career summary");
     }
 
@@ -3037,11 +3043,12 @@ class InformationAggregationServiceImplTest {
         );
     }
 
-    private ThreadPoolTaskExecutor executor() {
+    private static ThreadPoolTaskExecutor executor() {
         ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
         taskExecutor.setCorePoolSize(4);
         taskExecutor.setMaxPoolSize(4);
-        taskExecutor.setQueueCapacity(10);
+        taskExecutor.setQueueCapacity(100);
+        taskExecutor.setThreadNamePrefix("aggregation-test-");
         taskExecutor.initialize();
         return taskExecutor;
     }

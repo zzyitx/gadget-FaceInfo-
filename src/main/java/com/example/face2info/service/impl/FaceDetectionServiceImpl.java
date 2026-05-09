@@ -34,6 +34,11 @@ import java.awt.image.BufferedImage;
 @Service
 public class FaceDetectionServiceImpl implements FaceDetectionService {
 
+    private static final double CONTEXT_EXPAND_LEFT_RIGHT = 0.6D;
+    private static final double CONTEXT_EXPAND_TOP = 0.35D;
+    private static final double CONTEXT_EXPAND_BOTTOM = 1.6D;
+    private static final double EXCLUSION_FACE_MARGIN = 0.25D;
+
     private static final String MISSING_DETECTION_RESULT_ERROR = "CompreFace detection 未返回有效人脸结果";
 
     private final CompreFaceDetectionClient faceDetectionClient;
@@ -140,15 +145,20 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
             }
             // CompreFace 只返回框信息，这里统一补全 detectionId / faceId / 裁剪图，保持后续会话结构不变。
             String detectionId = UUID.randomUUID().toString();
-            List<DetectedFace> sessionFaces = new ArrayList<>();
-            for (int index = 0; index < detectedFaces.size(); index++) {
-                DetectedFace detectedFace = detectedFaces.get(index);
+            List<DetectedFace> validDetectedFaces = new ArrayList<>();
+            List<FaceBoundingBox> normalizedFaces = new ArrayList<>();
+            for (DetectedFace detectedFace : detectedFaces) {
                 if (detectedFace == null || detectedFace.getFaceBoundingBox() == null) {
                     continue;
                 }
-                FaceBoundingBox normalized = normalizeBoundingBox(detectedFace.getFaceBoundingBox(), source);
-                // 保护裁剪边界，避免第三方返回越界框时直接裁剪失败。
-                SelectedFaceCrop crop = cropFace(source, normalized, detectionId + "-face-" + (index + 1) + ".png");
+                validDetectedFaces.add(detectedFace);
+                normalizedFaces.add(normalizeBoundingBox(detectedFace.getFaceBoundingBox(), source));
+            }
+            List<DetectedFace> sessionFaces = new ArrayList<>();
+            for (int index = 0; index < normalizedFaces.size(); index++) {
+                DetectedFace detectedFace = validDetectedFaces.get(index);
+                FaceBoundingBox normalized = normalizedFaces.get(index);
+                SelectedFaceCrop crop = cropFace(source, normalized, normalizedFaces, detectionId + "-face-" + (index + 1) + ".png");
                 sessionFaces.add(new DetectedFace()
                         .setFaceId(detectionId + "-face-" + (index + 1))
                         .setConfidence(detectedFace.getConfidence())
@@ -236,12 +246,16 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
                 .setHeight(safeHeight);
     }
 
-    private SelectedFaceCrop cropFace(BufferedImage source, FaceBoundingBox boundingBox, String filename) throws IOException {
+    private SelectedFaceCrop cropFace(BufferedImage source,
+                                      FaceBoundingBox boundingBox,
+                                      List<FaceBoundingBox> allFaces,
+                                      String filename) throws IOException {
+        FaceBoundingBox cropBox = expandContextBoundingBox(boundingBox, allFaces, source);
         BufferedImage cropped = source.getSubimage(
-                boundingBox.getX(),
-                boundingBox.getY(),
-                boundingBox.getWidth(),
-                boundingBox.getHeight()
+                cropBox.getX(),
+                cropBox.getY(),
+                cropBox.getWidth(),
+                cropBox.getHeight()
         );
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ImageIO.write(cropped, "png", outputStream);
@@ -249,6 +263,81 @@ public class FaceDetectionServiceImpl implements FaceDetectionService {
                 .setFilename(filename)
                 .setContentType("image/png")
                 .setBytes(outputStream.toByteArray());
+    }
+
+    private FaceBoundingBox expandContextBoundingBox(FaceBoundingBox target,
+                                                     List<FaceBoundingBox> allFaces,
+                                                     BufferedImage source) {
+        int left = (int) Math.floor(target.getX() - target.getWidth() * CONTEXT_EXPAND_LEFT_RIGHT);
+        int right = (int) Math.ceil(target.getX() + target.getWidth() * (1.0D + CONTEXT_EXPAND_LEFT_RIGHT));
+        int top = (int) Math.floor(target.getY() - target.getHeight() * CONTEXT_EXPAND_TOP);
+        int bottom = (int) Math.ceil(target.getY() + target.getHeight() * (1.0D + CONTEXT_EXPAND_BOTTOM));
+
+        left = Math.max(0, left);
+        top = Math.max(0, top);
+        right = Math.min(source.getWidth(), right);
+        bottom = Math.min(source.getHeight(), bottom);
+
+        if (allFaces != null) {
+            for (FaceBoundingBox other : allFaces) {
+                if (other == null || sameBox(target, other)) {
+                    continue;
+                }
+                FaceBoundingBox exclusion = expandExclusionBox(other, source);
+                if (!intersects(left, top, right, bottom, exclusion)) {
+                    continue;
+                }
+                if (exclusion.getX() >= target.getX() + target.getWidth()) {
+                    right = Math.min(right, exclusion.getX());
+                } else if (exclusion.getX() + exclusion.getWidth() <= target.getX()) {
+                    left = Math.max(left, exclusion.getX() + exclusion.getWidth());
+                }
+                if (exclusion.getY() >= target.getY() + target.getHeight()) {
+                    bottom = Math.min(bottom, exclusion.getY());
+                } else if (exclusion.getY() + exclusion.getHeight() <= target.getY()) {
+                    top = Math.max(top, exclusion.getY() + exclusion.getHeight());
+                }
+            }
+        }
+
+        left = Math.min(left, target.getX());
+        top = Math.min(top, target.getY());
+        right = Math.max(right, target.getX() + target.getWidth());
+        bottom = Math.max(bottom, target.getY() + target.getHeight());
+
+        return new FaceBoundingBox()
+                .setX(left)
+                .setY(top)
+                .setWidth(Math.max(1, right - left))
+                .setHeight(Math.max(1, bottom - top));
+    }
+
+    private FaceBoundingBox expandExclusionBox(FaceBoundingBox box, BufferedImage source) {
+        int marginX = (int) Math.ceil(box.getWidth() * EXCLUSION_FACE_MARGIN);
+        int marginY = (int) Math.ceil(box.getHeight() * EXCLUSION_FACE_MARGIN);
+        int x = Math.max(0, box.getX() - marginX);
+        int y = Math.max(0, box.getY() - marginY);
+        int right = Math.min(source.getWidth(), box.getX() + box.getWidth() + marginX);
+        int bottom = Math.min(source.getHeight(), box.getY() + box.getHeight() + marginY);
+        return new FaceBoundingBox()
+                .setX(x)
+                .setY(y)
+                .setWidth(Math.max(1, right - x))
+                .setHeight(Math.max(1, bottom - y));
+    }
+
+    private boolean intersects(int left, int top, int right, int bottom, FaceBoundingBox box) {
+        return left < box.getX() + box.getWidth()
+                && right > box.getX()
+                && top < box.getY() + box.getHeight()
+                && bottom > box.getY();
+    }
+
+    private boolean sameBox(FaceBoundingBox left, FaceBoundingBox right) {
+        return left.getX() == right.getX()
+                && left.getY() == right.getY()
+                && left.getWidth() == right.getWidth()
+                && left.getHeight() == right.getHeight();
     }
 
     private String toDataUrl(MultipartFile image, String fallbackContentType) throws IOException {
