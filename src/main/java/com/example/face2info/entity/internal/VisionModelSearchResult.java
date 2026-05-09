@@ -3,7 +3,9 @@ package com.example.face2info.entity.internal;
 import com.example.face2info.entity.response.SocialAccount;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 视觉大模型直接识图并自行检索后的结构化结果。
@@ -21,6 +23,7 @@ public class VisionModelSearchResult {
     private List<String> tags = new ArrayList<>();
     private List<String> sourceNotes = new ArrayList<>();
     private List<SocialAccount> socialAccounts = new ArrayList<>();
+    private Map<String, String> visualGroundTruth = new LinkedHashMap<>();
 
     public String getProvider() {
         return provider;
@@ -118,6 +121,15 @@ public class VisionModelSearchResult {
 
     public VisionModelSearchResult setSocialAccounts(List<SocialAccount> socialAccounts) {
         this.socialAccounts = socialAccounts == null ? new ArrayList<>() : new ArrayList<>(socialAccounts);
+        return this;
+    }
+
+    public Map<String, String> getVisualGroundTruth() {
+        return visualGroundTruth;
+    }
+
+    public VisionModelSearchResult setVisualGroundTruth(Map<String, String> visualGroundTruth) {
+        this.visualGroundTruth = visualGroundTruth == null ? new LinkedHashMap<>() : new LinkedHashMap<>(visualGroundTruth);
         return this;
     }
 }

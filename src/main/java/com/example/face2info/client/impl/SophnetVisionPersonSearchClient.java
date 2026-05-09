@@ -23,6 +23,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -128,6 +129,7 @@ public class SophnetVisionPersonSearchClient implements VisionPersonSearchClient
                 .setCompany(trimToNull(payload.path("company").asText(null)))
                 .setPosition(trimToNull(payload.path("position").asText(null)))
                 .setSocialAccounts(readSocialAccounts(payload.path("socialAccounts")))
+                .setVisualGroundTruth(readStringObject(firstExisting(payload, "visualGroundTruth", "visual_ground_truth")))
                 .setEvidenceUrls(readStringArray(payload.path("evidenceUrls"), maxEvidenceUrls))
                 .setTags(readStringArray(payload.path("tags"), 10))
                 .setSourceNotes(readStringArray(payload.path("sourceNotes"), 10));
@@ -179,6 +181,34 @@ public class SophnetVisionPersonSearchClient implements VisionPersonSearchClient
         return new ArrayList<>(values);
     }
 
+    private Map<String, String> readStringObject(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return Map.of();
+        }
+        Map<String, String> values = new LinkedHashMap<>();
+        node.fields().forEachRemaining(entry -> {
+            String key = trimToNull(entry.getKey());
+            String value = trimToNull(entry.getValue().asText(null));
+            if (StringUtils.hasText(key) && StringUtils.hasText(value)) {
+                values.put(key, value);
+            }
+        });
+        return values;
+    }
+
+    private JsonNode firstExisting(JsonNode payload, String... fieldNames) {
+        if (payload == null || fieldNames == null) {
+            return null;
+        }
+        for (String fieldName : fieldNames) {
+            JsonNode node = payload.get(fieldName);
+            if (node != null && !node.isMissingNode() && !node.isNull()) {
+                return node;
+            }
+        }
+        return null;
+    }
+
     private List<SocialAccount> readSocialAccounts(JsonNode node) {
         if (node == null || !node.isArray()) {
             return List.of();
@@ -207,7 +237,8 @@ public class SophnetVisionPersonSearchClient implements VisionPersonSearchClient
                 && (StringUtils.hasText(result.getCandidateName())
                 || StringUtils.hasText(result.getSummary())
                 || !result.getEvidenceUrls().isEmpty()
-                || !result.getSocialAccounts().isEmpty());
+                || !result.getSocialAccounts().isEmpty()
+                || !result.getVisualGroundTruth().isEmpty());
     }
 
     private void validateConfig(SophnetVisionApiProperties config, String imageUrl) {

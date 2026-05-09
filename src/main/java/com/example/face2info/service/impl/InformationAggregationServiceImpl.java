@@ -15,6 +15,7 @@ import com.example.face2info.client.impl.NoopFaceEntityAssociationClient;
 import com.example.face2info.config.ApiProperties;
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
+import com.example.face2info.entity.internal.CandidatePersonProfile;
 import com.example.face2info.entity.internal.DigitalFootprintQuery;
 import com.example.face2info.entity.internal.DerivedTopicRequest;
 import com.example.face2info.entity.internal.DerivedTopicType;
@@ -46,6 +47,8 @@ import com.example.face2info.service.InformationAggregationService;
 import com.example.face2info.service.MultilingualQueryPlanningService;
 import com.example.face2info.service.PrimarySearchQueryBuilder;
 import com.example.face2info.service.SearchLanguageProfileService;
+import com.example.face2info.util.ExceptionSummaryUtils;
+import com.example.face2info.util.NameExtractor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -85,6 +88,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final String LLM_SUFFIX = " (由大模型总结)";
     private static final String SOCIAL_PLACEHOLDER_PLATFORM = "pending";
     private static final String SOCIAL_PLACEHOLDER_URL = "#";
+    private static final String NEUTRAL_FALLBACK_NAME = "unknown";
     private static final String SOCIAL_PLACEHOLDER_USERNAME = "功能正在开发中";
     private static final String SECONDARY_SEARCH_WARNING = "secondary_profile_search_unavailable";
     private static final String SECONDARY_SEARCH_SOURCE = "serper_google_search";
@@ -175,6 +179,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private static final int PROFILE_SUMMARY_BATCH_SIZE_MIN = 5;
     private static final int PROFILE_SUMMARY_BATCH_SIZE_MAX = 10;
     private static final int PROFILE_BATCH_FIELD_MAX_CHARS = 700;
+    private static final int CANDIDATE_PROFILE_LIMIT = 3;
     private static final List<String> UNWANTED_RELATIONSHIP_TERMS = List.of(
             "情感经历", "绯闻", "绯闻女友", "恋情", "相恋", "激吻", "亲密", "分手", "前女友", "女友"
     );
@@ -200,6 +205,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final OsintSocialAccountClient osintSocialAccountClient;
     private final RocketReachClient rocketReachClient;
     private final FaceEntityAssociationClient faceEntityAssociationClient;
+    private final NameExtractor nameExtractor = new NameExtractor();
 
     @Autowired
     public InformationAggregationServiceImpl(GoogleSearchClient googleSearchClient,
@@ -423,6 +429,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         profile = enrichedProfile.profile();
         sanitizeProfileForDisplay(profile);
         appendArticleMatchSources(profile, evidence.getArticleImageMatches());
+        result.setCandidateProfiles(collectCandidatePersonProfiles(evidence, result.getWarnings()));
         resolvedName = resolveNameOrFallback(profile, evidence);
         if (!StringUtils.hasText(resolvedName)) {
             result.getErrors().add("未能从识别证据中解析人物名称");
@@ -459,6 +466,91 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         result.setPerson(buildPersonFromProfile(profile, finalResolvedName, enrichedProfile.imageUrl()));
         result.setSocialAccounts(collectSocialAccounts(finalResolvedName));
         return result;
+    }
+
+    private List<CandidatePersonProfile> collectCandidatePersonProfiles(RecognitionEvidence evidence,
+                                                                        List<String> warnings) {
+        List<CandidateImageMatch> candidates = extractTopCandidateImageMatches(evidence);
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        // 候选人物画像是辅助比对材料，单个候选失败只记录 warning，不影响主人物聚合结果继续返回。
+        List<CandidatePersonProfile> profiles = new ArrayList<>();
+        for (CandidateImageMatch candidate : candidates) {
+            try {
+                PersonAggregate profile = summarizeCandidatePersonProfile(candidate.candidateName());
+                profiles.add(new CandidatePersonProfile()
+                        .setCandidateName(candidate.candidateName())
+                        .setImageMatch(copyImageMatch(candidate.imageMatch()))
+                        .setProfile(profile));
+            } catch (RuntimeException ex) {
+                log.warn("候选人物独立画像生成失败 candidateName={} error={}",
+                        candidate.candidateName(), ex.getMessage(), ex);
+                if (warnings != null && warnings.stream().noneMatch(SECONDARY_SEARCH_WARNING::equals)) {
+                    warnings.add(SECONDARY_SEARCH_WARNING);
+                }
+            }
+        }
+        return profiles;
+    }
+
+    private List<CandidateImageMatch> extractTopCandidateImageMatches(RecognitionEvidence evidence) {
+        List<ImageMatch> matches = evidence == null || evidence.getArticleImageMatches() == null
+                || evidence.getArticleImageMatches().isEmpty()
+                ? (evidence == null ? List.of() : evidence.getImageMatches())
+                : evidence.getArticleImageMatches();
+        if (matches == null || matches.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashMap<String, CandidateImageMatch> candidates = new LinkedHashMap<>();
+        // 优先保留相似度最高且姓名可用的候选，按归一化姓名去重，避免同一人物占满候选画像位。
+        matches.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator.comparingDouble(ImageMatch::getSimilarityScore).reversed())
+                .forEach(match -> {
+                    if (candidates.size() >= CANDIDATE_PROFILE_LIMIT) {
+                        return;
+                    }
+                    String candidateName = nameExtractor.cleanCandidateName(match.getTitle());
+                    if (!StringUtils.hasText(candidateName)) {
+                        return;
+                    }
+                    String key = normalizeIdentityKey(candidateName);
+                    candidates.putIfAbsent(key, new CandidateImageMatch(candidateName, match));
+                });
+        return new ArrayList<>(candidates.values());
+    }
+
+    private PersonAggregate summarizeCandidatePersonProfile(String candidateName) {
+        ResolvedPersonProfile baseProfile = new ResolvedPersonProfile().setResolvedName(candidateName);
+        SerpApiResponse searchResponse = googleSearchClient.googleSearch(candidateName);
+        String imageUrl = searchResponse == null || searchResponse.getRoot() == null
+                ? null
+                : extractKnowledgeGraphImageUrl(searchResponse.getRoot());
+        List<WebEvidence> evidences = searchResponse == null || searchResponse.getRoot() == null
+                ? List.of()
+                : extractSearchOrganicWebEvidence(searchResponse.getRoot());
+        ResolvedPersonProfile profile = evidences.isEmpty()
+                ? baseProfile
+                : summarizeSecondaryEvidence(candidateName, evidences, baseProfile, new ArrayList<>());
+        sanitizeProfileForDisplay(profile);
+        String resolvedName = firstNonBlankText(profile.getResolvedName(), candidateName);
+        return buildPersonFromProfile(profile, resolvedName, imageUrl);
+    }
+
+    private ImageMatch copyImageMatch(ImageMatch match) {
+        if (match == null) {
+            return null;
+        }
+        return new ImageMatch()
+                .setPosition(match.getPosition())
+                .setTitle(match.getTitle())
+                .setLink(match.getLink())
+                .setSource(match.getSource())
+                .setThumbnailUrl(match.getThumbnailUrl())
+                .setSimilarityScore(match.getSimilarityScore())
+                .setAggregatedPrimary(match.getAggregatedPrimary())
+                .setAggregatedCount(match.getAggregatedCount());
     }
 
     ResolvedPersonProfile resolveProfileFromEvidence(List<WebEvidence> evidences, String fallbackName) {
@@ -539,8 +631,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             if (isLlmProfileFailure(ex)) {
                 throw ex;
             }
-            log.error("Kimi 最终总结失败 fallbackName={} pageSummaryCount={} category={} error={}",
-                    fallbackName, pageSummaries.size(), classifySummaryFailure(ex), ex.getMessage(), ex);
+            logSummaryFailure(FailureLogLevel.ERROR,
+                    "Kimi 最终总结失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    ex, fallbackName, pageSummaries.size());
             warnings.add(SUMMARY_WARNING);
             return new ResolvedPersonProfile()
                     .setEvidenceUrls(urls);
@@ -570,9 +663,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             );
             return completeJudgedProfile(judged, profile, warnings);
         } catch (RuntimeException deepSeekEx) {
-            log.error("综合判断DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
-                    fallbackName, pageSummaries.size(),
-                    classifySummaryFailure(deepSeekEx), deepSeekEx.getMessage(), deepSeekEx);
+            logSummaryFailure(FailureLogLevel.ERROR,
+                    "综合判断DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    deepSeekEx, fallbackName, pageSummaries.size());
             try {
                 ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
                         effectiveName,
@@ -581,9 +674,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 );
                 return completeJudgedProfile(judged, profile, warnings);
             } catch (RuntimeException kimiEx) {
-                log.warn("综合判断Kimi兜底失败，使用已有画像草稿 fallbackName={} pageSummaryCount={} category={} error={}",
-                        fallbackName, pageSummaries.size(),
-                        classifySummaryFailure(kimiEx), kimiEx.getMessage(), kimiEx);
+                logSummaryFailure(FailureLogLevel.WARN,
+                        "综合判断Kimi兜底失败，使用已有画像草稿 fallbackName={} pageSummaryCount={} category={} error={}",
+                        kimiEx, fallbackName, pageSummaries.size());
                 warnings.add(JUDGEMENT_WARNING);
                 return profile;
             }
@@ -694,6 +787,10 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 if (entity == null || !"PERSON".equalsIgnoreCase(entity.getType()) || !StringUtils.hasText(entity.getText())) {
                     continue;
                 }
+                String entityName = firstNonBlankText(entity.getNormalizedText(), entity.getText());
+                if (!nameExtractor.isLikelyPersonName(entityName)) {
+                    continue;
+                }
                 String key = normalizeIdentityKey(entity.getNormalizedText());
                 if (!StringUtils.hasText(key)) {
                     key = normalizeIdentityKey(entity.getText());
@@ -701,11 +798,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 if (!StringUtils.hasText(key)) {
                     continue;
                 }
-                CandidateAccumulator accumulator = accumulators.computeIfAbsent(key, ignored -> new CandidateAccumulator(entity.getText()));
+                CandidateAccumulator accumulator = accumulators.computeIfAbsent(key, ignored -> new CandidateAccumulator(entityName));
                 accumulator.sourceUrls.add(firstNonBlankText(entity.getSourceUrl(), summary.getSourceUrl()));
-                accumulator.associationScores.add(bestAssociationScore(entity.getText(), summary.getFaceEntityAssociations()));
+                accumulator.associationScores.add(bestAssociationScore(entityName, summary.getFaceEntityAssociations()));
                 accumulator.maxImageSimilarity = Math.max(accumulator.maxImageSimilarity, maxImageSimilarity);
-                collectRelatedEntities(accumulator, entity.getText(), summary);
+                collectRelatedEntities(accumulator, entityName, summary);
             }
         }
         return accumulators.values().stream()
@@ -755,14 +852,41 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private String firstHighConfidenceCandidateName(List<IdentityCandidate> candidates, String fallbackName) {
+        String safeFallbackName = safeFallbackNameForModelCall(fallbackName);
         if (candidates == null || candidates.isEmpty()) {
-            return fallbackName;
+            return safeFallbackName;
         }
         IdentityCandidate top = candidates.get(0);
+        if (isNeutralFallbackName(safeFallbackName)) {
+            return top.getName();
+        }
         if (top.getAverageEntityAssociation() >= 70.0D || top.getSourceCount() >= 2) {
             return top.getName();
         }
-        return fallbackName;
+        if (!StringUtils.hasText(safeFallbackName)) {
+            return top.getName();
+        }
+        return safeFallbackName;
+    }
+
+    private String safeFallbackNameForModelCall(String fallbackName) {
+        String safeName = nameExtractor.cleanCandidateName(fallbackName);
+        if (StringUtils.hasText(safeName)) {
+            return safeName;
+        }
+        // unknown/未知 是中性占位符，可用于触发模型聚合；其它噪声标题不应继续作为人名传入模型。
+        if (isNeutralFallbackName(fallbackName)) {
+            return fallbackName.trim();
+        }
+        return null;
+    }
+
+    private boolean isNeutralFallbackName(String fallbackName) {
+        if (!StringUtils.hasText(fallbackName)) {
+            return false;
+        }
+        String normalized = fallbackName.trim().toLowerCase(Locale.ROOT);
+        return "unknown".equals(normalized) || "未知".equals(normalized);
     }
 
     private void applyIdentityCandidatesToProfile(ResolvedPersonProfile profile, List<IdentityCandidate> candidates) {
@@ -1089,8 +1213,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 }
                 pageSummaries.add(pageSummary);
             } catch (RuntimeException ex) {
-                log.warn("页面摘要失败 fallbackName={} url={} category={} error={}",
-                        fallbackName, page.getUrl(), classifySummaryFailure(ex), ex.getMessage(), ex);
+                logSummaryFailure(FailureLogLevel.WARN,
+                        "页面摘要失败 fallbackName={} url={} category={} error={}",
+                        ex, fallbackName, page.getUrl());
             }
         }
         attachArticleCitations(pageSummaries);
@@ -1134,6 +1259,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
 
     private boolean shouldRunSecondarySearch(ResolvedPersonProfile profile, String resolvedName) {
         return StringUtils.hasText(resolvedName)
+                && nameExtractor.isLikelyPersonName(resolvedName)
                 && profile != null
                 && (StringUtils.hasText(profile.getDescription()) || StringUtils.hasText(profile.getSummary()));
     }
@@ -2120,8 +2246,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         .toList());
             }
         } catch (RuntimeException ex) {
-            log.warn("secondary final summary failed resolvedName={} pageSummaryCount={} category={} error={}",
-                    resolvedName, pageSummaries.size(), classifySummaryFailure(ex), ex.getMessage(), ex);
+            logSummaryFailure(FailureLogLevel.WARN,
+                    "secondary final summary failed resolvedName={} pageSummaryCount={} category={} error={}",
+                    ex, resolvedName, pageSummaries.size());
             warnings.add(SECONDARY_SEARCH_WARNING);
             return baseProfile;
         }
@@ -2519,6 +2646,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private String classifySummaryFailure(RuntimeException ex) {
+        if (ExceptionSummaryUtils.isTimeout(ex)) {
+            return "TIMEOUT";
+        }
         String message = ex.getMessage() == null ? "" : ex.getMessage();
         if (message.contains("CONFIG_MISSING")) {
             return "CONFIG_MISSING";
@@ -2533,6 +2663,31 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             return "TIMEOUT";
         }
         return "HTTP_ERROR";
+    }
+
+    private void logSummaryFailure(FailureLogLevel level,
+                                   String message,
+                                   RuntimeException ex,
+                                   Object... contextArgs) {
+        boolean timeout = ExceptionSummaryUtils.isTimeout(ex);
+        // 超时是高频外部故障，只记录压缩原因，避免日志中反复刷出底层 HTTP 堆栈。
+        Object[] args = new Object[contextArgs.length + 2 + (timeout ? 0 : 1)];
+        System.arraycopy(contextArgs, 0, args, 0, contextArgs.length);
+        args[contextArgs.length] = classifySummaryFailure(ex);
+        args[contextArgs.length + 1] = ExceptionSummaryUtils.compactMessage(ex);
+        if (!timeout) {
+            args[contextArgs.length + 2] = ex;
+        }
+        if (level == FailureLogLevel.ERROR) {
+            log.error(message, args);
+        } else {
+            log.warn(message, args);
+        }
+    }
+
+    private enum FailureLogLevel {
+        WARN,
+        ERROR
     }
 
     private List<String> selectTopUrls(List<WebEvidence> evidences) {
@@ -2665,7 +2820,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private String resolveNameOrFallback(ResolvedPersonProfile profile, RecognitionEvidence evidence) {
-        if (profile != null && StringUtils.hasText(profile.getResolvedName())) {
+        if (profile != null
+                && StringUtils.hasText(profile.getResolvedName())
+                && nameExtractor.isLikelyPersonName(profile.getResolvedName())) {
             return profile.getResolvedName();
         }
         return null;
@@ -2675,10 +2832,25 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         if (evidence == null || evidence.getSeedQueries().isEmpty()) {
             return null;
         }
-        return evidence.getSeedQueries().get(0);
+        boolean hasSeedText = false;
+        for (String seedQuery : evidence.getSeedQueries()) {
+            if (!StringUtils.hasText(seedQuery)) {
+                continue;
+            }
+            hasSeedText = true;
+            String trimmed = seedQuery.trim().replaceAll("\\s+", " ");
+            String cleaned = nameExtractor.cleanCandidateName(trimmed);
+            if (trimmed.equals(cleaned)) {
+                return trimmed;
+            }
+        }
+        return hasSeedText ? NEUTRAL_FALLBACK_NAME : null;
     }
 
     private record EnrichedProfile(ResolvedPersonProfile profile, String imageUrl) {
+    }
+
+    private record CandidateImageMatch(String candidateName, ImageMatch imageMatch) {
     }
 
     private boolean isActiveProfileSection(String sectionType) {
@@ -2726,7 +2898,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     }
 
     private List<SocialAccount> collectSocialAccounts(String name) {
-        if (!StringUtils.hasText(name)) {
+        if (!StringUtils.hasText(name) || !nameExtractor.isLikelyPersonName(name)) {
             return List.of();
         }
         List<SocialAccount> accounts = new ArrayList<>(collectRocketReachProfileAccounts(name));
@@ -3199,12 +3371,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             try {
                 return deepSeekSummaryGenerationClient.summarizePage(fallbackName, page);
             } catch (RuntimeException deepSeekEx) {
-                log.warn("页面摘要DeepSeek失败 fallbackName={} url={} category={} error={}",
+                logSummaryFailure(FailureLogLevel.WARN,
+                        "页面摘要DeepSeek失败 fallbackName={} url={} category={} error={}",
+                        deepSeekEx,
                         fallbackName,
-                        page == null ? null : page.getUrl(),
-                        classifySummaryFailure(deepSeekEx),
-                        deepSeekEx.getMessage(),
-                        deepSeekEx);
+                        page == null ? null : page.getUrl());
                 return summaryGenerationClient.summarizePage(fallbackName, page);
             }
         }
@@ -3218,13 +3389,15 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         try {
             return cleanText(deepSeekSummaryGenerationClient.summarizeSectionFromPageSummaries(resolvedName, sectionType, pageSummaries));
         } catch (RuntimeException deepSeekEx) {
-            log.warn("主题摘要DeepSeek失败 resolvedName={} sectionType={} category={} error={}",
-                    resolvedName, sectionType, classifySummaryFailure(deepSeekEx), deepSeekEx.getMessage(), deepSeekEx);
+            logSummaryFailure(FailureLogLevel.WARN,
+                    "主题摘要DeepSeek失败 resolvedName={} sectionType={} category={} error={}",
+                    deepSeekEx, resolvedName, sectionType);
             try {
                 return cleanText(summaryGenerationClient.summarizeSectionFromPageSummaries(resolvedName, sectionType, pageSummaries));
             } catch (RuntimeException kimiEx) {
-                log.warn("主题摘要Kimi兜底失败 resolvedName={} sectionType={} category={} error={}",
-                        resolvedName, sectionType, classifySummaryFailure(kimiEx), kimiEx.getMessage(), kimiEx);
+                logSummaryFailure(FailureLogLevel.WARN,
+                        "主题摘要Kimi兜底失败 resolvedName={} sectionType={} category={} error={}",
+                        kimiEx, resolvedName, sectionType);
                 return null;
             }
         }
@@ -3243,12 +3416,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         summaries -> summaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
                 );
             } catch (RuntimeException kimiEx) {
-                log.error("最终画像Kimi失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                logSummaryFailure(FailureLogLevel.ERROR,
+                        "最终画像Kimi失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                        kimiEx,
                         fallbackName,
-                        pageSummaries == null ? 0 : pageSummaries.size(),
-                        classifySummaryFailure(kimiEx),
-                        kimiEx.getMessage(),
-                        kimiEx);
+                        pageSummaries == null ? 0 : pageSummaries.size());
                 ResolvedPersonProfile localFallback = buildLocalProfileFallback(fallbackName, pageSummaries);
                 if (localFallback != null) {
                     log.warn("最终画像使用本地摘要兜底 fallbackName={} pageSummaryCount={}",
@@ -3270,12 +3442,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     summaries -> deepSeekSummaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
             );
         } catch (RuntimeException deepSeekEx) {
-            log.error("最终画像DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
+            logSummaryFailure(FailureLogLevel.ERROR,
+                    "最终画像DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    deepSeekEx,
                     fallbackName,
-                    pageSummaries == null ? 0 : pageSummaries.size(),
-                    classifySummaryFailure(deepSeekEx),
-                    deepSeekEx.getMessage(),
-                    deepSeekEx);
+                    pageSummaries == null ? 0 : pageSummaries.size());
             try {
                 return summarizePersonWithHierarchicalBatches(
                         "Kimi",
@@ -3285,12 +3456,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         summaries -> summaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
                 );
             } catch (RuntimeException kimiEx) {
-                log.error("最终画像Kimi兜底失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                logSummaryFailure(FailureLogLevel.ERROR,
+                        "最终画像Kimi兜底失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                        kimiEx,
                         fallbackName,
-                        pageSummaries == null ? 0 : pageSummaries.size(),
-                        classifySummaryFailure(kimiEx),
-                        kimiEx.getMessage(),
-                        kimiEx);
+                        pageSummaries == null ? 0 : pageSummaries.size());
                 ResolvedPersonProfile localFallback = buildLocalProfileFallback(fallbackName, pageSummaries);
                 if (localFallback != null) {
                     log.warn("最终画像使用本地摘要兜底 fallbackName={} pageSummaryCount={}",
@@ -3335,9 +3505,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                 batchSummaries.add(toProfileBatchSummary(batch, batchProfile));
             } catch (RuntimeException ex) {
                 failedBatchCount++;
-                log.warn("{} 分组摘要失败 fallbackName={} batchIndex={} batchSize={} category={} error={}",
-                        providerName, fallbackName, batchIndex, batch.size(),
-                        classifySummaryFailure(ex), ex.getMessage(), ex);
+                logSummaryFailure(FailureLogLevel.WARN,
+                        "{} 分组摘要失败 fallbackName={} batchIndex={} batchSize={} category={} error={}",
+                        ex, providerName, fallbackName, batchIndex, batch.size());
             }
         }
         if (batchSummaries.isEmpty()) {
@@ -3348,9 +3518,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         try {
             return finalSummarizer.apply(batchSummaries);
         } catch (RuntimeException ex) {
-            log.error("{} 最终汇总失败 fallbackName={} batchCount={} failedBatchCount={} sourceCount={} category={} error={}",
-                    providerName, fallbackName, batchSummaries.size(), failedBatchCount, validSummaries.size(),
-                    classifySummaryFailure(ex), ex.getMessage(), ex);
+            logSummaryFailure(FailureLogLevel.ERROR,
+                    "{} 最终汇总失败 fallbackName={} batchCount={} failedBatchCount={} sourceCount={} category={} error={}",
+                    ex, providerName, fallbackName, batchSummaries.size(), failedBatchCount, validSummaries.size());
             throw ex;
         }
     }
@@ -3563,8 +3733,9 @@ public class InformationAggregationServiceImpl implements InformationAggregation
             );
             return completeJudgedProfile(judged, profile, warnings);
         } catch (RuntimeException ex) {
-            log.warn("综合判断失败 fallbackName={} pageSummaryCount={} error={}",
-                    fallbackName, pageSummaries.size(), ex.getMessage(), ex);
+            logSummaryFailure(FailureLogLevel.WARN,
+                    "综合判断失败 fallbackName={} pageSummaryCount={} category={} error={}",
+                    ex, fallbackName, pageSummaries.size());
             warnings.add(JUDGEMENT_WARNING);
             return profile;
         }

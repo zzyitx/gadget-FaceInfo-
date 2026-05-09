@@ -579,7 +579,7 @@ class FaceRecognitionServiceImplTest {
     }
 
     @Test
-    void shouldIncludeSophnetVisionSummariesAsRecognitionEvidence() throws Exception {
+    void shouldKeepSophnetVisionResultsIndependentFromRecognitionEvidence() throws Exception {
         MockMultipartFile image = new MockMultipartFile("image", "face.jpg", "image/jpeg", new byte[]{1, 2, 3});
         when(tmpfilesClient.uploadImage(image)).thenReturn(PREVIEW_URL);
         when(googleSearchClient.reverseImageSearchByUrl(PREVIEW_URL)).thenReturn(new SerpApiResponse()
@@ -603,11 +603,10 @@ class FaceRecognitionServiceImplTest {
 
         RecognitionEvidence evidence = service.recognize(image);
 
-        assertThat(evidence.getWebEvidences()).extracting(WebEvidence::getUrl).contains("https://example.com/ada");
-        assertThat(evidence.getSeedQueries()).contains("Ada Lovelace");
-        assertThat(evidence.getVisionModelSummaries()).hasSize(1);
+        assertThat(evidence.getWebEvidences()).extracting(WebEvidence::getUrl).doesNotContain("https://example.com/ada");
+        assertThat(evidence.getSeedQueries()).doesNotContain("Ada Lovelace");
+        assertThat(evidence.getVisionModelSummaries()).isEmpty();
         assertThat(evidence.getVisionModelResults()).hasSize(1);
         assertThat(evidence.getVisionModelResults().get(0).getCandidateName()).isEqualTo("Ada Lovelace");
-        assertThat(evidence.getVisionModelSummaries().get(0).getSummary()).contains("Ada Lovelace");
     }
 }

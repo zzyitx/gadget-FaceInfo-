@@ -7,6 +7,12 @@ import com.example.face2info.entity.internal.SelectedFaceCrop;
 import com.example.face2info.entity.response.DetectedFaceResponse;
 import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
+import com.example.face2info.entity.response.PersonInfo;
+import com.example.face2info.entity.response.PersonPortraitOneLayer;
+import com.example.face2info.entity.response.PersonPortraitThreeLayer;
+import com.example.face2info.entity.response.PersonPortraitTwoLayer;
+import com.example.face2info.entity.response.PortraitSourceReferenceGroup;
+import com.example.face2info.entity.response.StructuredPortraits;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.exception.FaceDetectionException;
 import com.example.face2info.exception.GlobalExceptionHandler;
@@ -50,6 +56,27 @@ class FaceInfoControllerTest {
         mockMvc.perform(multipart("/api/face2info").file(sampleImage()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
+    }
+
+    @Test
+    void shouldSerializeStructuredPortraitLayers() throws Exception {
+        face2InfoService.setProcessResponse(new FaceInfoResponse()
+                .setStatus("success")
+                .setStructuredPortraits(new StructuredPortraits()
+                        .setPersonPortraitOne(new PersonPortraitOneLayer()
+                                .setProfile(new PersonInfo().setName("Ada Lovelace")))
+                        .setPersonPortraitTwo(new PersonPortraitTwoLayer())
+                        .setPersonPortraitThree(new PersonPortraitThreeLayer())
+                        .setSourceReferences(new PortraitSourceReferenceGroup()
+                                .setEvidenceUrls(java.util.List.of("https://example.com/ada")))));
+
+        mockMvc.perform(multipart("/api/face2info").file(sampleImage()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.structured_portraits.person_portrait_one.profile.name").value("Ada Lovelace"))
+                .andExpect(jsonPath("$.structured_portraits.person_portrait_two.portrait_label").value("人物画像二"))
+                .andExpect(jsonPath("$.structured_portraits.person_portrait_three.portrait_label").value("人物画像三"))
+                .andExpect(jsonPath("$.structured_portraits.source_references.evidence_urls[0]")
+                        .value("https://example.com/ada"));
     }
 
     @Test

@@ -107,7 +107,7 @@ class ApiPropertiesYamlBindingTest {
         Properties properties = loadApplicationGitProperties();
 
         assertThat(properties).isNotNull();
-        assertThat(properties.getProperty("face2info.api.deepseek.read-timeout-ms")).isEqualTo("90000");
+        assertThat(properties.getProperty("face2info.api.deepseek.read-timeout-ms")).isEqualTo("120000");
         assertThat(properties.getProperty("face2info.api.deepseek.final-profile-model"))
                 .isEqualTo("${DEEPSEEK_FINAL_PROFILE_MODEL:DeepSeek-V4-Pro}");
     }
@@ -141,11 +141,16 @@ class ApiPropertiesYamlBindingTest {
                 .isEqualTo("${SOPHNET_API_KEY:}");
         assertThat(properties.getProperty("face2info.api.sophnet-vision.models[0]"))
                 .isEqualTo("${SOPHNET_VISION_GEMINI_MODEL:gemini-3.1-pro-preview}");
-        assertThat(properties.containsKey("face2info.api.sophnet-vision.models[1]")).isFalse();
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.models[1]"))
+                .isEqualTo("${SOPHNET_VISION_GPT_MODEL:gpt-5.5}");
+        assertThat(properties.getProperty("face2info.api.sophnet-vision.models[2]"))
+                .isEqualTo("${SOPHNET_VISION_CLAUDE_MODEL:claude-opus-4-7}");
+        assertThat(properties.containsKey("face2info.api.sophnet-vision.models[3]")).isFalse();
         assertThat(properties.getProperty("face2info.api.sophnet-vision.max-evidence-urls")).isEqualTo("8");
         assertThat(properties.getProperty("face2info.api.sophnet-vision.user-prompt"))
-                .contains("public social media accounts")
-                .contains("\"socialAccounts\"");
+                .contains("Visual Ground Truth")
+                .contains("\"visualGroundTruth\"")
+                .contains("comparison reference");
     }
 
     private Properties loadApplicationGitProperties() {

@@ -28,7 +28,9 @@ public final class RetryUtils {
             try {
                 return callable.call();
             } catch (ApiCallException ex) {
-                ApiCallException wrapped = new ApiCallException(name + " 调用失败：" + ex.getMessage(), ex);
+                ApiCallException wrapped = ExceptionSummaryUtils.isTimeout(ex)
+                        ? new ApiCallException("TIMEOUT: " + name + " 调用超时", ex)
+                        : new ApiCallException(name + " 调用失败：" + ex.getMessage(), ex);
                 if (isNonRetryable(ex)) {
                     throw wrapped;
                 }
@@ -40,7 +42,9 @@ public final class RetryUtils {
                 }
                 lastException = new ApiCallException(name + " 调用失败：" + status.value() + " " + ex.getStatusText(), ex);
             } catch (Exception ex) {
-                lastException = new ApiCallException(name + " 调用失败：" + ex.getMessage(), ex);
+                lastException = ExceptionSummaryUtils.isTimeout(ex)
+                        ? new ApiCallException("TIMEOUT: " + name + " 调用超时", ex)
+                        : new ApiCallException(name + " 调用失败：" + ex.getMessage(), ex);
             }
             if (attempt < maxRetries) {
                 long sleepMs = initialBackoffMs * (1L << (attempt - 1));

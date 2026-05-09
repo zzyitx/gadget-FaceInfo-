@@ -157,7 +157,6 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         if (visionOutcome.error() != null) {
             evidence.getErrors().add(visionOutcome.error());
         }
-        webEvidences.addAll(visionOutcome.webEvidences());
 
         ImageMatchExtractionResult imageMatchResult = extractImageMatches(
                 originalImage,
@@ -170,7 +169,8 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
         evidence.setImageMatches(imageMatchResult.matches());
         evidence.setArticleImageMatches(imageMatchResult.articleMatches());
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
-        evidence.setVisionModelSummaries(visionOutcome.pageSummaries());
+        // 视觉模型画像只作为独立数据源展示，不进入主聚合证据，避免模型推断反向污染搜索引擎画像。
+        evidence.setVisionModelSummaries(List.of());
         evidence.setVisionModelResults(visionOutcome.results());
         evidence.setTargetImageUrl(imageUrl);
         evidence.setSeedQueries(extractSeedQueries(lensOutcome.root(), evidence.getWebEvidences(), evidence.getImageMatches()));

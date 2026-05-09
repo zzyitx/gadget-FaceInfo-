@@ -24,6 +24,18 @@ public class FaceInfoResponse {
     @Schema(description = "视觉大模型作为独立数据源生成的人物画像")
     private List<VisionModelPortrait> visionModelPortraits = new ArrayList<>();
 
+    @JsonProperty("candidate_person_portraits")
+    @Schema(description = "搜图候选人物单独文字检索得到的对比画像，不参与主人物聚合")
+    private List<CandidatePersonPortrait> candidatePersonPortraits = new ArrayList<>();
+
+    @JsonProperty("person_portrait_groups")
+    @Schema(description = "疑似人物画像流程分组，包含当前主展示人物和其他候选画像")
+    private List<PersonPortraitGroup> personPortraitGroups = new ArrayList<>();
+
+    @JsonProperty("structured_portraits")
+    @Schema(description = "按人物画像一、人物画像二、人物画像三以及网页来源引用归档后的调试友好结构")
+    private StructuredPortraits structuredPortraits;
+
     @Schema(description = "聚合过程中产生的非阻塞告警信息")
     private List<String> warnings = new ArrayList<>();
 
@@ -47,6 +59,10 @@ public class FaceInfoResponse {
     @JsonProperty("duration_ms")
     @Schema(description = "本次流程总耗时，单位毫秒", example = "3120")
     private Long durationMs;
+
+    @JsonProperty("duration_text")
+    @Schema(description = "流程总用时的可读文本", example = "总共用时0时3分")
+    private String durationText;
 
     public PersonInfo getPerson() {
         return person;
@@ -81,6 +97,33 @@ public class FaceInfoResponse {
 
     public FaceInfoResponse setVisionModelPortraits(List<VisionModelPortrait> visionModelPortraits) {
         this.visionModelPortraits = visionModelPortraits == null ? new ArrayList<>() : visionModelPortraits;
+        return this;
+    }
+
+    public List<CandidatePersonPortrait> getCandidatePersonPortraits() {
+        return candidatePersonPortraits;
+    }
+
+    public FaceInfoResponse setCandidatePersonPortraits(List<CandidatePersonPortrait> candidatePersonPortraits) {
+        this.candidatePersonPortraits = candidatePersonPortraits == null ? new ArrayList<>() : candidatePersonPortraits;
+        return this;
+    }
+
+    public List<PersonPortraitGroup> getPersonPortraitGroups() {
+        return personPortraitGroups;
+    }
+
+    public FaceInfoResponse setPersonPortraitGroups(List<PersonPortraitGroup> personPortraitGroups) {
+        this.personPortraitGroups = personPortraitGroups == null ? new ArrayList<>() : personPortraitGroups;
+        return this;
+    }
+
+    public StructuredPortraits getStructuredPortraits() {
+        return structuredPortraits;
+    }
+
+    public FaceInfoResponse setStructuredPortraits(StructuredPortraits structuredPortraits) {
+        this.structuredPortraits = structuredPortraits;
         return this;
     }
 
@@ -144,6 +187,15 @@ public class FaceInfoResponse {
 
     public FaceInfoResponse setDurationMs(Long durationMs) {
         this.durationMs = durationMs;
+        return this;
+    }
+
+    public String getDurationText() {
+        return durationText;
+    }
+
+    public FaceInfoResponse setDurationText(String durationText) {
+        this.durationText = durationText;
         return this;
     }
 }

@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Schema(description = "视觉大模型直接推断的人物画像")
 public class VisionModelPortrait {
@@ -45,6 +47,10 @@ public class VisionModelPortrait {
 
     @Schema(description = "模型提取的身份或职业标签")
     private List<String> tags = new ArrayList<>();
+
+    @JsonProperty("visual_ground_truth")
+    @Schema(description = "视觉基准：仅从原图提取的硬性视觉指纹，用于和候选人物资料做要素比对")
+    private Map<String, String> visualGroundTruth = new LinkedHashMap<>();
 
     public String getProvider() {
         return provider;
@@ -142,6 +148,15 @@ public class VisionModelPortrait {
 
     public VisionModelPortrait setTags(List<String> tags) {
         this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+        return this;
+    }
+
+    public Map<String, String> getVisualGroundTruth() {
+        return visualGroundTruth;
+    }
+
+    public VisionModelPortrait setVisualGroundTruth(Map<String, String> visualGroundTruth) {
+        this.visualGroundTruth = visualGroundTruth == null ? new LinkedHashMap<>() : new LinkedHashMap<>(visualGroundTruth);
         return this;
     }
 }

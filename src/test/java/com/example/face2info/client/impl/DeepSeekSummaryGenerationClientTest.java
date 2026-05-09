@@ -228,6 +228,49 @@ class DeepSeekSummaryGenerationClientTest {
     }
 
     @Test
+    void shouldRequestEntityExtractionInPageSummaryAndCarryEntitiesIntoFinalProfilePrompt() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("实体信息提取");
+                    assertThat(body).contains("namedEntities");
+                    assertThat(body).contains("entityRelations");
+                    assertThat(body).contains("PERSON、ORG、OCCUPATION");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"summary\\":\\"Ada Lovelace 是数学家。\\",\\"sourceUrl\\":\\"https://example.com/ada\\",\\"title\\":\\"Ada\\",\\"namedEntities\\":[{\\"type\\":\\"PERSON\\",\\"text\\":\\"Ada Lovelace\\",\\"normalizedText\\":\\"Ada Lovelace\\",\\"mentions\\":2}],\\"entityRelations\\":[{\\"subject\\":\\"Ada Lovelace\\",\\"relation\\":\\"AFFILIATED_WITH\\",\\"object\\":\\"Analytical Engine\\",\\"confidence\\":88}]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("多篇文章实体归类");
+                    assertThat(body).contains("namedEntities:");
+                    assertThat(body).contains("Ada Lovelace");
+                    assertThat(body).contains("entityRelations:");
+                    assertThat(body).contains("AFFILIATED_WITH -> Analytical Engine");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Ada Lovelace\\",\\"summary\\":\\"Ada Lovelace 是数学家。\\"}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        PageSummary summary = client.summarizePage("unknown", new PageContent()
+                .setUrl("https://example.com/ada")
+                .setTitle("Ada")
+                .setContent("Ada Lovelace worked on the Analytical Engine."));
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("unknown", List.of(summary));
+
+        assertThat(profile.getResolvedName()).isEqualTo("Ada Lovelace");
+        server.verify();
+    }
+
+    @Test
     void shouldTruncateLongPageContentBeforeSendingPageSummaryRequest() {
         RestTemplate restTemplate = new RestTemplate();
         MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
@@ -282,6 +325,69 @@ class DeepSeekSummaryGenerationClientTest {
         ));
 
         assertThat(profile.getResolvedName()).isEqualTo("Jay Chou");
+        server.verify();
+    }
+
+    @Test
+    void shouldCompactFinalProfilePromptForDeepSeekLatency() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        String longSummary = "S".repeat(460) + "SUMMARY_TAIL_SHOULD_BE_REMOVED";
+
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("submit_person_profile");
+                    assertThat(body).contains("请基于篇级摘要生成人物最终画像");
+                    assertThat(body).doesNotContain("SUMMARY_TAIL_SHOULD_BE_REMOVED");
+                    assertThat(body).doesNotContain("fact-5-should-be-removed");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Rogelio Gama Moreno\\",\\"summary\\":\\"Compact final profile\\"}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.summarizePersonFromPageSummaries("Rogelio Gama Moreno", List.of(
+                new PageSummary()
+                        .setSourceUrl("https://example.com/a")
+                        .setTitle("A")
+                        .setSummary(longSummary)
+                        .setKeyFacts(List.of(
+                                "fact-1".repeat(30),
+                                "fact-2".repeat(30),
+                                "fact-3".repeat(30),
+                                "fact-4".repeat(30),
+                                "fact-5-should-be-removed"))
+        ));
+
+        assertThat(profile.getSummary()).isEqualTo("Compact final profile");
+        server.verify();
+    }
+
+    @Test
+    void shouldThrowCompactTimeoutWhenFinalProfileTimesOut() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        assertThatThrownBy(() -> client.summarizePersonFromPageSummaries("Rogelio Gama Moreno", List.of(
+                new PageSummary().setSourceUrl("https://example.com/a").setSummary("Summary A")
+        )))
+                .isInstanceOf(ApiCallException.class)
+                .hasMessageContaining("TIMEOUT")
+                .hasMessageContaining("DeepSeek 人物总结 调用超时")
+                .hasMessageNotContaining("Read timed out");
+
         server.verify();
     }
 
@@ -597,6 +703,46 @@ class DeepSeekSummaryGenerationClientTest {
 
         assertThat(profile.getSummary()).isEqualTo("Final judged profile");
         assertThat(profile.getEvidenceUrls()).containsExactly("https://example.com/a", "https://example.com/b");
+        server.verify();
+    }
+
+    @Test
+    void shouldCompactComprehensiveJudgementPromptForDeepSeekLatency() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        String longSummary = "A".repeat(420) + "TAIL_SHOULD_BE_REMOVED";
+        String longDraft = "D".repeat(560) + "DRAFT_TAIL_SHOULD_BE_REMOVED";
+
+        server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    String body = ((MockClientHttpRequest) request).getBodyAsString();
+                    assertThat(body).contains("submit_profile_judgement");
+                    assertThat(body).contains("请对 draft 画像做一次轻量综合判断");
+                    assertThat(body).doesNotContain("TAIL_SHOULD_BE_REMOVED");
+                    assertThat(body).doesNotContain("DRAFT_TAIL_SHOULD_BE_REMOVED");
+                })
+                .andRespond(withSuccess("""
+                        {"choices":[{"message":{"content":"{\\"resolvedName\\":\\"Jackie Chan\\",\\"summary\\":\\"Final judged profile\\",\\"evidenceUrls\\":[\\"https://example.com/a\\"]}"}}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        DeepSeekSummaryGenerationClient client =
+                new DeepSeekSummaryGenerationClient(restTemplate, createProperties("test-key"), new ObjectMapper());
+
+        ResolvedPersonProfile profile = client.applyComprehensiveJudgement("Jackie Chan", List.of(
+                new PageSummary()
+                        .setSourceUrl("https://example.com/a")
+                        .setTitle("A")
+                        .setSummary(longSummary)
+                        .setKeyFacts(List.of(
+                                "fact-1".repeat(30),
+                                "fact-2".repeat(30),
+                                "fact-3".repeat(30),
+                                "fact-4".repeat(30),
+                                "fact-5-should-be-removed"))
+        ), new ResolvedPersonProfile().setResolvedName("Jackie Chan").setSummary(longDraft));
+
+        assertThat(profile.getSummary()).isEqualTo("Final judged profile");
         server.verify();
     }
 

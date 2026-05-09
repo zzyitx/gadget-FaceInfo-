@@ -794,10 +794,20 @@
         <div class="section-header">
           <div class="section-title">
             <span class="eyebrow">视觉模型</span>
-            <h2>Sophnet / Gemini 人物画像</h2>
+            <h2>Sophnet 视觉模型人物画像</h2>
           </div>
         </div>
         <div id="visionModelBody"><p class="empty">暂无视觉模型人物画像。</p></div>
+      </section>
+
+      <section class="card" id="candidatePersonCard">
+        <div class="section-header">
+          <div class="section-title">
+            <span class="eyebrow">疑似人物</span>
+            <h2>搜图候选对比画像</h2>
+          </div>
+        </div>
+        <div id="candidatePersonBody"><p class="empty">暂无疑似人物对比画像。</p></div>
       </section>
 
       <section class="card" id="articleCard">
@@ -845,6 +855,7 @@
   const matchesBody = document.getElementById("matchesBody");
   const socialBody = document.getElementById("socialBody");
   const visionModelBody = document.getElementById("visionModelBody");
+  const candidatePersonBody = document.getElementById("candidatePersonBody");
   const articleBody = document.getElementById("articleBody");
 
   matchRailCard.addEventListener("click", handleMatchClick);
@@ -929,6 +940,10 @@
     renderImageMatches(displayMatches, data.status, data.error);
     renderSocial(Array.isArray(person && person.social_accounts) ? person.social_accounts : []);
     renderVisionModelPortraits(Array.isArray(data.vision_model_portraits) ? data.vision_model_portraits : []);
+    renderPersonPortraitGroups(
+      Array.isArray(data.person_portrait_groups) ? data.person_portrait_groups : [],
+      Array.isArray(data.candidate_person_portraits) ? data.candidate_person_portraits : []
+    );
     renderArticleSources(summarySourceArticles, allSortedMatches);
   }
 
@@ -1092,6 +1107,66 @@
       `;
     }).join("");
     visionModelBody.innerHTML = `<div class="vision-grid">${html}</div>`;
+  }
+
+  function renderPersonPortraitGroups(groups, fallbackPortraits) {
+    if (!groups.length) {
+      renderCandidatePersonPortraits(fallbackPortraits);
+      return;
+    }
+    const html = groups.map((group, groupIndex) => {
+      const portraits = Array.isArray(group.portraits) && group.portraits.length
+        ? group.portraits
+        : (group.display_portrait ? [group.display_portrait] : []);
+      const cards = portraits.length
+        ? portraits.map((portrait, index) => renderCandidatePersonPortraitCard(portrait, index)).join("")
+        : '<p class="empty">暂无疑似人物对比画像。</p>';
+      return `
+        <section class="match-group">
+          <div class="match-group-header">
+            <div class="match-group-title-row">
+              <h3 class="match-group-title">${escapeHtml(group.group_name || `人物画像${groupIndex + 1}`)}</h3>
+              ${group.display_portrait ? '<span class="match-aggregate-count">包含当前展示人物</span>' : ""}
+            </div>
+            <p class="match-group-note">页面主展示人物和同一识别流程下的疑似人物画像统一归类展示。</p>
+          </div>
+          <div class="vision-grid">${cards}</div>
+        </section>
+      `;
+    }).join("");
+    candidatePersonBody.innerHTML = html;
+  }
+
+  function renderCandidatePersonPortraits(portraits) {
+    if (!portraits.length) {
+      candidatePersonBody.innerHTML = '<p class="empty">暂无疑似人物对比画像。</p>';
+      return;
+    }
+    const html = portraits.map((portrait, index) => renderCandidatePersonPortraitCard(portrait, index)).join("");
+    candidatePersonBody.innerHTML = `<div class="vision-grid">${html}</div>`;
+  }
+
+  function renderCandidatePersonPortraitCard(portrait, index) {
+    const profile = portrait && portrait.profile ? portrait.profile : {};
+    const match = portrait && portrait.image_match ? portrait.image_match : {};
+    const paragraphs = normalizeParagraphs(profile.summary_paragraphs, profile.summary);
+    const evidenceUrls = Array.isArray(profile.evidence_urls) ? profile.evidence_urls.filter(Boolean) : [];
+    const tags = Array.isArray(profile.tags) ? profile.tags.filter(Boolean) : [];
+    return `
+      <article class="vision-card">
+        <div class="vision-meta">
+          <span class="chip">#${index + 1} ${portrait && portrait.primary_display ? "当前展示" : "疑似人物"}</span>
+          <span class="chip">${escapeHtml((portrait && portrait.candidate_name) || profile.name || "未知姓名")}</span>
+          ${portrait && Number.isFinite(Number(portrait.similarity_score)) ? `<span class="chip">相似度 ${formatPercent(portrait.similarity_score)}</span>` : ""}
+          ${tags.slice(0, 6).map(tag => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}
+        </div>
+        ${match.title || match.source ? `<div class="meta-line">搜图来源：${escapeHtml([match.title, match.source].filter(Boolean).join(" / "))}</div>` : ""}
+        <div class="person-summary">${renderParagraphBlock(paragraphs, "暂无候选人物画像摘要。", "summary-paragraph")}</div>
+        ${evidenceUrls.length ? `<ul class="vision-source-list">${evidenceUrls.slice(0, 8).map((url, sourceIndex) => `
+          <li><span class="article-order">${sourceIndex + 1}</span> <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></li>
+        `).join("")}</ul>` : '<p class="empty">该候选人物暂无可引用来源 URL。</p>'}
+      </article>
+    `;
   }
 
   function buildMatchArticles(matches) {
@@ -1279,6 +1354,12 @@
       } : null,
       vision_model_portraits: Array.isArray(data && data.vision_model_portraits)
         ? data.vision_model_portraits.slice(0, 5)
+        : [],
+      candidate_person_portraits: Array.isArray(data && data.candidate_person_portraits)
+        ? data.candidate_person_portraits.slice(0, 3)
+        : [],
+      person_portrait_groups: Array.isArray(data && data.person_portrait_groups)
+        ? data.person_portrait_groups.slice(0, 3)
         : [],
       image_matches: Array.isArray(data && data.image_matches) ? data.image_matches.slice(0, 20).map(item => ({
         position: item.position || null,

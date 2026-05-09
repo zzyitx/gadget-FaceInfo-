@@ -1,6 +1,7 @@
 package com.example.face2info.service.impl;
 
 import com.example.face2info.entity.internal.AggregationResult;
+import com.example.face2info.entity.internal.CandidatePersonProfile;
 import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.FaceBoundingBox;
@@ -14,6 +15,7 @@ import com.example.face2info.entity.internal.VisionModelSearchResult;
 import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
 import com.example.face2info.entity.response.ImageMatch;
+import com.example.face2info.entity.response.CandidatePersonPortrait;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.service.FaceDetectionService;
 import com.example.face2info.service.FaceRecognitionService;
@@ -24,7 +26,6 @@ import com.example.face2info.util.ImageUtils;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
-import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -342,6 +343,9 @@ class Face2InfoServiceImplTest {
                         .setModel("gemini-3.1-pro-preview")
                         .setCandidateName("Ada Lovelace")
                         .setConfidence(0.91)
+                        .setVisualGroundTruth(java.util.Map.of(
+                                "ageRange", "30-40",
+                                "eyewear", "no glasses"))
                         .setSummary("Ada Lovelace 是公开资料中的人物。")
                         .setCompany("Analytical Engine")
                         .setPosition("Mathematician")
@@ -367,6 +371,126 @@ class Face2InfoServiceImplTest {
         assertThat(response.getVisionModelPortraits().get(0).getCompany()).isEqualTo("Analytical Engine");
         assertThat(response.getVisionModelPortraits().get(0).getSocialAccounts()).hasSize(1);
         assertThat(response.getVisionModelPortraits().get(0).getEvidenceUrls()).containsExactly("https://example.com/ada");
+        assertThat(response.getVisionModelPortraits().get(0).getVisualGroundTruth())
+                .containsEntry("ageRange", "30-40")
+                .containsEntry("eyewear", "no glasses");
+    }
+
+    @Test
+    void shouldGroupDisplayedPersonAndCandidatesIntoSamePortraitFlow() {
+        ServiceFixture fixture = createFixture();
+        RecognitionEvidence evidence = new RecognitionEvidence().setImageMatches(List.of(
+                new ImageMatch()
+                        .setTitle("Ada Lovelace official profile")
+                        .setLink("https://example.com/ada-image")
+                        .setThumbnailUrl("https://example.com/ada.jpg")
+                        .setSimilarityScore(97.5)
+        ));
+        CandidatePersonProfile candidate = new CandidatePersonProfile()
+                .setCandidateName("Grace Hopper")
+                .setImageMatch(new ImageMatch()
+                        .setTitle("Grace Hopper profile")
+                        .setLink("https://example.com/grace-image")
+                        .setThumbnailUrl("https://example.com/grace.jpg")
+                        .setSimilarityScore(91.0))
+                .setProfile(new PersonAggregate()
+                        .setName("Grace Hopper")
+                        .setSummary("Grace Hopper 是计算机科学家。"));
+
+        when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
+        when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
+        when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate()
+                        .setName("Ada Lovelace")
+                        .setSummary("Ada Lovelace 是数学家。"))
+                .setCandidateProfiles(List.of(candidate)));
+
+        FaceInfoResponse response = fixture.service.process(fixture.image);
+
+        assertThat(response.getPerson().getName()).isEqualTo("Ada Lovelace");
+        assertThat(response.getPersonPortraitGroups()).hasSize(1);
+        assertThat(response.getPersonPortraitGroups().get(0).getGroupName()).isEqualTo("人物画像一");
+        assertThat(response.getPersonPortraitGroups().get(0).getDisplayPortrait().getProfile().getName())
+                .isEqualTo("Ada Lovelace");
+        assertThat(response.getPersonPortraitGroups().get(0).getPortraits())
+                .extracting(CandidatePersonPortrait::getCandidateName)
+                .containsExactly("Ada Lovelace", "Grace Hopper");
+        assertThat(response.getPersonPortraitGroups().get(0).getPortraits().get(0).isPrimaryDisplay()).isTrue();
+    }
+
+    @Test
+    void shouldExposeStructuredPortraitLayersForDebuggingAndAggregation() {
+        ServiceFixture fixture = createFixture();
+        RecognitionEvidence evidence = new RecognitionEvidence()
+                .setImageMatches(List.of(new ImageMatch()
+                        .setTitle("Ada Lovelace official profile")
+                        .setLink("https://example.com/ada-image")
+                        .setSource("Image Search")
+                        .setThumbnailUrl("https://example.com/ada.jpg")
+                        .setSimilarityScore(97.5)))
+                .setArticleImageMatches(List.of(new ImageMatch()
+                        .setTitle("Ada Lovelace article")
+                        .setLink("https://example.com/ada-article")
+                        .setSource("Example News")
+                        .setSimilarityScore(88.0)))
+                .setVisionModelResults(List.of(new VisionModelSearchResult()
+                        .setProvider("sophnet_vision")
+                        .setModel("gemini")
+                        .setCandidateName("Ada Lovelace")
+                        .setConfidence(0.91)
+                        .setSummary("模型推断画像")
+                        .setEvidenceUrls(List.of("https://example.com/vision"))));
+        CandidatePersonProfile candidate = new CandidatePersonProfile()
+                .setCandidateName("Grace Hopper")
+                .setImageMatch(new ImageMatch()
+                        .setTitle("Grace Hopper profile")
+                        .setLink("https://example.com/grace-image")
+                        .setSimilarityScore(91.0))
+                .setProfile(new PersonAggregate()
+                        .setName("Grace Hopper")
+                        .setSummary("疑似候选画像。"));
+
+        when(fixture.faceDetectionService.detect(fixture.image)).thenReturn(singleFaceSession());
+        when(fixture.faceRecognitionService.recognize(any())).thenReturn(evidence);
+        when(fixture.informationAggregationService.aggregate(evidence)).thenReturn(new AggregationResult()
+                .setPerson(new PersonAggregate()
+                        .setName("Ada Lovelace")
+                        .setSummary("真实身份画像。")
+                        .setArticleSources(List.of(new com.example.face2info.entity.internal.ArticleCitation()
+                                .setId(1)
+                                .setTitle("Ada Lovelace article")
+                                .setUrl("https://example.com/ada-article")
+                                .setSource("Example News")))
+                        .setEvidenceUrls(List.of("https://example.com/ada-article")))
+                .setSocialAccounts(List.of(new SocialAccount()
+                        .setPlatform("LinkedIn")
+                        .setUsername("ada")
+                        .setUrl("https://linkedin.com/in/ada")
+                        .setSource("google")
+                        .setSuspected(false)
+                        .setConfidence("confirmed")))
+                .setCandidateProfiles(List.of(candidate)));
+
+        FaceInfoResponse response = fixture.service.process(fixture.image);
+
+        assertThat(response.getStructuredPortraits()).isNotNull();
+        assertThat(response.getStructuredPortraits().getPersonPortraitOne().getProfile().getName())
+                .isEqualTo("Ada Lovelace");
+        assertThat(response.getStructuredPortraits().getPersonPortraitOne().getSocialAccounts())
+                .extracting(SocialAccount::getPlatform)
+                .containsExactly("LinkedIn");
+        assertThat(response.getStructuredPortraits().getPersonPortraitTwo().getCandidatePortraits())
+                .extracting(CandidatePersonPortrait::getCandidateName)
+                .containsExactly("Grace Hopper");
+        assertThat(response.getStructuredPortraits().getPersonPortraitThree().getVisionModelPortraits())
+                .extracting(portrait -> portrait.getProvider())
+                .containsExactly("sophnet_vision");
+        assertThat(response.getStructuredPortraits().getSourceReferences().getWebSources())
+                .extracting(source -> source.getUrl())
+                .containsExactly("https://example.com/ada-article");
+        assertThat(response.getStructuredPortraits().getSourceReferences().getImageMatches())
+                .extracting(ImageMatch::getLink)
+                .containsExactly("https://example.com/ada-image");
     }
 
     @Test
@@ -473,6 +597,7 @@ class Face2InfoServiceImplTest {
 
         assertThat(response).isSameAs(cached);
         assertHasFlowTiming(response);
+        assertThat(response.getStructuredPortraits()).isNotNull();
         assertThat(response.getStartedAt()).isNotEqualTo("2000-01-01T00:00:00Z");
         assertThat(response.getFinishedAt()).isNotEqualTo("2000-01-01T00:00:01Z");
         assertThat(response.getDurationMs()).isNotEqualTo(1000L);
@@ -565,8 +690,10 @@ class Face2InfoServiceImplTest {
         assertThat(response.getStartedAt()).isNotBlank();
         assertThat(response.getFinishedAt()).isNotBlank();
         assertThat(response.getDurationMs()).isNotNull().isGreaterThanOrEqualTo(0L);
-        assertThat(Instant.parse(response.getFinishedAt()))
-                .isAfterOrEqualTo(Instant.parse(response.getStartedAt()));
+        assertThat(response.getDurationText()).isNotBlank();
+        assertThat(response.getStartedAt()).matches("\\d{2}时\\d{2}分开始");
+        assertThat(response.getFinishedAt()).matches("\\d{2}时\\d{2}分结束");
+        assertThat(response.getDurationText()).matches("总共用时\\d+时\\d+分");
     }
 
     private ServiceFixture createFixture() {

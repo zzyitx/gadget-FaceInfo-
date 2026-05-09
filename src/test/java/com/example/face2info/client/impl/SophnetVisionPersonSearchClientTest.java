@@ -31,6 +31,8 @@ class SophnetVisionPersonSearchClientTest {
                 .andExpect(header("Authorization", "Bearer test-key"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("vision-model-a")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("https://example.com/face.jpg")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Visual Ground Truth")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("visualGroundTruth")))
                 .andRespond(withSuccess(response("Ada Lovelace", "https://example.com/ada"), MediaType.APPLICATION_JSON));
         server.expect(requestTo("https://www.sophnet.com/api/open-apis/v1/chat/completions"))
                 .andExpect(method(HttpMethod.POST))
@@ -52,6 +54,10 @@ class SophnetVisionPersonSearchClientTest {
         assertThat(results.get(0).getSocialAccounts()).hasSize(1);
         assertThat(results.get(0).getSocialAccounts().get(0).getPlatform()).isEqualTo("X");
         assertThat(results.get(0).getSocialAccounts().get(0).getSource()).isEqualTo("sophnet_vision");
+        assertThat(results.get(0).getVisualGroundTruth())
+                .containsEntry("ageRange", "30-40")
+                .containsEntry("eyewear", "no glasses")
+                .containsEntry("visibleTextLogoBadge", "none visible");
         server.verify();
     }
 
@@ -81,6 +87,15 @@ class SophnetVisionPersonSearchClientTest {
                     "url": "https://x.com/ada",
                     "confidence": "suspected"
                   }],
+                  "visualGroundTruth": {
+                    "ageRange": "30-40",
+                    "skinToneOrEthnicity": "light skin tone",
+                    "hairStyleAndColor": "dark tied hair",
+                    "eyewear": "no glasses",
+                    "clothingStyle": "formal",
+                    "environmentClues": "indoor office",
+                    "visibleTextLogoBadge": "none visible"
+                  },
                   "evidenceUrls": ["%s"],
                   "tags": ["public"],
                   "sourceNotes": ["web"]

@@ -19,6 +19,7 @@ import com.example.face2info.entity.internal.TopicExpansionDecision;
 import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.entity.internal.WebEvidence;
 import com.example.face2info.exception.ApiCallException;
+import com.example.face2info.util.ExceptionSummaryUtils;
 import com.example.face2info.util.LogSanitizer;
 import com.example.face2info.util.RetryUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -85,6 +86,15 @@ public class DeepSeekSummaryGenerationClient {
     private static final int FINAL_PROFILE_KEY_FACT_MAX_CHARS = 160;
     private static final int FINAL_PROFILE_MAX_TAGS = 8;
     private static final int FINAL_PROFILE_DRAFT_FIELD_MAX_CHARS = 900;
+    private static final int PERSON_PROFILE_SUMMARY_MAX_CHARS = 420;
+    private static final int PERSON_PROFILE_MAX_KEY_FACTS = 4;
+    private static final int PERSON_PROFILE_KEY_FACT_MAX_CHARS = 120;
+    private static final int PERSON_PROFILE_MAX_TAGS = 6;
+    private static final int JUDGEMENT_SUMMARY_MAX_CHARS = 360;
+    private static final int JUDGEMENT_MAX_KEY_FACTS = 4;
+    private static final int JUDGEMENT_KEY_FACT_MAX_CHARS = 120;
+    private static final int JUDGEMENT_MAX_TAGS = 6;
+    private static final int JUDGEMENT_DRAFT_FIELD_MAX_CHARS = 500;
     private static final int JUDGEMENT_BATCH_SIZE = 1;
     private static final int JUDGEMENT_BATCH_MIN_SUMMARIES = 2;
 
@@ -181,7 +191,8 @@ public class DeepSeekSummaryGenerationClient {
                 throw ex;
             }
             log.warn("DeepSeek 综合判断超时或失败，改用分批压缩后再判断 fallbackName={} pageSummaryCount={} error={}",
-                    fallbackName, pageSummaries == null ? 0 : pageSummaries.size(), ex.getMessage());
+                    fallbackName, pageSummaries == null ? 0 : pageSummaries.size(),
+                    ExceptionSummaryUtils.compactMessage(ex));
             try {
                 return applyComprehensiveJudgementWithBatches(deepseek, fallbackName, pageSummaries, draftProfile);
             } catch (RuntimeException batchEx) {
@@ -708,7 +719,9 @@ public class DeepSeekSummaryGenerationClient {
                 7. 若输入有效，返回内容语言必须为中文；summary 只能保留正文已有信息，不得编造。禁止使用“本文”“文章”“该文”等文章视角开头，必须直接写人物事实。
                 8. 标题、作者、发布时间、来源平台仅允许从 <source_text> 提取；若正文未明确出现，可返回 unknown。sourceUrl 直接复制 <source_url>。
                 9. 编号代表文章编号，不代表段落编号。当前文章编号为 [%s]，每个句子后都必须追加当前文章编号，且只允许引用当前文章编号。
-                JSON 字段固定为 sourceId、summary、summaryParagraphs、keyFacts、tags、sourceUrl、title、author、publishedAt、sourcePlatform、articleSources。
+                10. 必须增加“实体信息提取”步骤：从正文中抽取 PERSON、ORG、OCCUPATION 三类核心实体，写入 namedEntities；再推断人物与机构、职业、身份之间的明确关系，写入 entityRelations。不要从 URL 或 fallbackName 补实体，实体必须来自正文。
+                11. namedEntities 每项包含 type、text、normalizedText、mentions、contexts、sourceUrl；entityRelations 每项包含 subject、relation、object、confidence、sourceUrl。关系类型优先使用 HAS_OCCUPATION、AFFILIATED_WITH、MENTIONED_WITH。
+                JSON 字段固定为 sourceId、summary、summaryParagraphs、keyFacts、tags、sourceUrl、title、author、publishedAt、sourcePlatform、articleSources、namedEntities、entityRelations。
                 fallbackName: %s
                 articleId: %s
                 title_hint: %s
@@ -754,37 +767,32 @@ public class DeepSeekSummaryGenerationClient {
                         summary: %s
                         keyFacts: %s
                         tags: %s
+                        namedEntities: %s
+                        entityRelations: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
                         summary.getAuthor(),
                         summary.getPublishedAt(),
                         summary.getSourcePlatform(),
-                        truncatePromptValue(summary.getSummary(), FINAL_PROFILE_SUMMARY_MAX_CHARS),
-                        compactPromptList(summary.getKeyFacts(), FINAL_PROFILE_MAX_KEY_FACTS, FINAL_PROFILE_KEY_FACT_MAX_CHARS),
-                        compactPromptList(summary.getTags(), FINAL_PROFILE_MAX_TAGS, 60)
+                        truncatePromptValue(summary.getSummary(), PERSON_PROFILE_SUMMARY_MAX_CHARS),
+                        compactPromptList(summary.getKeyFacts(), PERSON_PROFILE_MAX_KEY_FACTS, PERSON_PROFILE_KEY_FACT_MAX_CHARS),
+                        compactPromptList(summary.getTags(), PERSON_PROFILE_MAX_TAGS, 60),
+                        compactNamedEntities(summary),
+                        compactEntityRelations(summary)
                 ))
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于以下篇级摘要集合生成人物最终画像。
-                必须满足以下约束：
-                1. 只能通过函数 submit_person_profile 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
-                2. 返回内容语言必须为中文。
-                3. 即使证据有限，也必须按既定字段返回 JSON；缺失字段返回空字符串或空数组，不允许自然语言拒答。
-                4. 只能基于下方篇级摘要字段归纳人物信息，禁止根据人名、URL、常识或外部知识补充未在篇级摘要中出现的事实。
-                5. 如果某条篇级摘要的 summary 明确为 [不采纳]:输入内容并非相关的文章，不再生成摘要。必须视为无效来源，禁止引用其信息。
-                6. 编号代表文章编号，不代表段落编号；每个句子后都必须给出来源编号，格式为 [1] 或 [1][3]。
-                7. 禁止引用文章编号表中不存在的编号。
-                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、articleSources、wikipedia、officialWebsite、basicInfo、evidenceUrls。
-                familyBackgroundSummary、familyBackgroundSummaryParagraphs、educationSummary、educationSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs 是兼容旧前端的保留字段，必须返回空字符串或空数组，不得主动产出内容。
-                summary 只写人物自身详细信息与关键事实，必须详细、清晰，不要简短结论，也不要重复 careerSummary 等独立字段的内容。
-                只保留人物自身高置信事实，重点核对姓名、工作单位、工作职位、公开身份、公开社交账号和可核验来源；不得纳入教育经历、成长经历、家庭背景、亲属信息、政治倾向、涉华言论、失信/争议、污点劣迹、情感经历、绯闻、恋情八卦、影视类型盘点、行业现状、主题历史等与当前画像核心需求无关的文章主题。
-                禁止使用“本文”“文章”“该文”等文章视角表述开头，必须直接陈述人物事实。
-                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceIds、sourceUrls、sources。
-                text 中必须直接写内联引用，格式为 [n]，例如“人物简介[1][2]”。不要生成引用来源列表、参考文献列表或单独的“来源：”段落。
-                sourceIds 只能填写文章编号表中已出现的 id；sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
-                basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies；只允许 occupations 写工作职业，education 和 biographies 必须返回空数组。
+                请基于篇级摘要生成人物最终画像，并只通过函数 submit_person_profile 返回 JSON。
+                约束：
+                1. 只使用下方摘要，不根据人名、URL、常识或外部知识补事实；[不采纳] 摘要禁止引用。
+                2. 返回中文；禁止解释、道歉、思考过程、Markdown 和函数外文本；证据不足的字段返回空字符串或空数组。
+                3. 每个事实句保留来源编号，内联引用格式为 [n]，如 [1] 或 [1][3]；不要生成引用来源列表，不得引用文章编号表中不存在的编号。
+                4. summary 写人物自身高置信事实，重点核对姓名、工作单位、职业、公开身份、公开账号和可核验来源。
+                5. 必须执行“多篇文章实体归类”：归并每篇 namedEntities 中同名或同义人物、机构和职业，结合 entityRelations 推论人物与文章内容的联系，并据此判断 resolvedName；不要把只被顺带提到、缺少关系支撑的人物选为最终姓名。
+                6. 不主动产出教育经历、家庭背景、亲属信息、政治倾向、涉华言论、失信/争议、污点劣迹、情感八卦、行业盘点等无关主题。
+                7. *Paragraphs 字段若返回，元素字段固定为 text、sourceIds、sourceUrls、sources；basicInfo 只允许 occupations 写职业，education/biographies 返回空数组。
                 fallbackName: %s
                 文章编号表：
                 %s
@@ -801,31 +809,28 @@ public class DeepSeekSummaryGenerationClient {
                         summary: %s
                         keyFacts: %s
                         tags: %s
+                        namedEntities: %s
+                        entityRelations: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
-                        truncatePromptValue(summary.getSummary(), FINAL_PROFILE_SUMMARY_MAX_CHARS),
-                        compactPromptList(summary.getKeyFacts(), FINAL_PROFILE_MAX_KEY_FACTS, FINAL_PROFILE_KEY_FACT_MAX_CHARS),
-                        compactPromptList(summary.getTags(), FINAL_PROFILE_MAX_TAGS, 60)
+                        truncatePromptValue(summary.getSummary(), PERSON_PROFILE_SUMMARY_MAX_CHARS),
+                        compactPromptList(summary.getKeyFacts(), PERSON_PROFILE_MAX_KEY_FACTS, PERSON_PROFILE_KEY_FACT_MAX_CHARS),
+                        compactPromptList(summary.getTags(), PERSON_PROFILE_MAX_TAGS, 60),
+                        compactNamedEntities(summary),
+                        compactEntityRelations(summary)
                 ))
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于以下“分组子画像/子摘要”生成最终人物画像。
-                必须满足以下约束：
-                1. 只能通过函数 submit_person_profile 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
-                2. 返回内容语言必须为中文。
-                3. 只能合并、去重、归纳下方分组子摘要中的事实，禁止根据人名、URL、常识或外部知识补充未出现的事实。
-                4. 如果不同分组之间存在冲突，保留更具体且有来源编号支撑的信息；无法判断时写成不确定表述。
-                5. 编号代表原始文章编号，不代表分组编号；每个句子后都必须给出来源编号，格式为 [1] 或 [1][3]。
-                6. 禁止引用文章编号表中不存在的编号。
-                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、articleSources、wikipedia、officialWebsite、basicInfo、evidenceUrls。
-                familyBackgroundSummary、familyBackgroundSummaryParagraphs、educationSummary、educationSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs 是兼容旧前端的保留字段，必须返回空字符串或空数组，不得主动产出内容。
-                summary 只写人物自身详细信息与关键事实，必须详细、清晰，不要简短结论，也不要重复 careerSummary 等独立字段的内容。
-                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceIds、sourceUrls、sources。
-                text 中必须直接写内联引用，格式为 [n]，例如“人物简介[1][2]”。不要生成引用来源列表、参考文献列表或单独的“来源：”段落。
-                sourceIds 只能填写文章编号表中已出现的 id；sourceUrls 只能填写下方子摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
-                basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies；只允许 occupations 写工作职业，education 和 biographies 必须返回空数组。
+                请合并以下分组子画像/子摘要，生成最终人物画像，并只通过函数 submit_person_profile 返回 JSON。
+                约束：
+                1. 只合并下方已有事实，不补充外部知识；冲突时保留更具体且有来源编号支撑的信息。
+                2. 返回中文；禁止解释、道歉、思考过程、Markdown 和函数外文本；证据不足字段返回空字符串或空数组。
+                3. 每个事实句保留来源编号，内联引用格式为 [n]，如 [1] 或 [1][3]；不要生成引用来源列表，不得引用文章编号表中不存在的编号。
+                4. 继续保留多篇文章实体归类结论，结合 namedEntities/entityRelations 判断人物与内容联系，避免把无关同名或顺带提及人物合并为最终画像。
+                5. summary 写人物自身高置信事实，不主动产出教育、家庭、政治、争议、情感八卦、行业盘点等无关主题。
+                6. *Paragraphs 字段若返回，元素字段固定为 text、sourceIds、sourceUrls、sources；basicInfo 只允许 occupations 写职业，education/biographies 返回空数组。
                 fallbackName: %s
                 文章编号表：
                 %s
@@ -837,7 +842,8 @@ public class DeepSeekSummaryGenerationClient {
     private String buildJudgementPrompt(String fallbackName,
                                         List<PageSummary> pageSummaries,
                                         ResolvedPersonProfile draftProfile) {
-        String pageSummaryContent = compactProfileInputSummaries(pageSummaries).stream()
+        List<PageSummary> compactSummaries = compactProfileInputSummaries(pageSummaries);
+        String pageSummaryContent = compactSummaries.stream()
                 .map(summary -> """
                         sourceUrl: %s
                         title: %s
@@ -847,37 +853,33 @@ public class DeepSeekSummaryGenerationClient {
                         summary: %s
                         keyFacts: %s
                         tags: %s
+                        namedEntities: %s
+                        entityRelations: %s
                         """.formatted(
                         summary.getSourceUrl(),
                         summary.getTitle(),
                         summary.getAuthor(),
                         summary.getPublishedAt(),
                         summary.getSourcePlatform(),
-                        truncatePromptValue(summary.getSummary(), FINAL_PROFILE_SUMMARY_MAX_CHARS),
-                        compactPromptList(summary.getKeyFacts(), FINAL_PROFILE_MAX_KEY_FACTS, FINAL_PROFILE_KEY_FACT_MAX_CHARS),
-                        compactPromptList(summary.getTags(), FINAL_PROFILE_MAX_TAGS, 60)
+                        truncatePromptValue(summary.getSummary(), JUDGEMENT_SUMMARY_MAX_CHARS),
+                        compactPromptList(summary.getKeyFacts(), JUDGEMENT_MAX_KEY_FACTS, JUDGEMENT_KEY_FACT_MAX_CHARS),
+                        compactPromptList(summary.getTags(), JUDGEMENT_MAX_TAGS, 60),
+                        compactNamedEntities(summary),
+                        compactEntityRelations(summary)
                 ))
                 .collect(Collectors.joining("\n---\n"));
 
         return """
-                请基于页面摘要集合和最终总结草稿进行一次综合判断，输出更稳健的人物最终画像。
-                必须满足以下约束：
-                1. 只能通过函数 submit_profile_judgement 返回结果，禁止输出解释、道歉、思考过程、Markdown 代码块或任何额外文本。
-                2. 返回内容语言必须为中文。
-                3. 即使结论不确定，也必须按既定字段返回 JSON；不允许自然语言拒答。
-                4. 只能基于页面摘要集合与 draft 中已有内容综合判断，禁止根据人名、URL、常识或外部知识补充未出现的事实。
-                5. summary 为 [不采纳]:输入内容并非相关的文章，不再生成摘要。的篇级摘要必须视为无效来源，禁止引用。
-                6. 编号代表文章编号，不代表段落编号；每个句子后都必须给出来源编号，格式为 [1] 或 [1][3]。
-                7. 禁止引用文章编号表中不存在的编号。
-                JSON 字段固定为 resolvedName、description、summary、summaryParagraphs、educationSummary、educationSummaryParagraphs、familyBackgroundSummary、familyBackgroundSummaryParagraphs、careerSummary、careerSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、contactInformationSummary、contactInformationSummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs、keyFacts、tags、articleSources、wikipedia、officialWebsite、basicInfo、evidenceUrls。
-                familyBackgroundSummary、familyBackgroundSummaryParagraphs、educationSummary、educationSummaryParagraphs、chinaRelatedStatementsSummary、chinaRelatedStatementsSummaryParagraphs、politicalTendencySummary、politicalTendencySummaryParagraphs、familyMemberSituationSummary、familyMemberSituationSummaryParagraphs、misconductSummary、misconductSummaryParagraphs 是兼容旧前端的保留字段，必须返回空字符串或空数组，不得主动产出内容。
-                summary 只写人物自身详细信息与关键事实，必须详细、清晰，不要简短结论，也不要重复 careerSummary 等独立字段的内容。
-                只保留人物自身高置信事实，重点核对姓名、工作单位、工作职位、公开身份、公开社交账号和可核验来源；不得纳入教育经历、成长经历、家庭背景、亲属信息、政治倾向、涉华言论、失信/争议、污点劣迹、情感经历、绯闻、恋情八卦、影视类型盘点、行业现状、主题历史等与当前画像核心需求无关的文章主题。
-                禁止使用“本文”“文章”“该文”等文章视角表述开头，必须直接陈述人物事实。
-                所有 *Paragraphs 字段必须返回数组；数组元素字段固定为 text、sourceIds、sourceUrls、sources。
-                text 中必须直接写内联引用，格式为 [n]，例如“人物简介[1][2]”。不要生成引用来源列表、参考文献列表或单独的“来源：”段落。
-                sourceIds 只能填写文章编号表中已出现的 id；sourceUrls 只能填写上方篇级摘要中已出现的 sourceUrl；sources 用于返回当前段落实际引用的来源对象。
-                basicInfo 为对象，字段固定为 birthDate、education、occupations、biographies；只允许 occupations 写工作职业，education 和 biographies 必须返回空数组。
+                请对 draft 画像做一次轻量综合判断，并通过函数 submit_profile_judgement 返回最终 JSON。
+                约束：
+                1. 只使用 draft 和下方页面摘要，不补充外部知识；summary 为 [不采纳] 的来源禁止引用。
+                2. 优先保留 draft 中已有且有证据支撑的字段，只修正冲突、去重和明显不相关内容；缺失字段返回空字符串或空数组。
+                3. 返回中文；禁止解释、道歉、思考过程、Markdown 或函数外文本。
+                4. 每个事实句保留来源编号，格式为 [1] 或 [1][3]；不得引用文章编号表中不存在的编号。
+                5. summary 只写人物自身高置信事实，重点核对姓名、工作单位、职位、公开身份、公开账号和可核验来源。
+                6. 必须复核 namedEntities/entityRelations 的归类结果，推断各候选人物与文章内容的联系，并优先选择与图片证据、文章主题和实体关系共同支撑的人物作为 resolvedName。
+                7. 不主动产出教育经历、家庭背景、亲属信息、政治倾向、涉华言论、失信/争议、污点劣迹、情感八卦、行业盘点等无关主题。
+                8. *Paragraphs 字段若返回，元素字段固定为 text、sourceIds、sourceUrls、sources；basicInfo 只允许 occupations 写职业，education/biographies 返回空数组。
                 fallbackName: %s
                 文章编号表：
                 %s
@@ -891,12 +893,12 @@ public class DeepSeekSummaryGenerationClient {
                 %s
                 """.formatted(
                 fallbackName,
-                buildArticleCitationContext(pageSummaries),
+                buildArticleCitationContext(compactSummaries),
                 draftProfile == null ? null : draftProfile.getResolvedName(),
-                draftProfile == null ? null : truncatePromptValue(draftProfile.getDescription(), FINAL_PROFILE_DRAFT_FIELD_MAX_CHARS),
-                draftProfile == null ? null : truncatePromptValue(draftProfile.getSummary(), FINAL_PROFILE_DRAFT_FIELD_MAX_CHARS),
-                draftProfile == null ? null : compactPromptList(draftProfile.getKeyFacts(), FINAL_PROFILE_MAX_KEY_FACTS, FINAL_PROFILE_KEY_FACT_MAX_CHARS),
-                draftProfile == null ? null : compactPromptList(draftProfile.getTags(), FINAL_PROFILE_MAX_TAGS, 60),
+                draftProfile == null ? null : truncatePromptValue(draftProfile.getDescription(), JUDGEMENT_DRAFT_FIELD_MAX_CHARS),
+                draftProfile == null ? null : truncatePromptValue(draftProfile.getSummary(), JUDGEMENT_DRAFT_FIELD_MAX_CHARS),
+                draftProfile == null ? null : compactPromptList(draftProfile.getKeyFacts(), JUDGEMENT_MAX_KEY_FACTS, JUDGEMENT_KEY_FACT_MAX_CHARS),
+                draftProfile == null ? null : compactPromptList(draftProfile.getTags(), JUDGEMENT_MAX_TAGS, 60),
                 draftProfile == null ? null : draftProfile.getEvidenceUrls(),
                 pageSummaryContent
         );
@@ -930,6 +932,42 @@ public class DeepSeekSummaryGenerationClient {
                 .map(value -> truncatePromptValue(value, maxChars))
                 .distinct()
                 .limit(maxItems)
+                .toList();
+    }
+
+    private List<String> compactNamedEntities(PageSummary summary) {
+        if (summary == null || summary.getNamedEntities() == null || summary.getNamedEntities().isEmpty()) {
+            return List.of();
+        }
+        // 只把实体类型、归一化名称和出现次数喂给终稿模型，压缩 token 的同时保留人物归因判断所需信息。
+        return summary.getNamedEntities().stream()
+                .filter(Objects::nonNull)
+                .filter(entity -> StringUtils.hasText(entity.getText()))
+                .map(entity -> "%s:%s%s".formatted(
+                        firstNonBlank(entity.getType(), "UNKNOWN"),
+                        firstNonBlank(entity.getNormalizedText(), entity.getText()),
+                        entity.getMentions() > 0 ? " x" + entity.getMentions() : ""
+                ))
+                .distinct()
+                .limit(12)
+                .toList();
+    }
+
+    private List<String> compactEntityRelations(PageSummary summary) {
+        if (summary == null || summary.getEntityRelations() == null || summary.getEntityRelations().isEmpty()) {
+            return List.of();
+        }
+        // 关系摘要用于区分“文章主体人物”和“顺带提到的人物”，降低同名或无关人物被合并的概率。
+        return summary.getEntityRelations().stream()
+                .filter(Objects::nonNull)
+                .filter(relation -> StringUtils.hasText(relation.getSubject()) && StringUtils.hasText(relation.getObject()))
+                .map(relation -> "%s: %s -> %s".formatted(
+                        relation.getSubject(),
+                        firstNonBlank(relation.getRelation(), "MENTIONED_WITH"),
+                        relation.getObject()
+                ))
+                .distinct()
+                .limit(12)
                 .toList();
     }
 

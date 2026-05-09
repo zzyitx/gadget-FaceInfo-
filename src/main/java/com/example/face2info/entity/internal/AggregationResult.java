@@ -19,6 +19,9 @@ public class AggregationResult {
     @Schema(description = "聚合得到的社交账号列表")
     private List<SocialAccount> socialAccounts = new ArrayList<>();
 
+    @Schema(description = "搜图候选人物独立对比画像，不参与主人物聚合")
+    private List<CandidatePersonProfile> candidateProfiles = new ArrayList<>();
+
     @Schema(description = "聚合过程中记录的错误信息")
     private List<String> errors = new ArrayList<>();
 
@@ -40,6 +43,15 @@ public class AggregationResult {
 
     public AggregationResult setSocialAccounts(List<SocialAccount> socialAccounts) {
         this.socialAccounts = socialAccounts;
+        return this;
+    }
+
+    public List<CandidatePersonProfile> getCandidateProfiles() {
+        return candidateProfiles;
+    }
+
+    public AggregationResult setCandidateProfiles(List<CandidatePersonProfile> candidateProfiles) {
+        this.candidateProfiles = candidateProfiles == null ? new ArrayList<>() : candidateProfiles;
         return this;
     }
 

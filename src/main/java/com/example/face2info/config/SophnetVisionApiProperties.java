@@ -17,7 +17,9 @@ public class SophnetVisionApiProperties {
     private String baseUrl = "https://www.sophnet.com/api/open-apis/v1/chat/completions";
     private String apiKey;
     private List<String> models = new ArrayList<>(List.of(
-            "gemini-3.1-pro-preview"
+            "gemini-3.1-pro-preview",
+            "gpt-5.5",
+            "claude-opus-4-7"
     ));
     private int connectTimeoutMs = 5000;
     private int readTimeoutMs = 75000;
@@ -25,29 +27,38 @@ public class SophnetVisionApiProperties {
     private long backoffInitialMs = 500L;
     private int maxEvidenceUrls = 8;
     private String systemPrompt = """
-            You are a public-person profile inference assistant. Use the image only as one signal, identify only public figures when evidence is sufficient, and ground the answer in public sources. Return strict JSON only.
+            You are a Visual Ground Truth extractor. Use the original image as a reference object for element comparison, not as an identity source. Return strict JSON only.
             """;
     private String userPrompt = """
-            Identify the most likely public person in the image and infer a structured public profile for comparison testing.
-            Ask in English for: person's name, public social media accounts (X/Twitter, Facebook, Instagram, LinkedIn and other verified public profiles), employer/company, current or notable job title, and concise public biography.
+            Build a Visual Ground Truth reference from the original image for later comparison with candidate profiles.
+            Ignore the person's name predicted from the image. Only fill candidateName when the face is clearly a widely known head of state, senior public politician, or celebrity; otherwise candidateName must be an empty string.
+            Extract hard visual fingerprints that can be checked against other evidence. Do not search the web and do not infer employer, position, social accounts, biography, or URLs from appearance.
             Return strict JSON only, without Markdown, apology, reasoning, or extra text:
             {
-              "candidateName": "Most likely person's name, or empty string if not enough evidence",
+              "candidateName": "",
               "confidence": 0.0,
-              "summary": "Chinese structured summary. Mention uncertainty when evidence is weak.",
-              "company": "Employer or organization, or empty string",
-              "position": "Job title or public role, or empty string",
-              "socialAccounts": [
-                {"platform": "X", "username": "handle", "url": "https://...", "confidence": "confirmed|suspected"}
-              ],
-              "evidenceUrls": ["Public source URL supporting the inference"],
-              "tags": ["public role or occupation"],
-              "sourceNotes": ["Short note describing which public sources/citations were used"]
+              "summary": "Chinese one-sentence note that this module is only a visual reference for element comparison.",
+              "company": "",
+              "position": "",
+              "socialAccounts": [],
+              "visualGroundTruth": {
+                "ageRange": "estimated age range, or unknown",
+                "skinToneOrEthnicity": "visible skin tone / broad ethnicity cue, or unknown",
+                "hairStyleAndColor": "hair style and hair color, or unknown",
+                "eyewear": "glasses / sunglasses / none / unknown",
+                "clothingStyle": "formal / sportswear / uniform / workwear / casual / unknown",
+                "environmentClues": "office / outdoor / vehicle / stage / landmark / unknown",
+                "visibleTextLogoBadge": "visible text, logo, badge, work card, or none visible"
+              },
+              "evidenceUrls": [],
+              "tags": ["visual_ground_truth"],
+              "sourceNotes": ["Only visual facts visible in the uploaded image are used."]
             }
             Requirements:
-            1. Do not identify a private or non-public person from the image.
-            2. Do not invent URLs, employers, positions, or social accounts.
-            3. If sources are insufficient, keep uncertain fields empty and explain the uncertainty in Chinese summary.
-            4. The summary must be in Chinese; field names remain English.
+            1. Treat this module as a comparison reference, not an identity judgment.
+            2. Do not identify private or non-public people.
+            3. Do not invent names, organizations, roles, social accounts, URLs, logos, or badges.
+            4. Mark uncertain or invisible elements as "unknown" or "none visible".
+            5. The summary must be in Chinese; field names remain English.
             """;
 }

@@ -23,12 +23,14 @@ import com.example.face2info.entity.internal.RecognitionEvidence;
 import com.example.face2info.entity.internal.ResolvedPersonProfile;
 import com.example.face2info.entity.internal.SearchLanguageProfile;
 import com.example.face2info.entity.internal.SearchLanguageInferenceResult;
+import com.example.face2info.entity.internal.SearchQueryTask;
 import com.example.face2info.entity.internal.SectionSummaryItem;
 import com.example.face2info.entity.internal.SectionedSummary;
 import com.example.face2info.entity.internal.SerpApiResponse;
 import com.example.face2info.entity.internal.TopicExpansionDecision;
 import com.example.face2info.entity.internal.TopicExpansionQuery;
 import com.example.face2info.entity.internal.WebEvidence;
+import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.entity.response.SocialAccount;
 import com.example.face2info.exception.ApiCallException;
 import com.example.face2info.service.DerivedTopicQueryService;
@@ -662,6 +664,154 @@ class InformationAggregationServiceImplTest {
         verify(googleSearchClient).googleSearch("尼古拉斯·伯恩斯 驻华大使");
         verify(googleSearchClient).googleSearch("尼古拉斯·伯恩斯 驻华大使 涉华言论");
         verify(googleSearchClient).googleSearch("Nicholas Burns Ambassador China policy");
+    }
+
+    @Test
+    void shouldNotRunTextSearchWhenResolvedNameIsGenericNewsLabel() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+        com.example.face2info.service.SearchLanguageProfileService searchLanguageProfileService =
+                mock(com.example.face2info.service.SearchLanguageProfileService.class);
+        MultilingualQueryPlanningService multilingualQueryPlanningService = mock(MultilingualQueryPlanningService.class);
+        DigitalFootprintQueryBuilder digitalFootprintQueryBuilder = mock(DigitalFootprintQueryBuilder.class);
+        PrimarySearchQueryBuilder primarySearchQueryBuilder = mock(PrimarySearchQueryBuilder.class);
+
+        PageSummary directSummary = new PageSummary()
+                .setSourceId(1)
+                .setSourceUrl("https://example.com/news")
+                .setTitle("News")
+                .setSummary("A search result page uses a generic news label.");
+        ResolvedPersonProfile genericProfile = new ResolvedPersonProfile()
+                .setResolvedName("News")
+                .setSummary("Generic news label should not be accepted as a person name.");
+
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(any(), anyList())).thenReturn(genericProfile);
+        when(summaryGenerationClient.applyComprehensiveJudgement(any(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+        when(searchLanguageProfileService.resolveProfile(any(), any())).thenReturn(new SearchLanguageProfile()
+                .setResolvedName("News")
+                .setLanguageCodes(List.of("en")));
+        when(multilingualQueryPlanningService.planSecondaryProfileQueries(any()))
+                .thenReturn(List.of(new SearchQueryTask().setQueryText("News").setQueryKind("secondary_profile")));
+        when(primarySearchQueryBuilder.buildSecondaryProfileQueries(any(), any(), any())).thenReturn(List.of("News"));
+        when(digitalFootprintQueryBuilder.build(anyString(), any())).thenReturn(List.of());
+
+        InformationAggregationServiceImpl service = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                null,
+                executor,
+                createApiProperties(null),
+                mock(DerivedTopicQueryService.class),
+                searchLanguageProfileService,
+                multilingualQueryPlanningService,
+                digitalFootprintQueryBuilder,
+                primarySearchQueryBuilder
+        );
+
+        AggregationResult result = service.aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("News"))
+                .setVisionModelSummaries(List.of(directSummary)));
+
+        assertThat(result.getPerson().getName()).isNull();
+        assertThat(result.getErrors()).isNotEmpty();
+        verify(googleSearchClient, never()).googleSearch("News");
+    }
+
+    @Test
+    void shouldUsePersonEntityFromPageSummaryBeforeGenericSeedFallback() {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageSummary directSummary = new PageSummary()
+                .setSourceId(1)
+                .setSourceUrl("https://example.com/ada")
+                .setTitle("News")
+                .setSummary("Ada Lovelace is described in the article.")
+                .setNamedEntities(List.of(new com.example.face2info.entity.internal.NamedEntity()
+                        .setType("PERSON")
+                        .setText("Ada Lovelace")
+                        .setNormalizedText("Ada Lovelace")
+                        .setMentions(2)
+                        .setSourceUrl("https://example.com/ada")));
+        ResolvedPersonProfile profile = new ResolvedPersonProfile()
+                .setResolvedName("Ada Lovelace")
+                .setSummary("Ada Lovelace profile");
+
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(eq("Ada Lovelace"), anyList()))
+                .thenReturn(profile);
+        when(summaryGenerationClient.applyComprehensiveJudgement(eq("Ada Lovelace"), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+        when(summaryGenerationClient.inferSearchLanguageProfile(anyString(), any()))
+                .thenReturn(new SearchLanguageInferenceResult()
+                        .setRecommendedLanguages(List.of("en"))
+                        .setLocalizedNames(Map.of("en", "Ada Lovelace")));
+        when(googleSearchClient.googleSearch(anyString())).thenReturn(null);
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                googleSearchClient,
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor,
+                createApiProperties(null)
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("News"))
+                .setVisionModelSummaries(List.of(directSummary)));
+
+        assertThat(result.getPerson().getName()).isEqualTo("Ada Lovelace");
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries(eq("Ada Lovelace"), anyList());
+        verify(summaryGenerationClient, never()).summarizePersonFromPageSummaries(eq("News"), anyList());
+        verify(googleSearchClient, never()).googleSearch("News");
+    }
+
+    @Test
+    void shouldLetModelInferNameBeforeUsingSeedTextAsFallbackName() {
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        PageContent page = new PageContent()
+                .setUrl("https://law.illinois.edu/miguel-zaldivar-llm-88-hogan-lovells-ceo-to-deliver-2025-convocation-address/")
+                .setTitle("Miguel Zaldivar LLM 88 Hogan Lovells CEO to deliver 2025 convocation address")
+                .setContent("Miguel Zaldivar is discussed in the article.");
+        PageSummary pageSummary = new PageSummary()
+                .setSourceUrl(page.getUrl())
+                .setTitle(page.getTitle())
+                .setSummary("Miguel Zaldivar is the likely person in this page.")
+                .setNamedEntities(List.of(new com.example.face2info.entity.internal.NamedEntity()
+                        .setType("PERSON")
+                        .setText("Miguel Zaldivar")
+                        .setNormalizedText("Miguel Zaldivar")
+                        .setMentions(2)
+                        .setSourceUrl(page.getUrl())));
+        ResolvedPersonProfile profile = new ResolvedPersonProfile()
+                .setResolvedName("Miguel Zaldivar")
+                .setSummary("Miguel Zaldivar profile");
+
+        when(jinaReaderClient.readPages(List.of(page.getUrl()))).thenReturn(List.of(page));
+        when(summaryGenerationClient.summarizePage("unknown", page)).thenReturn(pageSummary);
+        when(summaryGenerationClient.summarizePersonFromPageSummaries("Miguel Zaldivar", List.of(pageSummary))).thenReturn(profile);
+        when(summaryGenerationClient.applyComprehensiveJudgement("Miguel Zaldivar", List.of(pageSummary), profile))
+                .thenReturn(profile);
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                mock(GoogleSearchClient.class),
+                mock(SerpApiClient.class),
+                jinaReaderClient,
+                summaryGenerationClient,
+                executor
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("Miguel Zaldivar LLM 88 Hogan Lovells CEO"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl(page.getUrl()))));
+
+        assertThat(result.getPerson().getName()).isEqualTo("Miguel Zaldivar");
+        verify(summaryGenerationClient).summarizePage("unknown", page);
+        verify(summaryGenerationClient, never()).summarizePage("Miguel Zaldivar", page);
+        verify(summaryGenerationClient).summarizePersonFromPageSummaries("Miguel Zaldivar", List.of(pageSummary));
     }
 
     @Test
@@ -1510,6 +1660,66 @@ class InformationAggregationServiceImplTest {
         assertThat(result.getPerson().getDescription()).isNull();
         assertThat(result.getWarnings()).containsExactly("正文智能处理暂时不可用");
         verify(summaryGenerationClient, never()).summarizePersonFromPageSummaries(anyString(), anyList());
+    }
+
+    @Test
+    void shouldKeepTopThreeImageCandidatesAsIndependentComparisonProfiles() throws Exception {
+        GoogleSearchClient googleSearchClient = mock(GoogleSearchClient.class);
+        JinaReaderClient jinaReaderClient = mock(JinaReaderClient.class);
+        SummaryGenerationClient summaryGenerationClient = mock(SummaryGenerationClient.class);
+
+        when(googleSearchClient.googleSearch("Ada Lovelace")).thenReturn(searchResponse("https://example.com/ada"));
+        when(googleSearchClient.googleSearch("Grace Hopper")).thenReturn(searchResponse("https://example.com/grace"));
+        when(googleSearchClient.googleSearch("Alan Turing")).thenReturn(searchResponse("https://example.com/alan"));
+        when(jinaReaderClient.readPages(anyList())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<String> urls = invocation.getArgument(0);
+            return urls.stream()
+                    .map(url -> new PageContent().setUrl(url).setTitle(url).setContent("content " + url))
+                    .toList();
+        });
+        when(summaryGenerationClient.summarizePage(anyString(), any(PageContent.class))).thenAnswer(invocation -> {
+            String name = invocation.getArgument(0);
+            PageContent page = invocation.getArgument(1);
+            return new PageSummary()
+                    .setSourceUrl(page.getUrl())
+                    .setTitle(page.getTitle())
+                    .setSummary(name + " page summary");
+        });
+        when(summaryGenerationClient.summarizePersonFromPageSummaries(anyString(), anyList())).thenAnswer(invocation -> {
+            String name = invocation.getArgument(0);
+            @SuppressWarnings("unchecked")
+            List<PageSummary> summaries = invocation.getArgument(1);
+            return new ResolvedPersonProfile()
+                    .setResolvedName(name)
+                    .setSummary(name + " profile")
+                    .setEvidenceUrls(summaries.stream().map(PageSummary::getSourceUrl).toList());
+        });
+        when(summaryGenerationClient.applyComprehensiveJudgement(anyString(), anyList(), any(ResolvedPersonProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(2));
+
+        AggregationResult result = new InformationAggregationServiceImpl(
+                googleSearchClient, mock(SerpApiClient.class),
+                jinaReaderClient, summaryGenerationClient, executor, createApiProperties(null)
+        ).aggregate(new RecognitionEvidence()
+                .setSeedQueries(List.of("main person"))
+                .setWebEvidences(List.of(new WebEvidence().setUrl("https://example.com/main")))
+                .setArticleImageMatches(List.of(
+                        imageMatch("Ada Lovelace official profile", 97.0),
+                        imageMatch("Grace Hopper profile", 95.0),
+                        imageMatch("Alan Turing biography", 93.0),
+                        imageMatch("Katherine Johnson profile", 91.0)
+                )));
+
+        assertThat(result.getCandidateProfiles()).hasSize(3);
+        assertThat(result.getCandidateProfiles()).extracting("candidateName")
+                .containsExactly("Ada Lovelace", "Grace Hopper", "Alan Turing");
+        assertThat(result.getCandidateProfiles().get(0).getProfile().getSummary())
+                .isEqualTo("Ada Lovelace profile (由大模型总结)");
+        verify(googleSearchClient).googleSearch("Ada Lovelace");
+        verify(googleSearchClient).googleSearch("Grace Hopper");
+        verify(googleSearchClient).googleSearch("Alan Turing");
+        verify(googleSearchClient, never()).googleSearch("Katherine Johnson");
     }
 
     @Test
@@ -2990,6 +3200,21 @@ class InformationAggregationServiceImplTest {
                         .setTitle("Article " + url)
                         .setContent("content " + url))
                 .toList();
+    }
+
+    private ImageMatch imageMatch(String title, double similarityScore) {
+        return new ImageMatch()
+                .setTitle(title)
+                .setLink("https://example.com/image/" + title.replaceAll("\\s+", "-"))
+                .setSource("search")
+                .setThumbnailUrl("https://example.com/thumb/" + title.replaceAll("\\s+", "-") + ".jpg")
+                .setSimilarityScore(similarityScore);
+    }
+
+    private SerpApiResponse searchResponse(String url) throws Exception {
+        return new SerpApiResponse().setRoot(new ObjectMapper().readTree("""
+                {"organic":[{"title":"Profile","link":"%s","snippet":"profile snippet"}]}
+                """.formatted(url)));
     }
 
     private InformationAggregationServiceImpl serviceWithBuilder(GoogleSearchClient googleSearchClient,

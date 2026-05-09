@@ -1,6 +1,7 @@
 package com.example.face2info.config;
 
 import com.example.face2info.util.LogSanitizer;
+import com.example.face2info.util.ExceptionSummaryUtils;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -118,10 +119,21 @@ public class RestTemplateConfig {
                 throws IOException {
             String maskedUrl = LogSanitizer.maskUrl(request.getURI().toString());
             log.info("外部接口请求开始 method={} url={}", request.getMethod(), maskedUrl);
-            ClientHttpResponse response = execution.execute(request, body);
-            log.info("外部接口请求完成 method={} url={} status={}",
-                    request.getMethod(), maskedUrl, response.getStatusCode());
-            return response;
+            try {
+                ClientHttpResponse response = execution.execute(request, body);
+                log.info("外部接口请求完成 method={} url={} status={}",
+                        request.getMethod(), maskedUrl, response.getStatusCode());
+                return response;
+            } catch (IOException ex) {
+                if (ExceptionSummaryUtils.isTimeout(ex)) {
+                    log.warn("外部接口请求超时 method={} url={} error={}",
+                            request.getMethod(), maskedUrl, ExceptionSummaryUtils.compactMessage(ex));
+                } else {
+                    log.warn("外部接口请求失败 method={} url={} error={}",
+                            request.getMethod(), maskedUrl, ExceptionSummaryUtils.compactMessage(ex));
+                }
+                throw ex;
+            }
         }
     }
 }

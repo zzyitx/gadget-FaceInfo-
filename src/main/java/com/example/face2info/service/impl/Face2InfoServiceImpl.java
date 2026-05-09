@@ -2,10 +2,12 @@ package com.example.face2info.service.impl;
 
 import com.example.face2info.entity.internal.AggregationResult;
 import com.example.face2info.entity.internal.ArticleCitation;
+import com.example.face2info.entity.internal.CandidatePersonProfile;
 import com.example.face2info.entity.internal.DetectedFace;
 import com.example.face2info.entity.internal.DetectionSession;
 import com.example.face2info.entity.internal.ParagraphSource;
 import com.example.face2info.entity.internal.ParagraphSummaryItem;
+import com.example.face2info.entity.internal.PersonAggregate;
 import com.example.face2info.entity.internal.PersonBasicInfo;
 import com.example.face2info.entity.internal.PreparedImageResult;
 import com.example.face2info.entity.internal.RecognitionEvidence;
@@ -14,10 +16,19 @@ import com.example.face2info.entity.internal.VisionModelSearchResult;
 import com.example.face2info.entity.response.DetectedFaceResponse;
 import com.example.face2info.entity.response.FaceInfoResponse;
 import com.example.face2info.entity.response.FaceSelectionPayload;
+import com.example.face2info.entity.response.ImageMatch;
 import com.example.face2info.entity.response.PersonBasicInfoResponse;
 import com.example.face2info.entity.response.PersonInfo;
 import com.example.face2info.entity.response.ArticleSourceBadge;
+import com.example.face2info.entity.response.CandidatePersonPortrait;
 import com.example.face2info.entity.response.ParagraphWithSources;
+import com.example.face2info.entity.response.PersonPortraitGroup;
+import com.example.face2info.entity.response.PersonPortraitOneLayer;
+import com.example.face2info.entity.response.PersonPortraitThreeLayer;
+import com.example.face2info.entity.response.PersonPortraitTwoLayer;
+import com.example.face2info.entity.response.PortraitSourceReferenceGroup;
+import com.example.face2info.entity.response.SocialAccount;
+import com.example.face2info.entity.response.StructuredPortraits;
 import com.example.face2info.entity.response.VisionModelPortrait;
 import com.example.face2info.service.Face2InfoService;
 import com.example.face2info.service.FaceDetectionService;
@@ -35,9 +46,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -47,6 +62,8 @@ import java.util.regex.Pattern;
 public class Face2InfoServiceImpl implements Face2InfoService {
 
     private static final Pattern INLINE_CITATION_PATTERN = Pattern.compile("\\[(\\d+)]");
+    private static final DateTimeFormatter FLOW_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH时mm分")
+            .withZone(ZoneId.systemDefault());
     private static final String NO_FACE_ERROR = "未检测到人脸，请更换更清晰的人脸图片。";
     private static final String MISSING_CROP_ERROR = "所选人脸裁剪图缺失或为空。";
     private static final String BLANK_DETECTION_ID_ERROR = "detection_id 不能为空。";
@@ -195,6 +212,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         FaceInfoResponse cachedResponse = imageResultCacheService.getFaceInfoResponse(image);
         if (cachedResponse != null) {
             log.info("最终响应命中缓存 fileName={} status={}", image.getOriginalFilename(), cachedResponse.getStatus());
+            ensureStructuredPortraits(cachedResponse);
             return cachedResponse;
         }
 
@@ -207,15 +225,29 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         List<String> warnings = normalizeMessages(safeCopy(aggregationResult == null ? null : aggregationResult.getWarnings()));
         // 把高清化降级 warning 合并到最终响应，保证前端能感知“已回退原图继续处理”。
         warnings.addAll(normalizeMessages(safeCopy(preparationWarnings)));
+        List<ImageMatch> imageMatches = evidence == null ? List.of() : safeCopy(evidence.getImageMatches());
+        List<ImageMatch> articleImageMatches = evidence == null ? List.of() : safeCopy(evidence.getArticleImageMatches());
+        List<VisionModelPortrait> visionModelPortraits = toVisionModelPortraits(evidence == null ? null : evidence.getVisionModelResults());
+        List<CandidatePersonPortrait> candidatePortraits = toCandidatePersonPortraits(aggregationResult == null ? null : aggregationResult.getCandidateProfiles());
 
         if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
             List<String> errors = normalizeMessages(safeCopy(evidence == null ? null : evidence.getErrors()));
             errors.addAll(combinedErrors);
             FaceInfoResponse response = new FaceInfoResponse()
                     .setPerson(null)
-                    .setImageMatches(evidence == null ? null : evidence.getImageMatches())
-                    .setArticleImageMatches(evidence == null ? null : evidence.getArticleImageMatches())
-                    .setVisionModelPortraits(toVisionModelPortraits(evidence == null ? null : evidence.getVisionModelResults()))
+                    .setImageMatches(imageMatches)
+                    .setArticleImageMatches(articleImageMatches)
+                    .setVisionModelPortraits(visionModelPortraits)
+                    .setCandidatePersonPortraits(candidatePortraits)
+                    .setPersonPortraitGroups(List.of())
+                    .setStructuredPortraits(toStructuredPortraits(
+                            null,
+                            List.of(),
+                            candidatePortraits,
+                            visionModelPortraits,
+                            imageMatches,
+                            articleImageMatches,
+                            warnings))
                     .setWarnings(warnings)
                     .setStatus("failed")
                     .setError(errors.isEmpty() ? PERSON_RESOLUTION_ERROR : String.join("; ", errors));
@@ -223,32 +255,28 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             return response;
         }
 
-        PersonInfo person = new PersonInfo()
-                .setName(aggregationResult.getPerson().getName())
-                .setImageUrl(aggregationResult.getPerson().getImageUrl())
-                .setSummary(aggregationResult.getPerson().getSummary())
-                .setSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getSummaryParagraphs()))
-                .setFamilyBackgroundSummary(aggregationResult.getPerson().getFamilyBackgroundSummary())
-                .setFamilyBackgroundSummaryParagraphs(toResponseParagraphs(aggregationResult.getPerson().getFamilyBackgroundSummaryParagraphs()))
-                .setTags(aggregationResult.getPerson().getTags())
-                .setArticleSources(toResponseArticleSources(aggregationResult.getPerson().getArticleSources()))
-                .setTotalArticlesRead(aggregationResult.getPerson().getTotalArticlesRead())
-                .setFinalArticlesUsed(aggregationResult.getPerson().getFinalArticlesUsed())
-                .setEvidenceUrls(aggregationResult.getPerson().getEvidenceUrls())
-                .setWikipedia(aggregationResult.getPerson().getWikipedia())
-                .setOfficialWebsite(aggregationResult.getPerson().getOfficialWebsite())
-                .setBasicInfo(toResponseBasicInfo(aggregationResult.getPerson().getBasicInfo()))
-                .setSocialAccounts(aggregationResult.getSocialAccounts());
+        PersonInfo person = toPersonInfo(aggregationResult.getPerson(), aggregationResult.getSocialAccounts());
         assignCitationIndexes(person);
+        List<PersonPortraitGroup> portraitGroups = toPersonPortraitGroups(person, candidatePortraits, evidence);
 
         // 只要有 errors/warnings 就返回 partial，向调用方明确“结果可用但不完整”。
         String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
         FaceInfoResponse response = new FaceInfoResponse()
                 .setPerson(person)
                 .setWarnings(warnings)
-                .setImageMatches(evidence == null ? null : evidence.getImageMatches())
-                .setArticleImageMatches(evidence == null ? null : evidence.getArticleImageMatches())
-                .setVisionModelPortraits(toVisionModelPortraits(evidence == null ? null : evidence.getVisionModelResults()))
+                .setImageMatches(imageMatches)
+                .setArticleImageMatches(articleImageMatches)
+                .setVisionModelPortraits(visionModelPortraits)
+                .setCandidatePersonPortraits(candidatePortraits)
+                .setPersonPortraitGroups(portraitGroups)
+                .setStructuredPortraits(toStructuredPortraits(
+                        person,
+                        aggregationResult.getSocialAccounts(),
+                        candidatePortraits,
+                        visionModelPortraits,
+                        imageMatches,
+                        articleImageMatches,
+                        warnings))
                 .setStatus(status)
                 .setError(combinedErrors.isEmpty() ? null : String.join("; ", combinedErrors));
         imageResultCacheService.cacheFaceInfoResponse(image, response);
@@ -289,9 +317,10 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         Instant finishedAt = Instant.now();
         long durationMs = Duration.ofNanos(System.nanoTime() - startNanoTime).toMillis();
         FaceInfoResponse timedResponse = response == null ? new FaceInfoResponse().setStatus("failed") : response;
-        timedResponse.setStartedAt(startedAt.toString())
-                .setFinishedAt(finishedAt.toString())
-                .setDurationMs(durationMs);
+        timedResponse.setStartedAt(formatFlowTime(startedAt, "开始"))
+                .setFinishedAt(formatFlowTime(finishedAt, "结束"))
+                .setDurationMs(durationMs)
+                .setDurationText(formatDurationText(durationMs));
         log.info("{}结束 requestTag={} status={} startedAt={} finishedAt={} durationMs={}",
                 flowName,
                 requestTag,
@@ -300,6 +329,15 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 timedResponse.getFinishedAt(),
                 timedResponse.getDurationMs());
         return timedResponse;
+    }
+
+    private String formatFlowTime(Instant time, String suffix) {
+        return FLOW_TIME_FORMATTER.format(time) + suffix;
+    }
+
+    private String formatDurationText(long durationMs) {
+        long totalMinutes = Math.max(0L, Duration.ofMillis(durationMs).toMinutes());
+        return "总共用时" + (totalMinutes / 60) + "时" + (totalMinutes % 60) + "分";
     }
 
     private MultipartFile toMultipartFile(SelectedFaceCrop crop) {
@@ -346,6 +384,23 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setError(normalizeUserMessage(error));
     }
 
+    private void ensureStructuredPortraits(FaceInfoResponse response) {
+        if (response == null || response.getStructuredPortraits() != null) {
+            return;
+        }
+        // 旧缓存可能没有分层画像字段，返回前补齐新结构，避免缓存命中时前端拿到不兼容响应。
+        PersonInfo person = response.getPerson();
+        List<SocialAccount> socialAccounts = person == null ? List.of() : person.getSocialAccounts();
+        response.setStructuredPortraits(toStructuredPortraits(
+                person,
+                socialAccounts,
+                response.getCandidatePersonPortraits(),
+                response.getVisionModelPortraits(),
+                response.getImageMatches(),
+                response.getArticleImageMatches(),
+                response.getWarnings()));
+    }
+
     private List<String> collectPreparationWarnings(PreparedImageResult preparedImageResult, DetectionSession session) {
         List<String> warnings = new ArrayList<>();
         if (preparedImageResult != null && StringUtils.hasText(preparedImageResult.getWarning())) {
@@ -358,7 +413,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return warnings;
     }
 
-    private List<String> safeCopy(List<String> values) {
+    private <T> List<T> safeCopy(List<T> values) {
         return new ArrayList<>(values == null ? List.of() : values);
     }
 
@@ -425,9 +480,198 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                     .setSocialAccounts(result.getSocialAccounts())
                     .setEvidenceUrls(result.getEvidenceUrls())
                     .setSourceNotes(result.getSourceNotes())
-                    .setTags(result.getTags()));
+                    .setTags(result.getTags())
+                    .setVisualGroundTruth(result.getVisualGroundTruth()));
         }
         return portraits;
+    }
+
+    private List<CandidatePersonPortrait> toCandidatePersonPortraits(List<CandidatePersonProfile> candidates) {
+        List<CandidatePersonPortrait> portraits = new ArrayList<>();
+        if (candidates == null) {
+            return portraits;
+        }
+        for (CandidatePersonProfile candidate : candidates) {
+            if (candidate == null) {
+                continue;
+            }
+            PersonInfo profile = toPersonInfo(candidate.getProfile(), List.of());
+            assignCitationIndexes(profile);
+            Double similarityScore = candidate.getImageMatch() == null ? null : candidate.getImageMatch().getSimilarityScore();
+            portraits.add(new CandidatePersonPortrait()
+                    .setPortraitId("candidate-" + (portraits.size() + 1))
+                    .setCandidateName(candidate.getCandidateName())
+                    .setPrimaryDisplay(false)
+                    .setSimilarityScore(similarityScore)
+                    .setImageMatch(candidate.getImageMatch())
+                    .setProfile(profile));
+        }
+        return portraits;
+    }
+
+    private List<PersonPortraitGroup> toPersonPortraitGroups(PersonInfo displayPerson,
+                                                             List<CandidatePersonPortrait> candidates,
+                                                             RecognitionEvidence evidence) {
+        if (displayPerson == null || !StringUtils.hasText(displayPerson.getName())) {
+            return List.of();
+        }
+        // 主画像始终放在第一位，候选画像只作为交叉验证材料，避免把同名候选误提升为最终人物。
+        ImageMatch displayMatch = bestImageMatch(evidence);
+        CandidatePersonPortrait displayPortrait = new CandidatePersonPortrait()
+                .setPortraitId("portrait-1")
+                .setCandidateName(displayPerson.getName())
+                .setPrimaryDisplay(true)
+                .setSimilarityScore(displayMatch == null ? null : displayMatch.getSimilarityScore())
+                .setImageMatch(displayMatch)
+                .setProfile(displayPerson);
+        List<CandidatePersonPortrait> portraits = new ArrayList<>();
+        portraits.add(displayPortrait);
+        String displayKey = normalizePortraitName(displayPerson.getName());
+        if (candidates != null) {
+            for (CandidatePersonPortrait candidate : candidates) {
+                if (candidate == null) {
+                    continue;
+                }
+                String candidateKey = normalizePortraitName(firstNonBlank(
+                        candidate.getCandidateName(),
+                        candidate.getProfile() == null ? null : candidate.getProfile().getName()
+                ));
+                if (StringUtils.hasText(candidateKey) && candidateKey.equals(displayKey)) {
+                    continue;
+                }
+                portraits.add(candidate);
+            }
+        }
+        return List.of(new PersonPortraitGroup()
+                .setGroupId("person-portrait-group-1")
+                .setGroupName("人物画像一")
+                .setDisplayPortrait(displayPortrait)
+                .setPortraits(portraits));
+    }
+
+    private StructuredPortraits toStructuredPortraits(PersonInfo person,
+                                                      List<SocialAccount> socialAccounts,
+                                                      List<CandidatePersonPortrait> candidatePortraits,
+                                                      List<VisionModelPortrait> visionModelPortraits,
+                                                      List<ImageMatch> imageMatches,
+                                                      List<ImageMatch> articleImageMatches,
+                                                      List<String> warnings) {
+        List<SocialAccount> accounts = socialAccounts == null ? List.of() : socialAccounts;
+        // 分层结构保留同一份证据的不同可信度视角：已确认画像、疑似线索、视觉模型推断和来源引用。
+        return new StructuredPortraits()
+                .setPersonPortraitOne(new PersonPortraitOneLayer()
+                        .setProfile(person)
+                        .setSocialAccounts(confirmedSocialAccounts(accounts)))
+                .setPersonPortraitTwo(new PersonPortraitTwoLayer()
+                        .setCandidatePortraits(candidatePortraits)
+                        .setSuspectedSocialAccounts(suspectedSocialAccounts(accounts)))
+                .setPersonPortraitThree(new PersonPortraitThreeLayer()
+                        .setVisionModelPortraits(visionModelPortraits))
+                .setSourceReferences(new PortraitSourceReferenceGroup()
+                        .setWebSources(person == null ? List.of() : person.getArticleSources())
+                        .setEvidenceUrls(person == null ? List.of() : person.getEvidenceUrls())
+                        .setImageMatches(imageMatches)
+                        .setArticleImageMatches(articleImageMatches)
+                        .setWarnings(warnings));
+    }
+
+    private List<SocialAccount> confirmedSocialAccounts(List<SocialAccount> accounts) {
+        if (accounts == null) {
+            return List.of();
+        }
+        return accounts.stream()
+                .filter(account -> account != null && !isSuspectedSocialAccount(account))
+                .toList();
+    }
+
+    private List<SocialAccount> suspectedSocialAccounts(List<SocialAccount> accounts) {
+        if (accounts == null) {
+            return List.of();
+        }
+        return accounts.stream()
+                .filter(this::isSuspectedSocialAccount)
+                .toList();
+    }
+
+    private boolean isSuspectedSocialAccount(SocialAccount account) {
+        if (account == null) {
+            return false;
+        }
+        // Maigret 枚举账号属于疑似线索，不与 Google/RocketReach 等已确认来源混在同一层展示。
+        if (Boolean.TRUE.equals(account.getSuspected())) {
+            return true;
+        }
+        String confidence = account.getConfidence();
+        if (StringUtils.hasText(confidence) && confidence.toLowerCase(Locale.ROOT).contains("suspected")) {
+            return true;
+        }
+        String source = account.getSource();
+        return StringUtils.hasText(source) && "maigret".equalsIgnoreCase(source.trim());
+    }
+
+    private ImageMatch bestImageMatch(RecognitionEvidence evidence) {
+        List<ImageMatch> matches = evidence == null || evidence.getImageMatches() == null
+                ? List.of()
+                : evidence.getImageMatches();
+        return matches.stream()
+                .filter(incident -> incident != null)
+                .max(Comparator.comparingDouble(ImageMatch::getSimilarityScore))
+                .orElse(null);
+    }
+
+    private String normalizePortraitName(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (StringUtils.hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private PersonInfo toPersonInfo(PersonAggregate aggregate, List<SocialAccount> socialAccounts) {
+        if (aggregate == null) {
+            return null;
+        }
+        return new PersonInfo()
+                .setName(aggregate.getName())
+                .setImageUrl(aggregate.getImageUrl())
+                .setSummary(aggregate.getSummary())
+                .setSummaryParagraphs(toResponseParagraphs(aggregate.getSummaryParagraphs()))
+                .setEducationSummary(aggregate.getEducationSummary())
+                .setEducationSummaryParagraphs(toResponseParagraphs(aggregate.getEducationSummaryParagraphs()))
+                .setFamilyBackgroundSummary(aggregate.getFamilyBackgroundSummary())
+                .setFamilyBackgroundSummaryParagraphs(toResponseParagraphs(aggregate.getFamilyBackgroundSummaryParagraphs()))
+                .setCareerSummary(aggregate.getCareerSummary())
+                .setCareerSummaryParagraphs(toResponseParagraphs(aggregate.getCareerSummaryParagraphs()))
+                .setChinaRelatedStatementsSummary(aggregate.getChinaRelatedStatementsSummary())
+                .setChinaRelatedStatementsSummaryParagraphs(toResponseParagraphs(aggregate.getChinaRelatedStatementsSummaryParagraphs()))
+                .setPoliticalTendencySummary(aggregate.getPoliticalTendencySummary())
+                .setPoliticalTendencySummaryParagraphs(toResponseParagraphs(aggregate.getPoliticalTendencySummaryParagraphs()))
+                .setContactInformationSummary(aggregate.getContactInformationSummary())
+                .setContactInformationSummaryParagraphs(toResponseParagraphs(aggregate.getContactInformationSummaryParagraphs()))
+                .setFamilyMemberSituationSummary(aggregate.getFamilyMemberSituationSummary())
+                .setFamilyMemberSituationSummaryParagraphs(toResponseParagraphs(aggregate.getFamilyMemberSituationSummaryParagraphs()))
+                .setMisconductSummary(aggregate.getMisconductSummary())
+                .setMisconductSummaryParagraphs(toResponseParagraphs(aggregate.getMisconductSummaryParagraphs()))
+                .setTags(aggregate.getTags())
+                .setArticleSources(toResponseArticleSources(aggregate.getArticleSources()))
+                .setTotalArticlesRead(aggregate.getTotalArticlesRead())
+                .setFinalArticlesUsed(aggregate.getFinalArticlesUsed())
+                .setEvidenceUrls(aggregate.getEvidenceUrls())
+                .setWikipedia(aggregate.getWikipedia())
+                .setOfficialWebsite(aggregate.getOfficialWebsite())
+                .setBasicInfo(toResponseBasicInfo(aggregate.getBasicInfo()))
+                .setSocialAccounts(socialAccounts);
     }
 
     private List<ParagraphWithSources> toResponseParagraphs(List<ParagraphSummaryItem> paragraphs) {

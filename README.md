@@ -50,7 +50,7 @@
 
 - `Serper`：用于 Google Lens 反向搜图和 Google 搜索
 - `SerpAPI`：当前用于 Yandex 和 Bing 图片搜索
-- `Sophnet Gemini 视觉模型`：作为图像直连大模型数据源，按模板化英文提示词输出中文结构化人物画像、社交账号、工作单位、职位和来源引用
+- `Sophnet 视觉模型`：作为“人物画像三/视觉基准（Visual Ground Truth）”数据源，默认并行调用 `gemini-3.1-pro-preview`、`gpt-5.5`、`claude-opus-4-7`，只从原图提取年龄段、肤色/种族、发型/发色、眼镜、穿着风格、环境线索和可见文字/Logo/工牌等硬性视觉指纹；除知名政要/明星外忽略模型给出的人名，结果仅作为候选人物要素比对参照物，不参与主人物聚合
 - `RocketReach`：用于按人物姓名补充职业资料与公开社交主页候选
 - `Jina Reader`：用于抓取网页正文
 - `Kimi`：用于正文篇级总结和最终人物总结
@@ -63,7 +63,7 @@
 - 多脸阶段只负责检测与选脸，不做搜索结果图片相似度比对
 - 搜索结果图片回流后，会调用 `CompreFace verification` 做同脸去重和相似度打分
 
-相关配置位于 [application.yml](/D:/ideaProject/gadget/src/main/resources/application.yml)。
+相关配置位于 [application.yml](/D:/ideaProject/gadget-FaceInfo-/src/main/resources/application.yml)。
 
 ## 安全配置
 
@@ -77,6 +77,8 @@
 - `SOPHNET_API_KEY`
 - `DEEPSEEK_MODEL`
 - `ROCKETREACH_API_KEY`
+- `SOPHNET_VISION_GPT_MODEL`
+- `SOPHNET_VISION_CLAUDE_MODEL`
 
 本地调试时，可通过以下方式注入敏感配置：
 
