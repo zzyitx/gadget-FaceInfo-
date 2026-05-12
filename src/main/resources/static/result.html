@@ -313,6 +313,41 @@
       overflow-wrap: anywhere;
     }
 
+    .portrait-image {
+      width: 100%;
+      max-height: 220px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .fingerprint-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+    }
+
+    .fingerprint-item {
+      display: grid;
+      gap: 4px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      min-width: 0;
+    }
+
+    .fingerprint-key {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .fingerprint-value {
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+
     .vision-source-list {
       display: grid;
       gap: 8px;
@@ -1089,6 +1124,7 @@
           </div>
           ${meta.length ? `<div class="meta-line">${meta.map(escapeHtml).join(" / ")}</div>` : ""}
           <p class="vision-summary">${escapeHtml(portrait.summary || "暂无中文摘要。")}</p>
+          ${renderFingerprintBlock(portrait.visual_ground_truth, "原图硬性视觉指纹")}
           ${accounts.length ? `<div class="list">${accounts.map((account, accountIndex) => `
             <article class="item">
               <div class="chip">账号 ${accountIndex + 1} ${escapeHtml(account.platform || "未知平台")}</div>
@@ -1152,6 +1188,7 @@
     const paragraphs = normalizeParagraphs(profile.summary_paragraphs, profile.summary);
     const evidenceUrls = Array.isArray(profile.evidence_urls) ? profile.evidence_urls.filter(Boolean) : [];
     const tags = Array.isArray(profile.tags) ? profile.tags.filter(Boolean) : [];
+    const portraitImageUrl = (portrait && portrait.portrait_image_url) || match.thumbnail_url || profile.image_url || "";
     return `
       <article class="vision-card">
         <div class="vision-meta">
@@ -1160,13 +1197,47 @@
           ${portrait && Number.isFinite(Number(portrait.similarity_score)) ? `<span class="chip">相似度 ${formatPercent(portrait.similarity_score)}</span>` : ""}
           ${tags.slice(0, 6).map(tag => `<span class="chip">${escapeHtml(tag)}</span>`).join("")}
         </div>
+        ${portraitImageUrl ? `<img class="portrait-image" src="${escapeHtml(portraitImageUrl)}" alt="${escapeHtml((portrait && portrait.candidate_name) || profile.name || "人物画像")}" onerror="this.style.display='none'">` : '<p class="empty">暂无可展示人像。</p>'}
         ${match.title || match.source ? `<div class="meta-line">搜图来源：${escapeHtml([match.title, match.source].filter(Boolean).join(" / "))}</div>` : ""}
+        ${renderFingerprintBlock(portrait && portrait.visual_fingerprint, "展示人像硬性视觉指纹")}
+        ${renderFingerprintBlock(portrait && portrait.portrait_three_cross_comparison, "与人物画像三交叉对比")}
         <div class="person-summary">${renderParagraphBlock(paragraphs, "暂无候选人物画像摘要。", "summary-paragraph")}</div>
         ${evidenceUrls.length ? `<ul class="vision-source-list">${evidenceUrls.slice(0, 8).map((url, sourceIndex) => `
           <li><span class="article-order">${sourceIndex + 1}</span> <a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a></li>
         `).join("")}</ul>` : '<p class="empty">该候选人物暂无可引用来源 URL。</p>'}
       </article>
     `;
+  }
+
+  function renderFingerprintBlock(fingerprint, title) {
+    const entries = Object.entries(fingerprint || {}).filter(([, value]) => value);
+    if (!entries.length) return "";
+    return `
+      <div class="fingerprint-block">
+        <div class="meta-line">${escapeHtml(title)}</div>
+        <div class="fingerprint-grid">
+          ${entries.map(([key, value]) => `
+            <div class="fingerprint-item">
+              <span class="fingerprint-key">${escapeHtml(formatFingerprintKey(key))}</span>
+              <strong class="fingerprint-value">${escapeHtml(String(value))}</strong>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function formatFingerprintKey(key) {
+    const labels = {
+      ageRange: "估计年龄段",
+      skinToneEthnicity: "肤色/种族",
+      hairStyleColor: "发型/发色",
+      eyewear: "是否佩戴眼镜",
+      clothingStyle: "穿着风格",
+      environmentClues: "环境线索",
+      visibleTextLogoBadge: "可见文字/Logo/工牌"
+    };
+    return labels[key] || key;
   }
 
   function buildMatchArticles(matches) {

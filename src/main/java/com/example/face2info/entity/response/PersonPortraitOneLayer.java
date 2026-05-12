@@ -20,6 +20,10 @@ public class PersonPortraitOneLayer {
     @Schema(description = "已确认或较高可信度的社交账号")
     private List<SocialAccount> socialAccounts = new ArrayList<>();
 
+    @JsonProperty("candidate_portraits")
+    @Schema(description = "人物画像一展示区中的当前人物和疑似人物人像，包含视觉指纹和画像三交叉对比")
+    private List<CandidatePersonPortrait> candidatePortraits = new ArrayList<>();
+
     public String getPortraitLabel() {
         return portraitLabel;
     }
@@ -44,6 +48,15 @@ public class PersonPortraitOneLayer {
 
     public PersonPortraitOneLayer setSocialAccounts(List<SocialAccount> socialAccounts) {
         this.socialAccounts = socialAccounts == null ? new ArrayList<>() : new ArrayList<>(socialAccounts);
+        return this;
+    }
+
+    public List<CandidatePersonPortrait> getCandidatePortraits() {
+        return candidatePortraits;
+    }
+
+    public PersonPortraitOneLayer setCandidatePortraits(List<CandidatePersonPortrait> candidatePortraits) {
+        this.candidatePortraits = candidatePortraits == null ? new ArrayList<>() : new ArrayList<>(candidatePortraits);
         return this;
     }
 }

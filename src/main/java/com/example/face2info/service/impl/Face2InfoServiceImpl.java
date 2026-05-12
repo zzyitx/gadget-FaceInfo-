@@ -229,6 +229,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         List<ImageMatch> articleImageMatches = evidence == null ? List.of() : safeCopy(evidence.getArticleImageMatches());
         List<VisionModelPortrait> visionModelPortraits = toVisionModelPortraits(evidence == null ? null : evidence.getVisionModelResults());
         List<CandidatePersonPortrait> candidatePortraits = toCandidatePersonPortraits(aggregationResult == null ? null : aggregationResult.getCandidateProfiles());
+        applyPortraitThreeCrossComparison(candidatePortraits, visionModelPortraits);
 
         if (aggregationResult == null || aggregationResult.getPerson() == null || !StringUtils.hasText(aggregationResult.getPerson().getName())) {
             List<String> errors = normalizeMessages(safeCopy(evidence == null ? null : evidence.getErrors()));
@@ -258,6 +259,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         PersonInfo person = toPersonInfo(aggregationResult.getPerson(), aggregationResult.getSocialAccounts());
         assignCitationIndexes(person);
         List<PersonPortraitGroup> portraitGroups = toPersonPortraitGroups(person, candidatePortraits, evidence);
+        portraitGroups.forEach(group -> applyPortraitThreeCrossComparison(group.getPortraits(), visionModelPortraits));
 
         // 只要有 errors/warnings 就返回 partial，向调用方明确“结果可用但不完整”。
         String status = (!combinedErrors.isEmpty() || !warnings.isEmpty()) ? "partial" : "success";
@@ -498,12 +500,18 @@ public class Face2InfoServiceImpl implements Face2InfoService {
             PersonInfo profile = toPersonInfo(candidate.getProfile(), List.of());
             assignCitationIndexes(profile);
             Double similarityScore = candidate.getImageMatch() == null ? null : candidate.getImageMatch().getSimilarityScore();
+            String portraitImageUrl = firstNonBlank(
+                    profile == null ? null : profile.getImageUrl(),
+                    candidate.getImageMatch() == null ? null : candidate.getImageMatch().getThumbnailUrl()
+            );
             portraits.add(new CandidatePersonPortrait()
                     .setPortraitId("candidate-" + (portraits.size() + 1))
                     .setCandidateName(candidate.getCandidateName())
                     .setPrimaryDisplay(false)
                     .setSimilarityScore(similarityScore)
                     .setImageMatch(candidate.getImageMatch())
+                    .setPortraitImageUrl(portraitImageUrl)
+                    .setVisualFingerprint(candidate.getImageMatch() == null ? Map.of() : candidate.getImageMatch().getVisualFingerprint())
                     .setProfile(profile));
         }
         return portraits;
@@ -523,6 +531,8 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                 .setPrimaryDisplay(true)
                 .setSimilarityScore(displayMatch == null ? null : displayMatch.getSimilarityScore())
                 .setImageMatch(displayMatch)
+                .setPortraitImageUrl(firstNonBlank(displayPerson.getImageUrl(), displayMatch == null ? null : displayMatch.getThumbnailUrl()))
+                .setVisualFingerprint(displayMatch == null ? Map.of() : displayMatch.getVisualFingerprint())
                 .setProfile(displayPerson);
         List<CandidatePersonPortrait> portraits = new ArrayList<>();
         portraits.add(displayPortrait);
@@ -561,6 +571,7 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         return new StructuredPortraits()
                 .setPersonPortraitOne(new PersonPortraitOneLayer()
                         .setProfile(person)
+                        .setCandidatePortraits(buildPortraitOneCandidates(person, candidatePortraits, imageMatches, visionModelPortraits))
                         .setSocialAccounts(confirmedSocialAccounts(accounts)))
                 .setPersonPortraitTwo(new PersonPortraitTwoLayer()
                         .setCandidatePortraits(candidatePortraits)
@@ -573,6 +584,43 @@ public class Face2InfoServiceImpl implements Face2InfoService {
                         .setImageMatches(imageMatches)
                         .setArticleImageMatches(articleImageMatches)
                         .setWarnings(warnings));
+    }
+
+    private List<CandidatePersonPortrait> buildPortraitOneCandidates(PersonInfo person,
+                                                                      List<CandidatePersonPortrait> candidatePortraits,
+                                                                      List<ImageMatch> imageMatches,
+                                                                      List<VisionModelPortrait> visionModelPortraits) {
+        List<CandidatePersonPortrait> portraits = new ArrayList<>();
+        if (person != null && StringUtils.hasText(person.getName())) {
+            ImageMatch displayMatch = bestImageMatch(imageMatches);
+            portraits.add(new CandidatePersonPortrait()
+                    .setPortraitId("portrait-1")
+                    .setCandidateName(person.getName())
+                    .setPrimaryDisplay(true)
+                    .setSimilarityScore(displayMatch == null ? null : displayMatch.getSimilarityScore())
+                    .setImageMatch(displayMatch)
+                    .setPortraitImageUrl(firstNonBlank(person.getImageUrl(), displayMatch == null ? null : displayMatch.getThumbnailUrl()))
+                    .setVisualFingerprint(displayMatch == null ? Map.of() : displayMatch.getVisualFingerprint())
+                    .setProfile(person));
+        }
+        String displayKey = normalizePortraitName(person == null ? null : person.getName());
+        if (candidatePortraits != null) {
+            for (CandidatePersonPortrait candidate : candidatePortraits) {
+                if (candidate == null) {
+                    continue;
+                }
+                String candidateKey = normalizePortraitName(firstNonBlank(
+                        candidate.getCandidateName(),
+                        candidate.getProfile() == null ? null : candidate.getProfile().getName()
+                ));
+                if (StringUtils.hasText(candidateKey) && candidateKey.equals(displayKey)) {
+                    continue;
+                }
+                portraits.add(candidate);
+            }
+        }
+        applyPortraitThreeCrossComparison(portraits, visionModelPortraits);
+        return portraits;
     }
 
     private List<SocialAccount> confirmedSocialAccounts(List<SocialAccount> accounts) {
@@ -613,10 +661,71 @@ public class Face2InfoServiceImpl implements Face2InfoService {
         List<ImageMatch> matches = evidence == null || evidence.getImageMatches() == null
                 ? List.of()
                 : evidence.getImageMatches();
+        return bestImageMatch(matches);
+    }
+
+    private ImageMatch bestImageMatch(List<ImageMatch> matches) {
+        if (matches == null) {
+            return null;
+        }
         return matches.stream()
                 .filter(incident -> incident != null)
                 .max(Comparator.comparingDouble(ImageMatch::getSimilarityScore))
                 .orElse(null);
+    }
+
+    private void applyPortraitThreeCrossComparison(List<CandidatePersonPortrait> portraits,
+                                                   List<VisionModelPortrait> visionModelPortraits) {
+        Map<String, String> portraitThreeFingerprint = firstVisualGroundTruth(visionModelPortraits);
+        if (portraits == null || portraits.isEmpty() || portraitThreeFingerprint.isEmpty()) {
+            return;
+        }
+        for (CandidatePersonPortrait portrait : portraits) {
+            if (portrait == null) {
+                continue;
+            }
+            portrait.setPortraitThreeCrossComparison(compareVisualFingerprints(
+                    portrait.getVisualFingerprint(),
+                    portraitThreeFingerprint
+            ));
+        }
+    }
+
+    private Map<String, String> firstVisualGroundTruth(List<VisionModelPortrait> portraits) {
+        if (portraits == null) {
+            return Map.of();
+        }
+        for (VisionModelPortrait portrait : portraits) {
+            if (portrait != null && portrait.getVisualGroundTruth() != null && !portrait.getVisualGroundTruth().isEmpty()) {
+                return portrait.getVisualGroundTruth();
+            }
+        }
+        return Map.of();
+    }
+
+    private Map<String, String> compareVisualFingerprints(Map<String, String> portraitOne,
+                                                          Map<String, String> portraitThree) {
+        if (portraitThree == null || portraitThree.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> comparison = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : portraitThree.entrySet()) {
+            String key = entry.getKey();
+            String baselineValue = entry.getValue();
+            if (!StringUtils.hasText(key) || !StringUtils.hasText(baselineValue)) {
+                continue;
+            }
+            String candidateValue = portraitOne == null ? null : portraitOne.get(key);
+            if (!StringUtils.hasText(candidateValue)) {
+                comparison.put(key, "缺少画像一指纹：画像三=" + baselineValue);
+                continue;
+            }
+            boolean matched = candidateValue.trim().equalsIgnoreCase(baselineValue.trim());
+            comparison.put(key, (matched ? "一致" : "不一致")
+                    + "：画像一=" + candidateValue.trim()
+                    + "；画像三=" + baselineValue.trim());
+        }
+        return comparison;
     }
 
     private String normalizePortraitName(String value) {

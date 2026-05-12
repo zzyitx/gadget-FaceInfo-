@@ -3,6 +3,9 @@ package com.example.face2info.entity.response;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Schema(description = "搜图引擎图片匹配结果")
 public class ImageMatch {
 
@@ -33,6 +36,10 @@ public class ImageMatch {
     @JsonProperty("aggregated_count")
     @Schema(description = "被聚合进当前主图的高相似度图片数量，仅 aggregated_primary=true 时大于 0", example = "4")
     private int aggregatedCount;
+
+    @JsonProperty("visual_fingerprint")
+    @Schema(description = "从该展示图片提取的硬性视觉指纹，仅包含图中可见事实")
+    private Map<String, String> visualFingerprint = new LinkedHashMap<>();
 
     public int getPosition() {
         return position;
@@ -103,6 +110,15 @@ public class ImageMatch {
 
     public ImageMatch setAggregatedCount(int aggregatedCount) {
         this.aggregatedCount = aggregatedCount;
+        return this;
+    }
+
+    public Map<String, String> getVisualFingerprint() {
+        return visualFingerprint;
+    }
+
+    public ImageMatch setVisualFingerprint(Map<String, String> visualFingerprint) {
+        this.visualFingerprint = visualFingerprint == null ? new LinkedHashMap<>() : new LinkedHashMap<>(visualFingerprint);
         return this;
     }
 }

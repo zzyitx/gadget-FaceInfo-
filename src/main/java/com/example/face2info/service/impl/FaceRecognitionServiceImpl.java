@@ -44,6 +44,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
 
     private static final int MAX_IMAGE_MATCHES = 10;
     private static final int MAX_SEED_QUERIES = 3;
+    private static final int MAX_DISPLAYED_PORTRAIT_FINGERPRINT_IMAGES = 3;
     private static final double AGGREGATED_PRIMARY_THRESHOLD = 60.0;
     private static final double SOFT_REVIEW_THRESHOLD = 70.0;
     private static final double MIN_SIMILARITY_SCORE = 65.0;
@@ -166,6 +167,7 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                 yandexSimilarOutcome.root(),
                 bingOutcome.root()
         );
+        enrichDisplayedPortraitImageFingerprints(imageMatchResult);
         evidence.setImageMatches(imageMatchResult.matches());
         evidence.setArticleImageMatches(imageMatchResult.articleMatches());
         evidence.setWebEvidences(deduplicateWebEvidence(webEvidences));
@@ -585,9 +587,69 @@ public class FaceRecognitionServiceImpl implements FaceRecognitionService {
                     .setThumbnailUrl(match.getThumbnailUrl())
                     .setSimilarityScore(match.getSimilarityScore())
                     .setAggregatedPrimary(match.getAggregatedPrimary())
-                    .setAggregatedCount(match.getAggregatedCount()));
+                    .setAggregatedCount(match.getAggregatedCount())
+                    .setVisualFingerprint(match.getVisualFingerprint()));
         }
         return copies;
+    }
+
+    private void enrichDisplayedPortraitImageFingerprints(ImageMatchExtractionResult imageMatchResult) {
+        if (imageMatchResult == null || imageMatchResult.articleMatches() == null || imageMatchResult.articleMatches().isEmpty()) {
+            return;
+        }
+        Map<String, Map<String, String>> fingerprintByImageUrl = new LinkedHashMap<>();
+        int enrichedCount = 0;
+        for (ImageMatch match : imageMatchResult.articleMatches()) {
+            if (match == null || !StringUtils.hasText(match.getThumbnailUrl())) {
+                continue;
+            }
+            if (enrichedCount >= MAX_DISPLAYED_PORTRAIT_FINGERPRINT_IMAGES) {
+                break;
+            }
+            Map<String, String> fingerprint = extractVisualFingerprint(match.getThumbnailUrl());
+            if (fingerprint.isEmpty()) {
+                continue;
+            }
+            match.setVisualFingerprint(fingerprint);
+            fingerprintByImageUrl.put(match.getThumbnailUrl(), fingerprint);
+            enrichedCount++;
+        }
+        if (fingerprintByImageUrl.isEmpty() || imageMatchResult.matches() == null) {
+            return;
+        }
+        for (ImageMatch match : imageMatchResult.matches()) {
+            if (match == null || !StringUtils.hasText(match.getThumbnailUrl())) {
+                continue;
+            }
+            Map<String, String> fingerprint = fingerprintByImageUrl.get(match.getThumbnailUrl());
+            if (fingerprint != null) {
+                match.setVisualFingerprint(fingerprint);
+            }
+        }
+    }
+
+    private Map<String, String> extractVisualFingerprint(String imageUrl) {
+        try {
+            List<VisionModelSearchResult> results = visionPersonSearchClient.searchPersonByImageUrl(imageUrl);
+            if (results == null || results.isEmpty()) {
+                return Map.of();
+            }
+            Map<String, String> merged = new LinkedHashMap<>();
+            for (VisionModelSearchResult result : results) {
+                if (result == null || result.getVisualGroundTruth() == null) {
+                    continue;
+                }
+                result.getVisualGroundTruth().forEach((key, value) -> {
+                    if (StringUtils.hasText(key) && StringUtils.hasText(value)) {
+                        merged.putIfAbsent(key, value);
+                    }
+                });
+            }
+            return merged;
+        } catch (RuntimeException ex) {
+            log.warn("展示人像视觉指纹提取失败 imageUrl={} error={}", imageUrl, ex.getMessage(), ex);
+            return Map.of();
+        }
     }
 
     /**
