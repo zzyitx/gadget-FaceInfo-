@@ -5,7 +5,9 @@ import com.example.face2info.util.ExceptionSummaryUtils;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.routing.DefaultProxyRoutePlanner;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.http.protocol.HttpContext;
 import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +24,8 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.net.URI;
+import java.util.Locale;
 
 @Configuration
 public class RestTemplateConfig {
@@ -93,14 +97,53 @@ public class RestTemplateConfig {
         RequestConfig.Builder configBuilder = RequestConfig.custom()
                 .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
                 .setResponseTimeout(Timeout.ofMilliseconds(readTimeout));
+        CloseableHttpClient httpClient;
         ApiProperties.Proxy proxy = properties.getApi().getProxy();
         if (proxy.isEnabled() && proxy.getHost() != null && proxy.getPort() != null) {
-            configBuilder.setProxy(new HttpHost(proxy.getHost(), proxy.getPort()));
+            HttpHost proxyHost = new HttpHost(proxy.getHost(), proxy.getPort());
+            httpClient = HttpClients.custom()
+                    .setDefaultRequestConfig(configBuilder.build())
+                    .setRoutePlanner(new DefaultProxyRoutePlanner(proxyHost) {
+                        @Override
+                        protected HttpHost determineProxy(HttpHost target, HttpContext context) {
+                            return shouldBypassProxy(toUri(target)) ? null : proxyHost;
+                        }
+                    })
+                    .build();
+        } else {
+            httpClient = HttpClients.custom()
+                    .setDefaultRequestConfig(configBuilder.build())
+                    .build();
         }
-        CloseableHttpClient httpClient = HttpClients.custom()
-                .setDefaultRequestConfig(configBuilder.build())
-                .build();
         return new HttpComponentsClientHttpRequestFactory(httpClient);
+    }
+
+    boolean shouldBypassProxy(URI uri) {
+        if (uri == null || uri.getHost() == null) {
+            return false;
+        }
+        String host = uri.getHost().toLowerCase(Locale.ROOT);
+        if ("localhost".equals(host) || "::1".equals(host) || "0:0:0:0:0:0:0:1".equals(host)) {
+            return true;
+        }
+        if (host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.")
+                || host.startsWith("169.254.")) {
+            return true;
+        }
+        String[] parts = host.split("\\.");
+        if (parts.length == 4 && "172".equals(parts[0])) {
+            try {
+                int second = Integer.parseInt(parts[1]);
+                return second >= 16 && second <= 31;
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+        }
+        return host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:");
+    }
+
+    private URI toUri(HttpHost target) {
+        return URI.create(target.getSchemeName() + "://" + target.getHostName());
     }
 
     private RestTemplate buildRestTemplate(int connectTimeout, int readTimeout, ApiProperties properties) {

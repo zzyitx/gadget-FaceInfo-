@@ -10,7 +10,7 @@ import lombok.Setter;
 @Setter
 public class KimiApiProperties {
 
-    private String baseUrl = "https://api.moonshot.cn/v1/chat/completions";
+    private String baseUrl;
     private String apiKey;
     private String model = "moonshot-v1-8k";
     private int connectTimeoutMs = 5000;

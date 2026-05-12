@@ -78,12 +78,15 @@ public class DeepSeekRealtimeTranslationClient implements RealtimeTranslationCli
                 "model", translation.getModel(),
                 "max_tokens", 256,
                 "temperature", 0,
-                "system", firstNonBlank(translation.getSystemPrompt(),
-                        "你是搜索查询翻译助手。只返回翻译后的单行查询词，不要解释、不要加引号、不要补充说明。"),
-                "messages", List.of(Map.of(
-                        "role", "user",
-                        "content", buildTranslationPrompt(query, targetLanguageCode)
-                ))
+                "messages", List.of(
+                        Map.of(
+                                "role", "system",
+                                "content", firstNonBlank(translation.getSystemPrompt(),
+                                        "你是搜索查询翻译助手。只返回翻译后的单行查询词，不要解释、不要加引号、不要补充说明。")),
+                        Map.of(
+                                "role", "user",
+                                "content", buildTranslationPrompt(query, targetLanguageCode))
+                )
         );
     }
 
@@ -99,6 +102,10 @@ public class DeepSeekRealtimeTranslationClient implements RealtimeTranslationCli
     private String parseTranslatedText(JsonNode body, String sourceQuery) {
         if (body == null) {
             throw new ApiCallException("EMPTY_RESPONSE: 实时翻译响应为空");
+        }
+        String chatCompletionText = body.path("choices").path(0).path("message").path("content").asText(null);
+        if (StringUtils.hasText(chatCompletionText)) {
+            return validateTranslatedText(chatCompletionText, sourceQuery);
         }
         JsonNode contentNode = body.path("content");
         if (!contentNode.isArray()) {
@@ -117,7 +124,11 @@ public class DeepSeekRealtimeTranslationClient implements RealtimeTranslationCli
                 builder.append(text.trim());
             }
         }
-        String translated = normalizeQuery(builder.toString());
+        return validateTranslatedText(builder.toString(), sourceQuery);
+    }
+
+    private String validateTranslatedText(String rawText, String sourceQuery) {
+        String translated = normalizeQuery(rawText);
         if (!StringUtils.hasText(translated)) {
             throw new ApiCallException("TRANSLATION_INVALID: 实时翻译结果为空");
         }

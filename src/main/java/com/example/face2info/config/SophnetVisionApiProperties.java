@@ -14,7 +14,7 @@ import java.util.List;
 public class SophnetVisionApiProperties {
 
     private boolean enabled;
-    private String baseUrl = "https://www.sophnet.com/api/open-apis/v1/chat/completions";
+    private String baseUrl;
     private String apiKey;
     private List<String> models = new ArrayList<>(List.of(
             "gemini-3.1-pro-preview",

@@ -27,7 +27,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "face2info.api.summary", name = "provider", havingValue = "kimi")
+@ConditionalOnExpression("'${face2info.api.summary.provider:noop}' == 'kimi' || '${face2info.api.summary.provider:noop}' == 'deepseek'")
 public class KimiSummaryGenerationClient implements SummaryGenerationClient {
 
     private static final String PAGE_SUMMARY_FUNCTION_NAME = "submit_page_summary";

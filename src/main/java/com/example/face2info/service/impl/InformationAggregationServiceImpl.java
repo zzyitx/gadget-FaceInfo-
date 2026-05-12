@@ -195,6 +195,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
     private final JinaReaderClient jinaReaderClient;
     private final SummaryGenerationClient summaryGenerationClient;
     private final DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient;
+    private final SummaryGenerationClient kimiFallbackSummaryGenerationClient;
     private final ThreadPoolTaskExecutor executor;
     private final ApiProperties properties;
     private final DerivedTopicQueryService derivedTopicQueryService;
@@ -213,6 +214,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                              JinaReaderClient jinaReaderClient,
                                              SummaryGenerationClient summaryGenerationClient,
                                              @Nullable DeepSeekSummaryGenerationClient deepSeekSummaryGenerationClient,
+                                             @Qualifier("kimiSummaryGenerationClient") @Nullable SummaryGenerationClient kimiSummaryGenerationClient,
                                              @Qualifier("face2InfoExecutor") ThreadPoolTaskExecutor executor,
                                              ApiProperties properties,
                                              DerivedTopicQueryService derivedTopicQueryService,
@@ -228,6 +230,11 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         this.jinaReaderClient = jinaReaderClient;
         this.summaryGenerationClient = summaryGenerationClient;
         this.deepSeekSummaryGenerationClient = deepSeekSummaryGenerationClient;
+        this.kimiFallbackSummaryGenerationClient = resolveKimiFallbackSummaryGenerationClient(
+                summaryGenerationClient,
+                deepSeekSummaryGenerationClient,
+                kimiSummaryGenerationClient
+        );
         this.executor = executor;
         this.properties = properties;
         this.derivedTopicQueryService = derivedTopicQueryService;
@@ -255,7 +262,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       @Nullable OsintSocialAccountClient osintSocialAccountClient,
                                       @Nullable RocketReachClient rocketReachClient) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
-                deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
+                deepSeekSummaryGenerationClient, null, executor, properties, derivedTopicQueryService,
                 searchLanguageProfileService, multilingualQueryPlanningService, digitalFootprintQueryBuilder,
                 primarySearchQueryBuilder, osintSocialAccountClient, rocketReachClient, new NoopFaceEntityAssociationClient());
     }
@@ -274,7 +281,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                                       PrimarySearchQueryBuilder primarySearchQueryBuilder,
                                       @Nullable OsintSocialAccountClient osintSocialAccountClient) {
         this(googleSearchClient, serpApiClient, jinaReaderClient, summaryGenerationClient,
-                deepSeekSummaryGenerationClient, executor, properties, derivedTopicQueryService,
+                deepSeekSummaryGenerationClient, null, executor, properties, derivedTopicQueryService,
                 searchLanguageProfileService, multilingualQueryPlanningService, digitalFootprintQueryBuilder,
                 primarySearchQueryBuilder, osintSocialAccountClient, new NoopRocketReachClient(), new NoopFaceEntityAssociationClient());
     }
@@ -389,6 +396,25 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         new SearchTemplateQueryBuilderImpl(properties)),
                 new PrimarySearchQueryBuilderImpl(deepSeekSummaryGenerationClient, summaryGenerationClient,
                         new SearchTemplateQueryBuilderImpl(properties)));
+    }
+
+    private SummaryGenerationClient resolveKimiFallbackSummaryGenerationClient(SummaryGenerationClient primaryClient,
+                                                                               @Nullable DeepSeekSummaryGenerationClient deepSeekClient,
+                                                                               @Nullable SummaryGenerationClient kimiClient) {
+        if (kimiClient != null && kimiClient != deepSeekClient) {
+            return kimiClient;
+        }
+        if (primaryClient != null && primaryClient != deepSeekClient) {
+            return primaryClient;
+        }
+        return null;
+    }
+
+    private SummaryGenerationClient requireKimiFallbackSummaryGenerationClient() {
+        if (kimiFallbackSummaryGenerationClient == null) {
+            throw new ApiCallException("KIMI_FALLBACK_UNAVAILABLE: Kimi 兜底客户端不可用");
+        }
+        return kimiFallbackSummaryGenerationClient;
     }
 
     @Override
@@ -667,7 +693,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     "综合判断DeepSeek失败 fallbackName={} pageSummaryCount={} category={} error={}",
                     deepSeekEx, fallbackName, pageSummaries.size());
             try {
-                ResolvedPersonProfile judged = summaryGenerationClient.applyComprehensiveJudgement(
+                ResolvedPersonProfile judged = requireKimiFallbackSummaryGenerationClient().applyComprehensiveJudgement(
                         effectiveName,
                         pageSummaries,
                         profile
@@ -1998,7 +2024,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         try {
             String kimiSummary = formatSectionedTopicSummary(
                     sectionType,
-                    summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries)
+                    (deepSeekSummaryGenerationClient == null ? summaryGenerationClient : requireKimiFallbackSummaryGenerationClient())
+                            .summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries)
             );
             if (StringUtils.hasText(kimiSummary)) {
                 return kimiSummary;
@@ -2072,7 +2099,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
         }
         try {
             return toParagraphSummaryItems(
-                    summaryGenerationClient.summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries)
+                    (deepSeekSummaryGenerationClient == null ? summaryGenerationClient : requireKimiFallbackSummaryGenerationClient())
+                            .summarizeSectionedSectionFromPageSummaries(resolvedName, sectionType, pageSummaries)
             );
         } catch (RuntimeException ex) {
             log.warn("section paragraphs failed resolvedName={} sectionType={} error={}",
@@ -3376,7 +3404,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         deepSeekEx,
                         fallbackName,
                         page == null ? null : page.getUrl());
-                return summaryGenerationClient.summarizePage(fallbackName, page);
+                return requireKimiFallbackSummaryGenerationClient().summarizePage(fallbackName, page);
             }
         }
         return summaryGenerationClient.summarizePage(fallbackName, page);
@@ -3393,7 +3421,7 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                     "主题摘要DeepSeek失败 resolvedName={} sectionType={} category={} error={}",
                     deepSeekEx, resolvedName, sectionType);
             try {
-                return cleanText(summaryGenerationClient.summarizeSectionFromPageSummaries(resolvedName, sectionType, pageSummaries));
+                return cleanText(requireKimiFallbackSummaryGenerationClient().summarizeSectionFromPageSummaries(resolvedName, sectionType, pageSummaries));
             } catch (RuntimeException kimiEx) {
                 logSummaryFailure(FailureLogLevel.WARN,
                         "主题摘要Kimi兜底失败 resolvedName={} sectionType={} category={} error={}",
@@ -3412,8 +3440,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         "Kimi",
                         fallbackName,
                         pageSummaries,
-                        summaries -> summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, summaries),
-                        summaries -> summaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
+                        summaries -> requireKimiFallbackSummaryGenerationClient().summarizePersonFromPageSummaries(fallbackName, summaries),
+                        summaries -> requireKimiFallbackSummaryGenerationClient().summarizePersonFromBatchSummaries(fallbackName, summaries)
                 );
             } catch (RuntimeException kimiEx) {
                 logSummaryFailure(FailureLogLevel.ERROR,
@@ -3452,8 +3480,8 @@ public class InformationAggregationServiceImpl implements InformationAggregation
                         "Kimi",
                         fallbackName,
                         pageSummaries,
-                        summaries -> summaryGenerationClient.summarizePersonFromPageSummaries(fallbackName, summaries),
-                        summaries -> summaryGenerationClient.summarizePersonFromBatchSummaries(fallbackName, summaries)
+                        summaries -> requireKimiFallbackSummaryGenerationClient().summarizePersonFromPageSummaries(fallbackName, summaries),
+                        summaries -> requireKimiFallbackSummaryGenerationClient().summarizePersonFromBatchSummaries(fallbackName, summaries)
                 );
             } catch (RuntimeException kimiEx) {
                 logSummaryFailure(FailureLogLevel.ERROR,

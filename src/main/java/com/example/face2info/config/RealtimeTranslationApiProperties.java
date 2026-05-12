@@ -12,7 +12,7 @@ public class RealtimeTranslationApiProperties {
 
     private String baseUrl;
     private String apiKey;
-    private String model = "DeepSeek-R1-Distill-Qwen-7B";
+    private String model = "DeepSeek-V4-Flash";
     private int connectTimeoutMs = 5000;
     private int readTimeoutMs = 30000;
     private int maxRetries = 2;
