@@ -297,6 +297,47 @@
       transform: none;
     }
 
+    .local-debug {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .local-debug summary {
+      width: fit-content;
+      cursor: pointer;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.5;
+      border-radius: var(--radius-sm);
+    }
+
+    .local-debug[open] summary {
+      margin-bottom: 12px;
+    }
+
+    .debug-import-panel {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-muted);
+    }
+
+    .debug-import-panel input[type="file"] {
+      min-height: 42px;
+      font-size: 13px;
+    }
+
+    .debug-import-tip {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
     .selection-card[hidden] { display: none !important; }
 
     .selection-header {
@@ -575,6 +616,14 @@
       <h2 id="statusTitle">等待上传图片</h2>
     </div>
     <p class="meta-line" id="statusText">上传后在本页完成候选选择，结果页展示聚合信息。</p>
+    <details class="local-debug">
+      <summary>本地调试 JSON</summary>
+      <div class="debug-import-panel">
+        <label for="debugJsonInput">导入 FaceInfoResponse JSON</label>
+        <input id="debugJsonInput" type="file" accept="application/json,.json">
+        <p class="debug-import-tip" id="debugJsonStatus">仅写入当前浏览器会话并打开结果页，不会调用上传接口。</p>
+      </div>
+    </details>
   </section>
 </div>
 
@@ -597,6 +646,8 @@
   const selectionProgress = document.getElementById("selectionProgress");
   const statusTitle = document.getElementById("statusTitle");
   const statusText = document.getElementById("statusText");
+  const debugJsonInput = document.getElementById("debugJsonInput");
+  const debugJsonStatus = document.getElementById("debugJsonStatus");
 
   // 页面级状态机：upload=首次提交检测；search=多脸场景二次提交已选人脸。
   const state = {
@@ -607,6 +658,7 @@
   form.addEventListener("submit", handleSubmit);
   selectionFaceGrid.addEventListener("click", handleSelectionClick);
   imageInput.addEventListener("change", handleImagePreview);
+  debugJsonInput.addEventListener("change", handleDebugJsonImport);
 
   refreshActionButton();
   moveActionButtonToUpload();
@@ -812,6 +864,33 @@
   function setStatus(title, text) {
     statusTitle.textContent = title;
     statusText.textContent = text;
+  }
+
+  async function handleDebugJsonImport(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const data = await readLocalJsonFile(file);
+      sessionStorage.setItem(SEARCH_RESULT_KEY, JSON.stringify(data || {}));
+      debugJsonStatus.textContent = "已导入 JSON，正在打开结果页回放。";
+      event.target.value = "";
+      window.location.href = "/result.html";
+    } catch (error) {
+      debugJsonStatus.textContent = error.message || "JSON 导入失败，请检查文件内容。";
+      event.target.value = "";
+    }
+  }
+
+  async function readLocalJsonFile(file) {
+    const text = await file.text();
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      throw new Error("JSON 解析失败，请选择合法的 FaceInfoResponse 文件。");
+    }
   }
 
   function normalizeSelectionResponse(selection) {
