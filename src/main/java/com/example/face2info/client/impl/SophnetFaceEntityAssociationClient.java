@@ -24,6 +24,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -101,16 +102,33 @@ public class SophnetFaceEntityAssociationClient implements FaceEntityAssociation
     }
 
     private Map<String, Object> buildRequest(String model, String targetImageUrl, PageSummary pageSummary) {
+        String systemPrompt = "You align one target face image with public article entities. Return strict JSON only.";
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", model);
+        if (usesTopLevelSystemParameter(model)) {
+            request.put("system", systemPrompt);
+            request.put("messages", List.of(buildUserMessage(buildPrompt(pageSummary), targetImageUrl)));
+            return request;
+        }
+        request.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                buildUserMessage(buildPrompt(pageSummary), targetImageUrl)
+        ));
+        return request;
+    }
+
+    private Map<String, Object> buildUserMessage(String prompt, String targetImageUrl) {
         return Map.of(
-                "model", model,
-                "messages", List.of(
-                        Map.of("role", "system", "content", "You align one target face image with public article entities. Return strict JSON only."),
-                        Map.of("role", "user", "content", List.of(
-                                Map.of("type", "text", "text", buildPrompt(pageSummary)),
-                                Map.of("type", "image_url", "image_url", Map.of("url", targetImageUrl))
-                        ))
+                "role", "user",
+                "content", List.of(
+                        Map.of("type", "text", "text", prompt),
+                        Map.of("type", "image_url", "image_url", Map.of("url", targetImageUrl))
                 )
         );
+    }
+
+    private boolean usesTopLevelSystemParameter(String model) {
+        return StringUtils.hasText(model) && model.toLowerCase().contains("claude");
     }
 
     private String buildPrompt(PageSummary pageSummary) {

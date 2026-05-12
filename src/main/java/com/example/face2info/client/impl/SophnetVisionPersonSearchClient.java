@@ -105,16 +105,32 @@ public class SophnetVisionPersonSearchClient implements VisionPersonSearchClient
     }
 
     private Map<String, Object> buildRequest(SophnetVisionApiProperties config, String model, String imageUrl) {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("model", model);
+        if (usesTopLevelSystemParameter(model)) {
+            request.put("system", config.getSystemPrompt());
+            request.put("messages", List.of(buildUserMessage(config.getUserPrompt(), imageUrl)));
+            return request;
+        }
+        request.put("messages", List.of(
+                Map.of("role", "system", "content", config.getSystemPrompt()),
+                buildUserMessage(config.getUserPrompt(), imageUrl)
+        ));
+        return request;
+    }
+
+    private Map<String, Object> buildUserMessage(String prompt, String imageUrl) {
         return Map.of(
-                "model", model,
-                "messages", List.of(
-                        Map.of("role", "system", "content", config.getSystemPrompt()),
-                        Map.of("role", "user", "content", List.of(
-                                Map.of("type", "text", "text", config.getUserPrompt()),
-                                Map.of("type", "image_url", "image_url", Map.of("url", imageUrl))
-                        ))
+                "role", "user",
+                "content", List.of(
+                        Map.of("type", "text", "text", prompt),
+                        Map.of("type", "image_url", "image_url", Map.of("url", imageUrl))
                 )
         );
+    }
+
+    private boolean usesTopLevelSystemParameter(String model) {
+        return StringUtils.hasText(model) && model.toLowerCase().contains("claude");
     }
 
     private VisionModelSearchResult parseResult(String model, JsonNode body, int maxEvidenceUrls) {
