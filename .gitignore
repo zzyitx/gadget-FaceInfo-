@@ -13,7 +13,9 @@ target/
 ### Local Tools ###
 .ai/
 .superpowers/
-docs
+docs/*
+!docs/assets/
+!docs/assets/face-osint-aggregation-flow.png
 hs_err_pid*.log
 .env
 .env.*
