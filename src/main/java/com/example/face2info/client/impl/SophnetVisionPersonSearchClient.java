@@ -107,7 +107,7 @@ public class SophnetVisionPersonSearchClient implements VisionPersonSearchClient
     private Map<String, Object> buildRequest(SophnetVisionApiProperties config, String model, String imageUrl) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("model", model);
-        if (usesTopLevelSystemParameter(model)) {
+        if (usesTopLevelSystemParameter(model) && StringUtils.hasText(config.getSystemPrompt())) {
             request.put("system", config.getSystemPrompt());
             request.put("messages", List.of(buildUserMessage(config.getUserPrompt(), imageUrl)));
             return request;
